@@ -1,0 +1,17 @@
+target/
+.mvn/
+*.class
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# Secrets
+application-local.yml
+application-prod.yml
