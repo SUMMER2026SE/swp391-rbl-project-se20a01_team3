@@ -25,11 +25,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   BookOpen, CreditCard, Heart, MessageSquare,
   ShoppingBag, UserCircle, Camera, LogOut, Lock, Megaphone,
+  DollarSign, BarChart2, Settings
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
-// ─── Cấu hình 8 mục menu ─────────────────────────────────────────────────────
-const MENU_ITEMS = [
+// ─── Cấu hình mục menu theo vai trò (Role-based menu items) ───────────────────
+const STUDENT_MENU_ITEMS = [
   { icon: BookOpen,      label: 'Khóa học và Bài tập', path: '/courses'       },
   { icon: CreditCard,    label: 'Loại tài khoản',       path: '/account/type'  },
   { icon: Heart,         label: 'Danh sách yêu thích',  path: '/favorites'     },
@@ -39,6 +40,30 @@ const MENU_ITEMS = [
   { icon: Lock,          label: 'Tài khoản',             path: '/account'       },
   { icon: Megaphone,     label: 'Khiếu nại',              path: '/complaints'    },
   { icon: Camera,        label: 'Ảnh',                   path: '/account/photo' },
+] as const;
+
+const TEACHER_MENU_ITEMS = [
+  { icon: UserCircle,    label: 'Dashboard tổng quan',  path: '/teacher'       },
+  { icon: BookOpen,      label: 'Khóa học của tôi',     path: '/teacher/courses' },
+  { icon: BookOpen,      label: 'Nội dung giảng dạy',   path: '/teacher/content' },
+  { icon: BookOpen,      label: 'Quản lý Quiz',         path: '/teacher/quiz'  },
+  { icon: BookOpen,      label: 'Quản lý Đề kiểm tra',  path: '/teacher/exam'  },
+  { icon: BookOpen,      label: 'Bảng điểm học sinh',   path: '/teacher/grades' },
+  { icon: MessageSquare, label: 'Hỏi đáp (Q&A)',         path: '/teacher/qa'    },
+  { icon: CreditCard,    label: 'Báo cáo doanh thu',    path: '/teacher/revenue'},
+  { icon: CreditCard,    label: 'Tài khoản nhận tiền',  path: '/teacher/bank'   },
+  { icon: Megaphone,     label: 'Khiếu nại/Hỗ trợ',     path: '/teacher/complaints' },
+  { icon: Camera,        label: 'Ảnh đại diện',         path: '/account/photo' },
+] as const;
+
+const ADMIN_MENU_ITEMS = [
+  { icon: UserCircle,    label: 'Dashboard Admin',      path: '/admin'         },
+  { icon: UserCircle,    label: 'Quản lý giáo viên',    path: '/admin/teachers'},
+  { icon: CreditCard,    label: 'Kế toán & Thu chi',    path: '/admin/accounting'},
+  { icon: DollarSign,    label: 'Lương & Thù lao',      path: '/admin/salary'  },
+  { icon: BarChart2,     label: 'Báo cáo hệ thống',     path: '/admin/reports' },
+  { icon: Settings,      label: 'Cài đặt hệ thống',     path: '/admin/settings'},
+  { icon: Camera,        label: 'Ảnh đại diện',         path: '/account/photo' },
 ] as const;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -100,7 +125,12 @@ export default function DashboardSidebar({
 
       {/* ── Phần giữa: Danh sách menu ────────────────────────────────────────── */}
       <nav className="p-2 space-y-0.5">
-        {MENU_ITEMS.map(item => {
+        {(user?.role === 'teacher'
+          ? TEACHER_MENU_ITEMS
+          : user?.role === 'admin'
+            ? ADMIN_MENU_ITEMS
+            : STUDENT_MENU_ITEMS
+        ).map(item => {
           // exact match: '/account' không active khi ở '/account/type'
           const isActive = pathname === item.path;
 

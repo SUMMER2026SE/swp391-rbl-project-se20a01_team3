@@ -32,6 +32,7 @@ export interface User {
   name: string;
   email: string;
   avatar?: string;
+  role?: 'student' | 'parent' | 'teacher' | 'admin' | null;
 }
 
 interface AuthState {
@@ -40,31 +41,32 @@ interface AuthState {
   user: User | null;
   accessToken: string | null;
   refreshToken: string | null;
-
+ 
   // ----- Actions -----
   /**
    * Lưu token + user sau khi gọi authService.login() / register() thành công.
    * `user` chấp nhận shape UserSummary từ API, store tự map sang User UI.
    */
   loginWithTokens: (payload: AuthTokenPayload) => void;
-
+ 
   /** Cập nhật user info (sau khi PUT /api/me). */
   updateUser: (partial: Partial<User>) => void;
-
+ 
   /** Xoá toàn bộ state - gọi sau khi authService.logout(). */
   logout: () => void;
 }
-
+ 
 // ---------------------------------------------------------------------------
 //  Helper: map UserSummary (API) → User (UI)
 // ---------------------------------------------------------------------------
-
+ 
 function toUiUser(summary: UserSummary | null): User | null {
   if (!summary) return null;
   return {
     name: summary.fullName ?? summary.email,
     email: summary.email,
     avatar: summary.avatarUrl ?? undefined,
+    role: summary.role,
   };
 }
 

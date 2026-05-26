@@ -51,7 +51,19 @@ export default function Login() {
 
       notify.dismiss(toastId);
       notify.success('Đăng nhập thành công!');
-      navigate(redirectTo, { replace: true });
+
+      // Chuyển hướng thông minh theo vai trò người dùng (role)
+      let finalRedirect = redirectTo;
+      if (redirectTo === '/courses') {
+        const userRole = tokens.user?.role;
+        if (userRole === 'teacher') {
+          finalRedirect = '/teacher';
+        } else if (userRole === 'admin') {
+          finalRedirect = '/admin';
+        }
+      }
+
+      navigate(finalRedirect, { replace: true });
     } catch (err) {
       notify.dismiss(toastId);
       // Lỗi đã được axios interceptor format - lấy message tiếng Việt từ BE
