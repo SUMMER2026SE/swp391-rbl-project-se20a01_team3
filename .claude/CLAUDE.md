@@ -309,32 +309,36 @@ Log lỗi: `ERROR: invalid input value for enum course_status: "PUBLISHED"`
 | Google OAuth | ✅ Hoạt động end-to-end |
 | Danh sách khóa học (`/courses`) | ❌ Vẫn dùng `MOCK_COURSES` |
 | Chi tiết khóa học (`/courses/:id`) | ❌ Vẫn dùng `MOCK_COURSES` |
-| Profile / Account (save) | ❌ Chưa gọi API — chỉ update local store |
+| Hồ sơ & Tài khoản (save & password) | ✅ Đã kết nối API thực (`ProfilePage` & `AccountPage`) |
+| Tải lên ảnh đại diện (`/account/photo`) | ✅ Đã hoàn thành và kết nối API thực (`AvatarPage`) |
 | Checkout / Payment | ❌ Mock, chưa tích hợp VNPay/MoMo |
 | Teacher portal | ❌ Skeleton UI, chưa có API |
+| Parent portal | ❌ Chưa có UI (Đã lên kế hoạch chi tiết tại [implementation_plan.md](file:///C:/Users/ADMIN/.gemini/antigravity-ide/brain/05dd681a-bf53-4b8c-9810-3777724fcc2e/implementation_plan.md)) |
 
 ---
 
 ## Còn lại cần làm (theo thứ tự ưu tiên)
 
 ### Ưu tiên cao
-1. **Fix `course_status` enum bug** — backend không load được khóa học
-2. **Kết nối `/api/courses`** — thay `MOCK_COURSES` bằng API call thực
-3. **Authentication guard** — redirect về `/login` nếu chưa đăng nhập cho các route cần auth
-4. **`useAuthStore` integration** — hiện đang dùng mock user mặc định, cần sync với JWT thực sau khi login
+1. **Phát triển Phân hệ Phụ huynh (Parent Portal)** — 5 trang (UC23–UC25, UC47, UC49) theo kế hoạch chi tiết tại [implementation_plan.md](file:///C:/Users/ADMIN/.gemini/antigravity-ide/brain/05dd681a-bf53-4b8c-9810-3777724fcc2e/implementation_plan.md):
+   - Cấu hình định tuyến `/parent/**` và menu trong `DashboardSidebar.tsx`
+   - Giao diện `ParentDashboard` với biểu đồ SVG động và drop-down quản lý các con liên kết
+   - Giao diện chat Phụ huynh - Giáo viên `ParentMessages`
+   - Giao diện kết nối tài khoản học sinh `ParentStudentLink`
+   - Các trang phụ trợ `ParentCourses` và `ParentSchedule`
+2. **Fix `course_status` enum bug** — backend không load được khóa học
+3. **Kết nối `/api/courses`** — thay `MOCK_COURSES` bằng API call thực
+4. **Authentication guard** — redirect về `/login` nếu chưa đăng nhập cho các route cần auth
 
 ### Ưu tiên trung bình
-5. **Profile / Account API** — `ProfilePage.handleSave` và `AccountPage.handleSave` gọi API thực
-6. **Teacher portal** — 10 trang (UC26–UC33, UC45–UC46)
-7. **Admin pages** — UC35–UC41 (users, approvals, reports, complaints, payouts, notifications)
-8. **VNPay / MoMo checkout** — thay mock
+5. **Teacher portal** — 10 trang (UC26–UC33, UC45–UC46)
+6. **Admin pages** — UC35–UC41 (users, approvals, reports, complaints, payouts, notifications)
+7. **VNPay / MoMo checkout** — thay mock
 
 ### Ưu tiên thấp hơn
-9. **Parent portal** — 5 trang (UC23–UC25, UC47, UC49)
-10. **Chứng chỉ** — UC42–UC43 (`/certificates`)
-11. **Upload ảnh đại diện** — `/account/photo` ➔ ✅ Đã hoàn thành và kết nối API
-12. **`useCartStore` persist localStorage**
-13. **Search header** — kết nối API thay vì search MOCK_COURSES
+8. **Chứng chỉ** — UC42–UC43 (`/certificates`)
+9. **`useCartStore` persist localStorage**
+10. **Search header** — kết nối API thay vì search MOCK_COURSES
 
 ---
 

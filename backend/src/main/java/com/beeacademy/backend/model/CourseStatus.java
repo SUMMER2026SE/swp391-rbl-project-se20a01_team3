@@ -1,5 +1,7 @@
 package com.beeacademy.backend.model;
 
+import java.util.Arrays;
+
 /**
  * Trạng thái vòng đời khoá học, ánh xạ 1-1 với enum Postgres
  * {@code course_status}.
@@ -33,4 +35,14 @@ public enum CourseStatus {
     public String toDbValue() {
         return name().toLowerCase();
     }
+
+    /** Parse từ chuỗi case-insensitive từ DB */
+    public static CourseStatus fromDbValue(String value) {
+        if (value == null) return null;
+        return Arrays.stream(values())
+                .filter(s -> s.name().equalsIgnoreCase(value))
+                .findFirst()
+                .orElse(null);
+    }
 }
+

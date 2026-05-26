@@ -2,6 +2,7 @@ package com.beeacademy.backend.model;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -15,6 +16,7 @@ import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -101,9 +103,9 @@ public class Course {
     @Column(name = "sale_price_vnd")
     private Integer salePriceVnd;
 
-    @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
-    @Column(name = "status", nullable = false, columnDefinition = "course_status")
+    @Convert(converter = CourseStatusConverter.class)
+    @ColumnTransformer(read = "status::text", write = "?::course_status")
+    @Column(name = "status", nullable = false)
     private CourseStatus status;
 
     @Column(name = "is_featured", nullable = false)
