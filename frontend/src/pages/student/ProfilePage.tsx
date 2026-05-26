@@ -18,22 +18,26 @@
 //   useRef(textarea) → đọc selectionStart/End → chèn ký tự quanh selection.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Twitter, Facebook, Linkedin, Bold, Italic, Save } from 'lucide-react';
 import DashboardHeader from '../../components/DashboardHeader';
 import PageBanner from '../../components/PageBanner';
 import { useAuthStore } from '../../store/useAuthStore';
 import { notify } from '../../lib/toast';
+import { getMyProfile, updateMyProfile } from '../../api/authService';
+import { isApiError } from '../../api/client';
 
 export default function ProfilePage() {
   // ── State form ────────────────────────────────────────────────────────────
-  const [firstName, setFirstName]   = useState('Học viên');
-  const [lastName,  setLastName]    = useState('Bee');
+  const [firstName, setFirstName]   = useState('');
+  const [lastName,  setLastName]    = useState('');
   const [bio,       setBio]         = useState('');
   const [twitter,   setTwitter]     = useState('');
   const [facebook,  setFacebook]    = useState('');
   const [linkedin,  setLinkedin]    = useState('');
+  const [loading,   setLoading]     = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   // updateUser: cập nhật tên mới vào store → Header re-render ngay với tên mới
   const updateUser = useAuthStore(state => state.updateUser);
@@ -41,12 +45,37 @@ export default function ProfilePage() {
   // ref đến <textarea> tiểu sử — dùng để đọc/đặt lại vị trí con trỏ sau khi format
   const bioRef = useRef<HTMLTextAreaElement>(null);
 
+  // ── Tải thông tin hồ sơ từ backend ─────────────────────────────────────────
+  useEffect(() => {
+    async function loadProfile() {
+      try {
+        const profile = await getMyProfile();
+        
+        // Cắt họ tên thành Họ (lastName) và Tên (firstName)
+        const parts = (profile.fullName ?? '').trim().split(/\s+/);
+        if (parts.length > 1) {
+          setLastName(parts[0]);
+          setFirstName(parts.slice(1).join(' '));
+        } else {
+          setLastName('');
+          setFirstName(parts[0] || '');
+        }
+        
+        setBio(profile.bio ?? '');
+        setTwitter(profile.twitterUrl ?? '');
+        setFacebook(profile.facebookUrl ?? '');
+        setLinkedin(profile.linkedinUrl ?? '');
+      } catch (err) {
+        const msg = isApiError(err) ? err.message : 'Không thể tải thông tin hồ sơ.';
+        notify.error(msg);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadProfile();
+  }, []);
+
   // ── Toolbar: chèn markdown Bold / Italic quanh text đang chọn ─────────────
-  // Cách hoạt động:
-  //   1. Đọc selectionStart / selectionEnd từ textarea DOM element
-  //   2. Ghép chuỗi mới: trước + wrapper + selection + wrapper + sau
-  //   3. Cập nhật state bio
-  //   4. setTimeout(0) để focus + restore selection SAU khi React re-render
   function applyFormat(type: 'bold' | 'italic') {
     const el = bioRef.current;
     if (!el) return;
@@ -56,13 +85,11 @@ export default function ProfilePage() {
     const wrapper = type === 'bold' ? '**' : '*';
     const selected = bio.slice(start, end);
 
-    // Nếu không có text được chọn, chèn placeholder để user thấy cú pháp
     const inner = selected || (type === 'bold' ? 'văn bản đậm' : 'văn bản nghiêng');
 
     const newBio = bio.slice(0, start) + wrapper + inner + wrapper + bio.slice(end);
     setBio(newBio);
 
-    // Restore con trỏ: đặt ngay sau wrapper mở, highlight phần inner
     const newStart = start + wrapper.length;
     const newEnd   = newStart + inner.length;
     setTimeout(() => {
@@ -71,14 +98,49 @@ export default function ProfilePage() {
     }, 0);
   }
 
-  // ── Lưu hồ sơ ─────────────────────────────────────────────────────────────
-  // Ghép firstName + lastName thành fullName rồi cập nhật store.
-  // Header đọc user.name từ cùng store → re-render ngay, hiển thị tên mới.
-  // Thực tế sẽ gọi thêm API PATCH /users/me
-  function handleSave() {
-    const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
-    if (fullName) updateUser({ name: fullName });
-    notify.success('Hồ sơ đã được lưu thành công!');
+  // ── Lưu hồ sơ lên backend ──────────────────────────────────────────────────
+  async function handleSave() {
+    const fullName = `${lastName.trim()} ${firstName.trim()}`.trim();
+    if (!fullName) {
+      notify.error('Họ tên không được để trống!');
+      return;
+    }
+
+    if (submitting) return;
+    setSubmitting(true);
+    const toastId = notify.loading('Đang lưu hồ sơ...');
+
+    try {
+      await updateMyProfile({
+        fullName,
+        bio,
+        twitterUrl: twitter.trim(),
+        facebookUrl: facebook.trim(),
+        linkedinUrl: linkedin.trim(),
+      });
+      
+      updateUser({ name: fullName });
+      notify.dismiss(toastId);
+      notify.success('Hồ sơ đã được lưu thành công!');
+    } catch (err) {
+      notify.dismiss(toastId);
+      const msg = isApiError(err) ? err.message : 'Lưu hồ sơ thất bại. Vui lòng thử lại.';
+      notify.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-surface flex flex-col font-sans">
+        <DashboardHeader />
+        <PageBanner title="Hồ sơ" subtitle="Quản lý thông tin cá nhân của bạn" />
+        <div className="flex-grow flex items-center justify-center p-8 bg-surface">
+          <div className="w-10 h-10 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -238,7 +300,8 @@ export default function ProfilePage() {
             <div className="px-6 py-4 border-t border-outline-variant/20 flex justify-end">
               <button
                 onClick={handleSave}
-                className="flex items-center gap-2 px-6 py-2.5 bg-teal-500 text-white rounded-xl text-sm font-bold hover:bg-teal-600 active:bg-teal-700 transition-colors shadow-sm shadow-teal-500/25"
+                disabled={submitting}
+                className="flex items-center gap-2 px-6 py-2.5 bg-teal-500 text-white rounded-xl text-sm font-bold hover:bg-teal-600 active:bg-teal-700 transition-colors shadow-sm shadow-teal-500/25 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4" />
                 Lưu
