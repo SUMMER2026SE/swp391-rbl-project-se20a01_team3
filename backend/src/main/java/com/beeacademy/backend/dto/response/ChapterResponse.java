@@ -1,22 +1,15 @@
 package com.beeacademy.backend.dto.response;
 
 import com.beeacademy.backend.model.Chapter;
+import com.beeacademy.backend.model.CourseDocument;
+import com.beeacademy.backend.model.Lesson;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 
-/**
- * Chapter + danh sách lesson lồng bên trong.
- *
- * <p>Mặc dù entity có quan hệ 2 chiều (chapter ↔ lessons), DTO chỉ
- * giữ chiều xuống → tự nhiên cho frontend render accordion.
- *
- * @param id          UUID chapter
- * @param title       tiêu đề chương
- * @param description mô tả (nullable)
- * @param position    thứ tự trong khoá
- * @param lessons     danh sách bài học
- */
 public record ChapterResponse(
         UUID id,
         String title,
@@ -25,16 +18,27 @@ public record ChapterResponse(
         List<LessonResponse> lessons
 ) {
 
-    /**
-     * Map entity → DTO.
-     *
-     * @param chapter    entity chapter (lessons phải đã được fetch)
-     * @param canSeeAllVideos true nếu user có quyền xem mọi video (đã mua khoá)
-     */
     public static ChapterResponse fromEntity(Chapter chapter, boolean canSeeAllVideos) {
+        return fromEntity(chapter, canSeeAllVideos, null, Collections.emptyMap());
+    }
+
+    public static ChapterResponse fromEntity(Chapter chapter, boolean canSeeAllVideos,
+                                              Function<Lesson, String> resolver) {
+        return fromEntity(chapter, canSeeAllVideos, resolver, Collections.emptyMap());
+    }
+
+    /** Overload đầy đủ: signed URL + docMap (lessonId → tài liệu đính kèm). */
+    public static ChapterResponse fromEntity(Chapter chapter, boolean canSeeAllVideos,
+                                              Function<Lesson, String> resolver,
+                                              Map<UUID, List<CourseDocument>> docMap) {
         List<LessonResponse> lessons = chapter.getLessons().stream()
-                // includeUrl = true nếu user đã mua HOẶC lesson được free
-                .map(l -> LessonResponse.fromEntity(l, canSeeAllVideos || Boolean.TRUE.equals(l.getIsFree())))
+                .map(l -> {
+                    boolean canSee = canSeeAllVideos || Boolean.TRUE.equals(l.getIsFree());
+                    String signedUrl = (canSee && resolver != null && l.getVideoStoragePath() != null)
+                            ? resolver.apply(l) : null;
+                    List<CourseDocument> docs = docMap.getOrDefault(l.getId(), Collections.emptyList());
+                    return LessonResponse.fromEntity(l, canSeeAllVideos, signedUrl, docs);
+                })
                 .toList();
         return new ChapterResponse(
                 chapter.getId(),

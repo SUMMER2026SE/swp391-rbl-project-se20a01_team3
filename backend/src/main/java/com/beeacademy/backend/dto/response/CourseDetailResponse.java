@@ -1,11 +1,16 @@
 package com.beeacademy.backend.dto.response;
 
 import com.beeacademy.backend.model.Course;
+import com.beeacademy.backend.model.CourseDocument;
+import com.beeacademy.backend.model.Lesson;
 
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -38,7 +43,9 @@ public record CourseDetailResponse(
         Integer totalLessons,
         Integer totalDurationSec,
         Instant publishedAt,
-        List<ChapterResponse> chapters
+        List<ChapterResponse> chapters,
+        /** true nếu user đã mua/enroll hoặc là GV sở hữu hoặc là Admin */
+        boolean enrolled
 ) {
 
     /**
@@ -46,10 +53,22 @@ public record CourseDetailResponse(
      * @param canSeeAllVideos  true nếu user là chủ khoá / đã enrolled
      */
     public static CourseDetailResponse fromEntity(Course course, boolean canSeeAllVideos) {
+        return fromEntity(course, canSeeAllVideos, null, Collections.emptyMap());
+    }
+
+    public static CourseDetailResponse fromEntity(Course course, boolean canSeeAllVideos,
+                                                   Function<Lesson, String> resolver) {
+        return fromEntity(course, canSeeAllVideos, resolver, Collections.emptyMap());
+    }
+
+    /** Overload đầy đủ: signed URL resolver + docMap. */
+    public static CourseDetailResponse fromEntity(Course course, boolean canSeeAllVideos,
+                                                   Function<Lesson, String> resolver,
+                                                   Map<UUID, List<CourseDocument>> docMap) {
         List<Integer> grades = Arrays.stream(course.getGrades()).boxed().collect(Collectors.toList());
 
         List<ChapterResponse> chapters = course.getChapters().stream()
-                .map(c -> ChapterResponse.fromEntity(c, canSeeAllVideos))
+                .map(c -> ChapterResponse.fromEntity(c, canSeeAllVideos, resolver, docMap))
                 .toList();
 
         String categoryName = course.getCategory() != null ? course.getCategory().getName() : null;
@@ -74,7 +93,8 @@ public record CourseDetailResponse(
                 course.getTotalLessons(),
                 course.getTotalDurationSec(),
                 course.getPublishedAt(),
-                chapters
+                chapters,
+                canSeeAllVideos   // enrolled = có quyền xem toàn bộ video
         );
     }
 }

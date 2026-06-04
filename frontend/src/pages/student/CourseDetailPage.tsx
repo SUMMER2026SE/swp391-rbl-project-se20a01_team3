@@ -28,7 +28,7 @@ import {
   ArrowLeft, Star, Users, PlayCircle, FileText, CheckCircle2,
   Lock, ShoppingCart, Video, Menu, X, MessageSquare, BookOpen,
   ClipboardList, XCircle, Award, RotateCcw, ChevronLeft, ChevronRight,
-  Trophy, Loader2, Send,
+  Trophy, Loader2, Send, AlertCircle,
 } from 'lucide-react';
 import DashboardHeader from '../../components/DashboardHeader';
 import type { Course, Lesson, QuizQuestion } from '../../data/mockCourses';
@@ -40,6 +40,8 @@ import { useCourseStore } from '../../store/useCourseStore';
 import { getCourseDetail as courseServiceGetDetail } from '../../api/courseService';
 import { adaptCourseDetail } from '../../api/adapter';
 import { isApiError } from '../../api/client';
+import { enrollCourse } from '../../api/enrollmentService';
+import type { ChapterDetail } from '../../types/api';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPONENT: ScoreCircle
@@ -780,15 +782,23 @@ function MarketingView({ course }: { course: Course }) {
 //   Video/PDF items: hiển thị icon type + dấu tích xanh nếu isCompleted
 //   Sidebar slide in/out từ bên phải với spring animation
 // ═══════════════════════════════════════════════════════════════════════════════
-function LearningView({ course }: { course: Course }) {
+function LearningView({ course, rawChapters, courseId }: {
+  course: Course;
+  rawChapters: ChapterDetail[];
+  courseId: string;
+}) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
+  // BUG FIX: guard khi course không có lesson nào (tránh crash do undefined)
+  const firstLesson = course.lessons?.find(l => l.type !== 'quiz') ?? course.lessons?.[0] ?? null;
+
   // Khởi tạo activeLesson = bài đầu tiên không phải quiz
-  // (không mở quiz ngay khi vào trang — phải click mới mở modal)
-  const [activeLesson, setActiveLesson] = useState<Lesson>(
-    (course.lessons?.find(l => l.type !== 'quiz') ?? course.lessons?.[0]) as Lesson
-  );
+  const [activeLesson, setActiveLesson] = useState<Lesson | null>(firstLesson);
   const [activeTab, setActiveTab] = useState<'overview' | 'qa' | 'notes'>('overview');
+
+  // BUG FIX: state báo hiệu signed video URL đã hết hạn (sau 1 giờ)
+  // — browser tự phát lỗi khi URL 403, <video onError> sẽ bắt và set flag này
+  const [videoUrlExpired, setVideoUrlExpired] = useState(false);
 
   // activeQuiz: null = không hiện modal, Lesson = hiện QuizModal cho bài đó
   const [activeQuiz, setActiveQuiz] = useState<Lesson | null>(null);
@@ -820,6 +830,7 @@ function LearningView({ course }: { course: Course }) {
     if (activeLesson) {
       const savedNote = lessonNotes[course.id]?.[activeLesson.id] ?? '';
       setNoteText(savedNote);
+
     }
   }, [activeLesson, course.id, lessonNotes]);
 
@@ -867,11 +878,10 @@ function LearningView({ course }: { course: Course }) {
   // Router điều hướng click trong sidebar
   function handleLessonClick(lesson: Lesson) {
     if (lesson.type === 'quiz') {
-      // Quiz → mở modal overlay, KHÔNG thay đổi activeLesson (video/pdf giữ nguyên)
       setActiveQuiz(lesson);
     } else {
-      // Video/PDF → đổi nội dung player
       setActiveLesson(lesson);
+      setVideoUrlExpired(false); // reset lỗi URL cũ khi chuyển sang bài mới
     }
   }
 
@@ -943,44 +953,88 @@ function LearningView({ course }: { course: Course }) {
         <div className={`flex flex-col flex-grow transition-all duration-300 overflow-y-auto ${isSidebarOpen ? 'lg:pr-[380px]' : ''}`}>
 
           {/* Video / PDF player (giả lập) */}
-          <div className="w-full bg-black aspect-video relative group flex-shrink-0">
-            <img src={course.image} alt="Thumbnail" className="absolute inset-0 w-full h-full object-cover opacity-40" />
-            {activeLesson?.type === 'video' ? (
-              // Video player: nút play ở giữa + thanh control khi hover
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-20 h-20 bg-primary/90 text-on-primary rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform cursor-pointer">
-                  <PlayCircle className="w-12 h-12 ml-1" />
-                </div>
-              </div>
-            ) : (
-              // PDF viewer: icon + nút tải xuống
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
-                <FileText className="w-16 h-16 mb-4 opacity-80 text-blue-400" />
-                <h3 className="text-2xl font-bold">Tài liệu PDF</h3>
-                <button className="mt-6 px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold transition-colors">
-                  Tải xuống
+          <div className="w-full bg-black aspect-video relative group flex-shrink-0 overflow-hidden">
+            {/* Hiển thị thông báo khi signed URL hết hạn (sau 1 giờ) */}
+            {videoUrlExpired ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-3 px-8 text-center">
+                <img src={course.image} alt="" className="absolute inset-0 w-full h-full object-cover opacity-20" />
+                <AlertCircle className="w-14 h-14 text-orange-400 relative z-10" />
+                <p className="text-base font-semibold relative z-10">Link video đã hết hạn</p>
+                <p className="text-sm text-white/60 relative z-10 max-w-xs">
+                  Signed URL chỉ có hiệu lực 1 giờ. Tải lại trang để lấy link mới.
+                </p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="relative z-10 mt-1 px-5 py-2 bg-primary hover:bg-primary/90 rounded-lg text-sm font-bold transition-colors text-on-primary"
+                >
+                  Tải lại trang
                 </button>
               </div>
-            )}
-            {/* Controls overlay — chỉ hiện khi hover vào video */}
-            {activeLesson?.type === 'video' && (
-              <div className="absolute bottom-0 inset-x-0 h-16 bg-gradient-to-t from-black/90 to-transparent flex flex-col justify-end px-4 pb-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="w-full h-1 bg-white/30 rounded-full overflow-hidden mb-3 cursor-pointer">
-                  <div className="w-1/3 h-full bg-primary rounded-full relative">
-                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full" />
-                  </div>
-                </div>
-                <div className="flex justify-between items-center text-white text-sm font-medium">
-                  <div className="flex items-center gap-4">
-                    <PlayCircle className="w-5 h-5 cursor-pointer" />
-                    <span>04:12 / {activeLesson?.duration}</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="cursor-pointer">1x</span>
-                    <span className="cursor-pointer">HD</span>
-                  </div>
-                </div>
+            ) : activeLesson?.type === 'video' && activeLesson?.url && activeLesson.url !== '#' ? (
+              // Kiểm tra embed URL (YouTube/Vimeo) hay direct video
+              activeLesson.url.includes('youtube.com') ||
+              activeLesson.url.includes('youtu.be') ||
+              activeLesson.url.includes('vimeo.com') ||
+              activeLesson.url.includes('/embed/') ? (
+                // iframe cho YouTube/Vimeo
+                <iframe
+                  key={activeLesson.id}
+                  src={activeLesson.url}
+                  className="absolute inset-0 w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  title={activeLesson.title}
+                />
+              ) : (
+                // <video> cho file upload (signed URL từ Supabase Storage, TTL 1 giờ)
+                <video
+                  key={activeLesson.id}
+                  src={activeLesson.url}
+                  className="absolute inset-0 w-full h-full"
+                  controls
+                  controlsList="nodownload"
+                  playsInline
+                  onError={() => setVideoUrlExpired(true)}
+                />
+              )
+            ) : activeLesson?.type === 'video' ? (
+              // Video chưa có URL — có thể chưa upload hoặc backend chưa trả signed URL
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-3 px-8 text-center">
+                <img src={course.image} alt="" className="absolute inset-0 w-full h-full object-cover opacity-20" />
+                <AlertCircle className="w-14 h-14 text-yellow-400 relative z-10" />
+                <p className="text-base font-semibold relative z-10">Video chưa sẵn sàng</p>
+                <p className="text-sm text-white/60 relative z-10 max-w-xs">
+                  Nội dung đang được tải lên hoặc xử lý. Vui lòng tải lại trang sau ít phút.
+                </p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="relative z-10 mt-2 px-5 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-bold transition-colors"
+                >
+                  Tải lại trang
+                </button>
               </div>
+            ) : activeLesson?.type === 'pdf' ? (
+              // PDF viewer
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
+                <img src={course.image} alt="" className="absolute inset-0 w-full h-full object-cover opacity-20" />
+                <FileText className="w-16 h-16 mb-4 opacity-80 text-blue-400 relative z-10" />
+                <h3 className="text-2xl font-bold relative z-10">Tài liệu PDF</h3>
+                {activeLesson?.url && activeLesson.url !== '#' ? (
+                  <a
+                    href={activeLesson.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold transition-colors relative z-10"
+                  >
+                    Mở tài liệu
+                  </a>
+                ) : (
+                  <p className="mt-4 text-sm text-white/60 relative z-10">Tài liệu đang được chuẩn bị</p>
+                )}
+              </div>
+            ) : (
+              // Thumbnail mặc định
+              <img src={course.image} alt="Thumbnail" className="absolute inset-0 w-full h-full object-cover opacity-40" />
             )}
           </div>
 
@@ -1039,10 +1093,46 @@ function LearningView({ course }: { course: Course }) {
             <div className="min-h-[200px]">
               <AnimatePresence mode="wait">
                 {activeTab === 'overview' && (
-                  <motion.div key="overview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                  <motion.div key="overview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
                     <p className="text-on-surface-variant leading-relaxed text-lg">
                       Nội dung chi tiết của {activeLesson?.title}. Chú ý theo dõi kỹ các ví dụ thực hành trong bài. Sau khi học xong, hãy làm bài kiểm tra cuối chương để củng cố kiến thức.
                     </p>
+                    {activeLesson?.documents && activeLesson.documents.length > 0 && (
+                      <div>
+                        <h4 className="font-bold text-on-surface mb-3 flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-primary" />
+                          Tài liệu đính kèm
+                        </h4>
+                        <div className="space-y-2">
+                          {activeLesson.documents.map((doc, idx) => {
+                            const ext = doc.fileType?.toUpperCase() ?? 'FILE';
+                            const sizeKb = doc.fileSizeBytes ? Math.round(doc.fileSizeBytes / 1024) : null;
+                            return (
+                              <a
+                                key={idx}
+                                href={doc.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-3 p-3 rounded-xl border border-outline-variant/40 bg-surface-container hover:border-primary hover:bg-surface-container-high transition-all group"
+                              >
+                                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                  <FileText className="w-5 h-5 text-primary" />
+                                </div>
+                                <div className="flex-grow min-w-0">
+                                  <p className="font-semibold text-sm text-on-surface truncate group-hover:text-primary transition-colors">
+                                    {doc.name}
+                                  </p>
+                                  <p className="text-xs text-on-surface-variant mt-0.5">
+                                    {ext}{sizeKb != null ? ` · ${sizeKb} KB` : ''}
+                                  </p>
+                                </div>
+                                <ArrowLeft className="w-4 h-4 text-on-surface-variant group-hover:text-primary rotate-180 flex-shrink-0 transition-colors" />
+                              </a>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </motion.div>
                 )}
                 {activeTab === 'qa' && (
@@ -1273,14 +1363,27 @@ function LearningView({ course }: { course: Course }) {
                   );
                 })}
 
-                {/* Placeholder: chương tiếp theo bị khóa */}
-                <div className="p-4 rounded-2xl flex gap-3 bg-surface-container/50 border border-transparent mt-2 opacity-60">
-                  <Lock className="w-5 h-5 text-on-surface-variant mt-0.5 flex-shrink-0" />
-                  <div>
-                    <h4 className="font-bold text-sm text-on-surface-variant">Chương tiếp theo đang khóa</h4>
-                    <p className="text-xs text-on-surface-variant mt-0.5">Hoàn thành chương hiện tại để mở khóa</p>
+                {/* Quiz theo chương — hiển thị khi có chapter từ API */}
+                {rawChapters.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-outline-variant/30">
+                    <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider px-1 mb-2">Quiz theo chương</p>
+                    {rawChapters.map(ch => (
+                      <Link
+                        key={ch.id}
+                        to={`/courses/${courseId}/chapters/${ch.id}/quiz`}
+                        className="w-full text-left p-3 rounded-2xl flex items-center gap-3 bg-surface hover:bg-amber-500/5 border border-transparent hover:border-amber-500/20 transition-all group mb-1.5"
+                      >
+                        <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 group-hover:bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                          <ClipboardList className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-on-surface line-clamp-1">{ch.title}</p>
+                          <p className="text-xs text-amber-600 font-medium">Làm quiz ngay →</p>
+                        </div>
+                      </Link>
+                    ))}
                   </div>
-                </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -1322,6 +1425,7 @@ export default function CourseDetailPage() {
 
   // ── State fetch từ API ──────────────────────────────────────────────────
   const [course, setCourse] = useState<Course | null>(null);
+  const [rawChapters, setRawChapters] = useState<ChapterDetail[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [notFound, setNotFound] = useState<boolean>(false);
 
@@ -1332,7 +1436,28 @@ export default function CourseDetailPage() {
     setNotFound(false);
 
     courseServiceGetDetail(id)
-      .then((detail) => setCourse(adaptCourseDetail(detail)))
+      .then(async (detail) => {
+        // Auto-sync enrollment: nếu Zustand nói "đã mua" nhưng backend chưa ghi nhận
+        // (xảy ra sau mock checkout — purchasedIds được set nhưng enrollment chưa có trong DB)
+        // → gọi enroll API để backend biết → fetch lại detail để nhận videoUrl đúng.
+        const purchasedLocally = purchasedIds.includes(id);
+        if (purchasedLocally && !detail.enrolled) {
+          try {
+            await enrollCourse(id);
+            // Fetch lại để backend trả enrolled=true + signed URLs
+            const updated = await courseServiceGetDetail(id);
+            setCourse(adaptCourseDetail(updated));
+            setRawChapters(updated.chapters);
+          } catch {
+            // Nếu enroll fail (vd: khóa học không tồn tại), vẫn hiển thị detail ban đầu
+            setCourse(adaptCourseDetail(detail));
+            setRawChapters(detail.chapters);
+          }
+        } else {
+          setCourse(adaptCourseDetail(detail));
+          setRawChapters(detail.chapters);
+        }
+      })
       .catch((err) => {
         // 404 từ BE → hiển thị empty state. Lỗi khác → toast.
         if (isApiError(err) && err.status === 404) {
@@ -1344,7 +1469,7 @@ export default function CourseDetailPage() {
         }
       })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, purchasedIds]);
 
   // ── Loading state ────────────────────────────────────────────────────────
   if (loading) {
@@ -1368,12 +1493,26 @@ export default function CourseDetailPage() {
     );
   }
 
-  // Kiểm tra quyền truy cập học - tạm thời chỉ check purchasedIds local
-  // (Module 3 sẽ check enrollments thật qua /api/my-courses)
-  const isEnrolled = purchasedIds.includes(course.id);
+  // Kiểm tra quyền truy cập từ backend (enrolled = đã mua / GV sở hữu / Admin)
+  const isEnrolled = course.isEnrolled || purchasedIds.includes(course.id);
+
+  // BUG FIX: guard khi đã enrolled nhưng course chưa có lesson nào
+  // — tránh crash trong LearningView khi activeLesson = undefined bị dereference
+  if (isEnrolled && (!course.lessons || course.lessons.length === 0)) {
+    return (
+      <div className="min-h-screen bg-surface flex flex-col items-center justify-center gap-4">
+        <BookOpen className="w-14 h-14 text-on-surface-variant/30" />
+        <h2 className="text-xl font-bold text-on-surface">Khóa học chưa có bài giảng</h2>
+        <p className="text-on-surface-variant text-sm">Giáo viên đang chuẩn bị nội dung. Vui lòng quay lại sau.</p>
+        <Link to="/courses" className="text-primary hover:underline font-semibold text-sm">
+          Quay lại danh sách khóa học
+        </Link>
+      </div>
+    );
+  }
 
   return isEnrolled ? (
-    <LearningView course={course} />
+    <LearningView course={course} rawChapters={rawChapters} courseId={id!} />
   ) : (
     <MarketingView course={{ ...course, isEnrolled }} />
   );

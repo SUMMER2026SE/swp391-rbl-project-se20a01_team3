@@ -6,7 +6,6 @@ import com.beeacademy.backend.exception.BusinessException;
 import com.beeacademy.backend.exception.ResourceNotFoundException;
 import com.beeacademy.backend.model.ParentStudentLink;
 import com.beeacademy.backend.model.Profile;
-import com.beeacademy.backend.model.UserRole;
 import com.beeacademy.backend.repository.ParentStudentLinkRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
@@ -46,22 +45,17 @@ public class ParentService {
         
         List<ParentStudentLink> links = linkRepository.findByIdParentId(me.userId());
         
+        // Bảng profiles hiện chưa có cột grade — trả chuỗi rỗng để FE tự xử lý.
+        // TODO: thêm cột grade (vd: "Lớp 6") vào bảng profiles khi Module 5 hoàn thiện.
         return links.stream()
                 .map(link -> {
                     Profile student = link.getStudent();
-                    
-                    // Suy luận khối lớp học của con dựa trên tên (tương thích mock data của FE)
-                    String grade = "Lớp 6"; 
-                    if (student.getFullName() != null && student.getFullName().contains("Minh Anh")) {
-                        grade = "Lớp 8";
-                    }
-                    
                     return LinkedStudentResponse.builder()
                             .id(student.getId())
                             .name(student.getFullName())
                             .avatarUrl(student.getAvatarUrl())
                             .code("")
-                            .grade(grade)
+                            .grade("")   // grade chưa có trong schema — xem TODO ở trên
                             .build();
                 })
                 .collect(Collectors.toList());
@@ -115,38 +109,19 @@ public class ParentService {
 
         String studentName = student.getFullName();
         
-        // 3. Xây dựng dữ liệu báo cáo (kết hợp tương thích với mock data của front-end)
+        // 3. Xây dựng báo cáo tổng quan.
+        // TODO Module 4 (Tiến độ học tập): thay các giá trị mặc định bằng dữ liệu
+        //   thực từ bảng enrollments, quiz_attempts, exam_results khi Module 4 hoàn thiện.
+        //   Hiện tại trả về 0 / rỗng vì các bảng trên chưa tồn tại.
         ChildOverviewResponse.ChildOverviewResponseBuilder builder = ChildOverviewResponse.builder()
-                .studentName(studentName);
-
-        if (studentName != null && studentName.contains("Minh Anh")) {
-            // Nguyễn Minh Anh
-            builder.grade("Lớp 8")
-                    .avgProgress(65.0)
-                    .activeCourses(2)
-                    .completedCourses(1)
-                    .latestQuizScore(8.5)
-                    .latestExamScore(9.0)
-                    .weeklyActivityHours(List.of(2.0, 1.5, 3.0, 2.5, 4.0, 1.0, 0.5));
-        } else if (studentName != null && studentName.contains("Quốc Bảo")) {
-            // Nguyễn Quốc Bảo
-            builder.grade("Lớp 6")
-                    .avgProgress(45.0)
-                    .activeCourses(1)
-                    .completedCourses(0)
-                    .latestQuizScore(7.0)
-                    .latestExamScore(7.5)
-                    .weeklyActivityHours(List.of(1.0, 2.0, 0.5, 1.5, 2.0, 3.0, 1.0));
-        } else {
-            // Học sinh mới đăng ký liên kết khác (mặc định trống)
-            builder.grade("Lớp 6")
-                    .avgProgress(0.0)
-                    .activeCourses(0)
-                    .completedCourses(0)
-                    .latestQuizScore(0.0)
-                    .latestExamScore(0.0)
-                    .weeklyActivityHours(List.of(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
-        }
+                .studentName(studentName)
+                .grade("")           // chưa có cột grade trong profiles — xem TODO ParentService.getLinkedChildren
+                .avgProgress(0.0)
+                .activeCourses(0)
+                .completedCourses(0)
+                .latestQuizScore(0.0)
+                .latestExamScore(0.0)
+                .weeklyActivityHours(List.of(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
 
         return builder.build();
     }

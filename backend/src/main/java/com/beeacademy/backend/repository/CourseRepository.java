@@ -1,11 +1,17 @@
 package com.beeacademy.backend.repository;
 
 import com.beeacademy.backend.model.Course;
+import com.beeacademy.backend.model.CourseStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -56,4 +62,23 @@ public interface CourseRepository extends JpaRepository<Course, UUID>,
     /** Cùng logic nhưng theo slug. */
     @EntityGraph(attributePaths = {"category", "teacher"})
     Optional<Course> findWithCategoryAndTeacherBySlug(String slug);
+
+    /**
+     * Danh sách khóa học chờ Admin duyệt (PENDING_REVIEW).
+     * countQuery riêng để tránh JOIN FETCH invalid trong COUNT query.
+     */
+    @Query(value = "SELECT c FROM Course c JOIN FETCH c.category JOIN FETCH c.teacher WHERE c.status = :status",
+           countQuery = "SELECT COUNT(c) FROM Course c WHERE c.status = :status")
+    Page<Course> findPendingReview(@Param("status") CourseStatus status, Pageable pageable);
+
+    /**
+     * Danh sách khoá học học sinh đã enroll, JOIN FETCH category + teacher.
+     * Dùng JPQL subquery qua enrollment.courseId (UUID field, không phải JPA relation).
+     * Sắp xếp theo createdAt DESC cho nhất quán với search results.
+     */
+    @EntityGraph(attributePaths = {"category", "teacher"})
+    @Query("SELECT c FROM Course c WHERE c.id IN " +
+           "(SELECT e.courseId FROM Enrollment e WHERE e.studentId = :studentId) " +
+           "ORDER BY c.createdAt DESC")
+    List<Course> findEnrolledByStudentId(@Param("studentId") UUID studentId);
 }

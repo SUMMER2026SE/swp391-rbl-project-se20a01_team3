@@ -1,720 +1,402 @@
 /**
- * TeacherQuizChapterPage — Trang "Quiz chương" cho Giáo viên (UC29)
+ * QuizChapterPage — /teacher/quiz
+ * GV chọn khóa học → chọn chương → cấu hình quiz
  *
- * Vị trí quiz:
- *   - Mỗi CHƯƠNG có duy nhất 1 quiz, gắn vào CUỐI chương.
- *   - Quiz tự mở cho học sinh khi progress_chapter = 100% (UC16).
- *   - Khi học sinh pass quiz 3 chương liên tiếp → mở bài kiểm tra (UC17).
- *
- * Luồng chính:
- *   1. GV chọn khóa học (dropdown)
- *   2. Bên trái: danh sách chương — mỗi chương hiển thị "Đã có quiz" hoặc "Chưa có"
- *   3. Click chương → form mở ở panel phải:
- *      - Nếu chương đã có quiz → load quiz đó vào form
- *      - Nếu chưa có → form rỗng để tạo mới
- *   4. Form chia 2 phần:
- *      a) Cài đặt chung: Tên quiz, Thời gian, Điểm đạt (%)
- *      b) Danh sách câu hỏi: nội dung + loại + lựa chọn + đáp án + giải thích + điểm
- *   5. Nhấn "Lưu quiz" → commit form về state; "Hủy" → đóng form không lưu
+ * 2 chế độ:
+ *   - Ngẫu nhiên: chọn số câu theo độ khó, hệ thống random từ ngân hàng
+ *   - Tùy chọn:  tick chọn câu hỏi cụ thể từ ngân hàng
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { notify } from '../../lib/toast';
+import { listMyCourses, getCourseDetail } from '../../api/teacherCourseService';
+import type { TeacherCourseResponse, TeacherChapterResponse } from '../../api/teacherCourseService';
+import * as quizService from '../../api/quizService';
+import type { QuizConfigResponse } from '../../api/quizService';
+import * as questionService from '../../api/questionService';
+import type { QuestionResponse } from '../../api/questionService';
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle,
-  Bell, LogOut, Menu, X, Plus, Trash2,
+  Bell, LogOut, Menu, X, Save, Loader2,
   PenSquare, Landmark, BarChart2, ClipboardList,
-  GraduationCap, Save, CheckCircle2, Circle,
-  ChevronDown, ChevronRight, Megaphone,
+  GraduationCap, Megaphone, Database, CheckCircle2,
+  ChevronDown, Shuffle, Timer, AlertTriangle,
+  Circle, ListChecks, Zap, TrendingUp, Minus,
 } from 'lucide-react';
 
-// ═══════════════════════════════════════════════════════════════════
-//  PHẦN 1 — TYPES
-// ═══════════════════════════════════════════════════════════════════
+// ─── Nav ─────────────────────────────────────────────────────────────────────
 
-// 2 loại câu hỏi theo yêu cầu UC29
-//   - 'single':   trắc nghiệm 1 đáp án đúng  (radio button)
-//   - 'multiple': trắc nghiệm nhiều đáp án đúng (checkbox)
-type QuestionType = 'single' | 'multiple';
-
-interface Question {
-  id: string;
-  text: string;             // Nội dung câu hỏi
-  type: QuestionType;
-  options: string[];        // Các lựa chọn A, B, C, D... (tối thiểu 2)
-  correctIndices: number[]; // Index các đáp án đúng. Dùng mảng cho CẢ 2 loại
-                            // để code xử lý thống nhất:
-                            //   - 'single' → mảng 1 phần tử   vd [1]
-                            //   - 'multiple' → mảng 1+ phần tử vd [0, 2]
-  explanation?: string;     // Lời giải thích (tùy chọn) — hiển thị cho HS sau khi nộp
-  points: number;           // Điểm của câu hỏi này (mặc định 1)
-}
-
-// 1 chương có DUY NHẤT 1 quiz (gắn cuối chương theo UC29)
-interface ChapterQuiz {
-  name: string;             // Tên quiz, vd "Quiz cuối chương 1"
-  durationMinutes: number;  // Thời gian làm bài (phút)
-  passScorePercent: number; // Điểm đạt — TÍNH THEO % tổng điểm.
-                            // Lý do dùng %: khi GV thêm/bớt câu hỏi,
-                            // ngưỡng pass tự co giãn theo, không phải chỉnh tay.
-  questions: Question[];
-}
-
-interface ChapterInfo {
-  id: string;
-  title: string;
-  order: number;
-  quiz?: ChapterQuiz;       // Có thể chưa có quiz
-}
-
-interface CourseInfo {
-  id: string;
-  title: string;
-  chapters: ChapterInfo[];
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  PHẦN 2 — MOCK DATA
-// ═══════════════════════════════════════════════════════════════════
-// 2 khóa, mỗi khóa vài chương — 1 chương đã có quiz để demo edit,
-// 1 chương chưa có quiz để demo create.
-const INITIAL_DATA: CourseInfo[] = [
-  {
-    id: 'c1',
-    title: 'Toán Đại Số - Lớp 8',
-    chapters: [
-      {
-        id: 'ch1', order: 1, title: 'Chương 1: Hằng đẳng thức',
-        quiz: {
-          name: 'Quiz Hằng đẳng thức',
-          durationMinutes: 15,
-          passScorePercent: 70,
-          questions: [
-            {
-              id: 'q1',
-              text: 'Hằng đẳng thức (a + b)² bằng biểu thức nào?',
-              type: 'single',
-              options: ['a² + b²', 'a² + 2ab + b²', 'a² − 2ab + b²', '2a² + 2b²'],
-              correctIndices: [1],
-              explanation: '(a + b)² = a² + 2ab + b² — bình phương của một tổng.',
-              points: 5,
-            },
-            {
-              id: 'q2',
-              text: 'Chọn các biểu thức đúng:',
-              type: 'multiple',
-              options: ['(a − b)² = a² − 2ab + b²', '(a + b)(a − b) = a² − b²', 'a² − b² = (a − b)²'],
-              correctIndices: [0, 1],
-              points: 5,
-            },
-          ],
-        },
-      },
-      {
-        id: 'ch2', order: 2, title: 'Chương 2: Phân tích đa thức',
-        // chương này CHƯA có quiz → demo flow tạo mới
-      },
-    ],
-  },
-  {
-    id: 'c2',
-    title: 'Vật Lý - Lớp 9',
-    chapters: [
-      { id: 'ch3', order: 1, title: 'Chương 1: Điện học' },
-    ],
-  },
-];
-
-// ═══════════════════════════════════════════════════════════════════
-//  PHẦN 3 — NAV_ITEMS (đồng bộ sidebar teacher)
-// ═══════════════════════════════════════════════════════════════════
 const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: 'Tổng quan',         path: '/teacher',          },
-  { icon: BookOpen,        label: 'Khóa học của tôi',  path: '/teacher/courses',  },
-  { icon: FileText,        label: 'Bài giảng',          path: '/teacher/content',  },
-  { icon: PenSquare,       label: 'Quiz chương',        path: '/teacher/quiz',     },
-  { icon: GraduationCap,   label: 'Bài kiểm tra',       path: '/teacher/exam',     },
-  { icon: ClipboardList,   label: 'Chấm điểm',          path: '/teacher/grades',   },
-  { icon: HelpCircle,      label: 'Hỏi & Đáp',          path: '/teacher/qa',       },
-  { icon: Megaphone,       label: 'Khiếu nại',          path: '/teacher/complaints',},
-  { icon: BarChart2,       label: 'Doanh thu',          path: '/teacher/revenue',  },
-  { icon: Landmark,        label: 'TK ngân hàng',       path: '/teacher/bank',     },
+  { icon: LayoutDashboard, label: 'Tổng quan',         path: '/teacher'           },
+  { icon: BookOpen,        label: 'Khóa học của tôi',  path: '/teacher/courses'   },
+  { icon: FileText,        label: 'Bài giảng',          path: '/teacher/content'   },
+  { icon: PenSquare,       label: 'Quiz chương',        path: '/teacher/quiz'      },
+  { icon: Database,        label: 'Ngân hàng câu hỏi', path: '/teacher/questions' },
+  { icon: GraduationCap,   label: 'Bài kiểm tra',       path: '/teacher/exam'      },
+  { icon: ClipboardList,   label: 'Chấm điểm',          path: '/teacher/grades'    },
+  { icon: HelpCircle,      label: 'Hỏi & Đáp',          path: '/teacher/qa'        },
+  { icon: Megaphone,       label: 'Khiếu nại',          path: '/teacher/complaints'},
+  { icon: BarChart2,       label: 'Doanh thu',          path: '/teacher/revenue'   },
+  { icon: Landmark,        label: 'TK ngân hàng',       path: '/teacher/bank'      },
 ];
 
-// ═══════════════════════════════════════════════════════════════════
-//  PHẦN 4 — SUB-COMPONENT: QuestionCard
-// ═══════════════════════════════════════════════════════════════════
-/**
- * QuestionCard — Card chứa nội dung 1 câu hỏi với khả năng gập/mở.
- * Lý do tách thành component:
- *   - 1 quiz có thể có nhiều câu → card lặp lại, tránh duplicate JSX
- *   - Mỗi card tự quản lý isExpanded → không cần state ở component cha
- *
- * Props:
- *   - question: dữ liệu câu hỏi
- *   - index: vị trí trong list (dùng cho label "Câu 1", "Câu 2"...)
- *   - onChange: callback khi user sửa bất kỳ trường nào → trả về Question đã update
- *   - onDelete: callback khi xóa câu hỏi này
- */
-interface QuestionCardProps {
-  question: Question;
-  index: number;
-  onChange: (q: Question) => void;
-  onDelete: () => void;
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface ChapterWithQuiz extends TeacherChapterResponse {
+  quizConfig?: QuizConfigResponse | null; // undefined = chưa load, null = không có
 }
-function QuestionCard({ question, index, onChange, onDelete }: QuestionCardProps) {
-  // State gập/mở. Mặc định mở khi câu hỏi còn rỗng (vừa tạo) để GV nhập luôn.
-  // Khi text đã có → có thể gập lại để xem tổng quan nhiều câu.
-  const [isExpanded, setIsExpanded] = useState(question.text === '');
 
-  // ── Helper: thêm 1 lựa chọn mới (option) rỗng ───────────────
-  // Mặc định khởi tạo 2 lựa chọn khi tạo question; ở đây cho phép +
-  function addOption() {
-    onChange({ ...question, options: [...question.options, ''] });
-  }
+interface RandomForm {
+  totalQuestions: number;
+  easyCount: number;
+  mediumCount: number;
+  hardCount: number;
+  timeLimitMinutes: string;
+  passingScore: number;
+  shuffleQuestions: boolean;
+  shuffleChoices: boolean;
+  maxAttempts: string;
+}
 
-  // ── Helper: sửa nội dung 1 option theo index ────────────────
-  function updateOption(optionIdx: number, value: string) {
-    const newOptions = question.options.map((opt, i) => i === optionIdx ? value : opt);
-    onChange({ ...question, options: newOptions });
-  }
+const DEFAULT_RANDOM: RandomForm = {
+  totalQuestions: 10, easyCount: 4, mediumCount: 4, hardCount: 2,
+  timeLimitMinutes: '', passingScore: 6.0,
+  shuffleQuestions: true, shuffleChoices: true, maxAttempts: '',
+};
 
-  // ── Helper: xóa 1 option ────────────────────────────────────
-  // Ràng buộc: phải còn ít nhất 2 lựa chọn (không thể có câu hỏi 1 đáp án)
-  function removeOption(optionIdx: number) {
-    if (question.options.length <= 2) {
-      notify.error('Câu hỏi phải có ít nhất 2 lựa chọn');
-      return;
-    }
-    const newOptions = question.options.filter((_, i) => i !== optionIdx);
+// ─── Small components ─────────────────────────────────────────────────────────
 
-    // Sau khi xóa, các correctIndices phải được điều chỉnh:
-    //   - Bỏ index vừa xóa khỏi danh sách correct (nếu có)
-    //   - Giảm các index lớn hơn optionIdx xuống 1 (vì array bị thu nhỏ)
-    const newCorrect = question.correctIndices
-      .filter(i => i !== optionIdx)
-      .map(i => i > optionIdx ? i - 1 : i);
-
-    onChange({ ...question, options: newOptions, correctIndices: newCorrect });
-  }
-
-  // ── Helper: chọn/bỏ chọn đáp án đúng ────────────────────────
-  // Logic khác nhau giữa single và multiple:
-  //   - single:   chỉ giữ 1 index   → set = [optionIdx]
-  //   - multiple: toggle index trong mảng → thêm/bỏ
-  function toggleCorrect(optionIdx: number) {
-    if (question.type === 'single') {
-      onChange({ ...question, correctIndices: [optionIdx] });
-    } else {
-      const isCorrect = question.correctIndices.includes(optionIdx);
-      const newCorrect = isCorrect
-        ? question.correctIndices.filter(i => i !== optionIdx)
-        : [...question.correctIndices, optionIdx];
-      onChange({ ...question, correctIndices: newCorrect });
-    }
-  }
-
-  // ── Helper: đổi loại câu hỏi ────────────────────────────────
-  // Khi đổi multiple → single: chỉ giữ 1 đáp án đúng đầu tiên
-  // Khi đổi single → multiple: giữ nguyên correctIndices
-  function changeType(newType: QuestionType) {
-    let newCorrect = question.correctIndices;
-    if (newType === 'single' && question.correctIndices.length > 1) {
-      newCorrect = [question.correctIndices[0]];
-    }
-    onChange({ ...question, type: newType, correctIndices: newCorrect });
-  }
-
+function DiffBadge({ d }: { d: 'easy' | 'medium' | 'hard' }) {
+  const cfg = {
+    easy:   { cls: 'bg-green-100 text-green-700', label: 'Dễ',    icon: <Minus className="w-3 h-3" /> },
+    medium: { cls: 'bg-amber-100 text-amber-700', label: 'TB',    icon: <TrendingUp className="w-3 h-3" /> },
+    hard:   { cls: 'bg-red-100 text-red-700',     label: 'Khó',   icon: <Zap className="w-3 h-3" /> },
+  };
+  const { cls, label, icon } = cfg[d];
   return (
-    <div className="border border-outline-variant/40 rounded-xl bg-surface-container/30 overflow-hidden">
-
-      {/* Header card: click để gập/mở, có nút xóa */}
-      <div className="flex items-center gap-2 px-4 py-3 bg-surface-container/50">
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center gap-2 flex-1 text-left"
-        >
-          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          <span className="font-bold text-on-surface text-sm">Câu {index + 1}</span>
-          {/* Hiển thị preview câu hỏi khi gập */}
-          {!isExpanded && question.text && (
-            <span className="text-sm text-on-surface-variant line-clamp-1 flex-1">
-              — {question.text}
-            </span>
-          )}
-        </button>
-
-        {/* Loại + điểm — hiển thị compact ở header */}
-        <span className="text-xs font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-          {question.type === 'single' ? '1 đáp án' : 'Nhiều đáp án'}
-        </span>
-        <span className="text-xs font-bold text-on-surface-variant">{question.points}đ</span>
-
-        <button
-          onClick={onDelete}
-          title="Xóa câu hỏi"
-          className="p-1.5 text-red-500 hover:bg-red-500/10 rounded transition-colors"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Body card: chỉ render khi mở */}
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            <div className="p-4 space-y-4">
-
-              {/* Nội dung câu hỏi */}
-              <label className="block">
-                <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
-                  Nội dung câu hỏi <span className="text-red-500">*</span>
-                </span>
-                <textarea
-                  value={question.text}
-                  onChange={e => onChange({ ...question, text: e.target.value })}
-                  placeholder="Nhập nội dung câu hỏi..."
-                  rows={2}
-                  className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant resize-none"
-                />
-              </label>
-
-              {/* Loại câu hỏi + Điểm (2 cột) */}
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
-                    Loại câu hỏi
-                  </span>
-                  <select
-                    value={question.type}
-                    onChange={e => changeType(e.target.value as QuestionType)}
-                    className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
-                  >
-                    <option value="single">Trắc nghiệm 1 đáp án</option>
-                    <option value="multiple">Trắc nghiệm nhiều đáp án</option>
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
-                    Điểm
-                  </span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={question.points}
-                    onChange={e => onChange({ ...question, points: parseInt(e.target.value) || 1 })}
-                    className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
-                  />
-                </label>
-              </div>
-
-              {/* Các lựa chọn (options) */}
-              <div>
-                <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
-                  Lựa chọn & đáp án đúng
-                  <span className="text-on-surface-variant/70 font-normal normal-case ml-2">
-                    (click vào ô tròn/vuông để chọn đáp án đúng)
-                  </span>
-                </span>
-                <div className="space-y-2">
-                  {question.options.map((opt, optIdx) => {
-                    const isCorrect = question.correctIndices.includes(optIdx);
-                    return (
-                      <div key={optIdx} className="flex items-center gap-2">
-                        {/* Nút chọn đáp án đúng — radio (single) hoặc checkbox (multiple) */}
-                        <button
-                          onClick={() => toggleCorrect(optIdx)}
-                          title={isCorrect ? 'Đáp án đúng' : 'Click để chọn làm đáp án đúng'}
-                          className={`flex-shrink-0 w-7 h-7 rounded-${question.type === 'single' ? 'full' : 'md'} flex items-center justify-center transition-colors ${
-                            isCorrect
-                              ? 'bg-green-500 text-white'
-                              : 'bg-surface-container-lowest border border-outline-variant hover:border-green-500'
-                          }`}
-                        >
-                          {isCorrect
-                            ? <CheckCircle2 className="w-4 h-4" />
-                            : <Circle className="w-4 h-4 opacity-30" />}
-                        </button>
-
-                        {/* Label A. B. C. */}
-                        <span className="text-sm font-bold text-on-surface-variant w-5 flex-shrink-0">
-                          {String.fromCharCode(65 + optIdx)}.
-                        </span>
-
-                        {/* Input nội dung option */}
-                        <input
-                          type="text"
-                          value={opt}
-                          onChange={e => updateOption(optIdx, e.target.value)}
-                          placeholder={`Lựa chọn ${String.fromCharCode(65 + optIdx)}`}
-                          className="flex-1 px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant"
-                        />
-
-                        {/* Xóa option (chỉ khi có > 2 options) */}
-                        {question.options.length > 2 && (
-                          <button
-                            onClick={() => removeOption(optIdx)}
-                            title="Xóa lựa chọn"
-                            className="p-1.5 text-red-500 hover:bg-red-500/10 rounded transition-colors flex-shrink-0"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Nút thêm lựa chọn (giới hạn 6 cho gọn) */}
-                {question.options.length < 6 && (
-                  <button
-                    onClick={addOption}
-                    className="mt-2 flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Thêm lựa chọn
-                  </button>
-                )}
-              </div>
-
-              {/* Lời giải thích (tùy chọn) */}
-              <label className="block">
-                <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
-                  Lời giải thích <span className="text-on-surface-variant/70 font-normal normal-case">(tùy chọn — hiển thị cho HS sau khi nộp bài)</span>
-                </span>
-                <textarea
-                  value={question.explanation ?? ''}
-                  onChange={e => onChange({ ...question, explanation: e.target.value })}
-                  placeholder="VD: Đáp án B vì..."
-                  rows={2}
-                  className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant resize-none"
-                />
-              </label>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${cls}`}>
+      {icon}{label}
+    </span>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  PHẦN 5 — MAIN COMPONENT
-// ═══════════════════════════════════════════════════════════════════
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-center justify-between cursor-pointer">
+      <span className="text-sm font-medium text-on-surface">{label}</span>
+      <button
+        type="button" onClick={() => onChange(!checked)}
+        className={`relative w-11 h-6 rounded-full transition-colors ${checked ? 'bg-primary' : 'bg-outline-variant'}`}
+      >
+        <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-5' : ''}`} />
+      </button>
+    </label>
+  );
+}
 
-export default function TeacherQuizChapterPage() {
-  // ── State chính ─────────────────────────────────────────────────
-  // data: nguồn sự thật về các khóa/chương/quiz đã được commit
-  const [data, setData] = useState<CourseInfo[]>(INITIAL_DATA);
-  // Khóa đang chọn
-  const [selectedCourseId, setSelectedCourseId] = useState<string>(INITIAL_DATA[0].id);
-  // Chương đang chọn để chỉnh sửa quiz (null = chưa chọn)
-  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
-  // form: state CỤC BỘ chứa quiz đang chỉnh sửa.
-  // Không phải data thật → user có thể "Hủy" mà không ảnh hưởng `data`.
-  // Khi click "Lưu quiz" mới commit form về data.
-  const [form, setForm] = useState<ChapterQuiz | null>(null);
-
-  // Sidebar mobile toggle
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-
+export default function QuizChapterPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const logout = useAuthStore(state => state.logout);
-  const user = useAuthStore(state => state.user);
+  const logout   = useAuthStore(s => s.logout);
+  const user     = useAuthStore(s => s.user);
 
-  // ── Derived ─────────────────────────────────────────────────────
-  const currentCourse = data.find(c => c.id === selectedCourseId);
-  const currentChapter = currentCourse?.chapters.find(ch => ch.id === selectedChapterId);
+  // ── Data ──────────────────────────────────────────────────────────
+  const [courses,        setCourses]        = useState<TeacherCourseResponse[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState('');
+  const [chapters,       setChapters]       = useState<ChapterWithQuiz[]>([]);
+  const [selectedChapter, setSelectedChapter] = useState<ChapterWithQuiz | null>(null);
 
-  // Tổng điểm = sum points của các câu — hiển thị để GV biết quiz đáng bao nhiêu
-  const totalPoints = form?.questions.reduce((sum, q) => sum + q.points, 0) ?? 0;
+  // ── Loading ───────────────────────────────────────────────────────
+  const [loadingCourses,  setLoadingCourses]  = useState(true);
+  const [loadingChapters, setLoadingChapters] = useState(false);
+  const [saving,          setSaving]          = useState(false);
 
-  // ── Handler: chọn chương để bắt đầu edit quiz ───────────────────
-  function selectChapter(chapter: ChapterInfo) {
-    setSelectedChapterId(chapter.id);
-    // Nếu chương đã có quiz → copy vào form để edit
-    // Nếu chưa → khởi tạo quiz rỗng với 1 câu hỏi mẫu cho GV thấy ngay cấu trúc
-    if (chapter.quiz) {
-      setForm({ ...chapter.quiz, questions: chapter.quiz.questions.map(q => ({ ...q })) });
-    } else {
-      setForm({
-        name: `Quiz ${chapter.title}`,
-        durationMinutes: 15,
-        passScorePercent: 70,
-        questions: [],
+  // ── Quiz mode & form ──────────────────────────────────────────────
+  const [mode,        setMode]        = useState<'random' | 'manual'>('random');
+  const [randomForm,  setRandomForm]  = useState<RandomForm>(DEFAULT_RANDOM);
+
+  // Manual mode: questions from bank + selected IDs
+  const [bankQuestions,  setBankQuestions]  = useState<QuestionResponse[]>([]);
+  const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set());
+  const [loadingBank,    setLoadingBank]    = useState(false);
+  const [bankFilter,     setBankFilter]     = useState<'all' | 'easy' | 'medium' | 'hard'>('all');
+
+  // ── Sidebar ───────────────────────────────────────────────────────
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // ── Load courses on mount ─────────────────────────────────────────
+  useEffect(() => {
+    listMyCourses(0, 100)
+      .then(p => {
+        setCourses(p.items);
+        if (p.items.length > 0) setSelectedCourse(p.items[0].id);
+      })
+      .catch(() => notify.error('Không tải được danh sách khóa học'))
+      .finally(() => setLoadingCourses(false));
+  }, []);
+
+  // ── Load chapters when course changes ─────────────────────────────
+  useEffect(() => {
+    if (!selectedCourse) return;
+    setLoadingChapters(true);
+    setChapters([]);
+    setSelectedChapter(null);
+
+    getCourseDetail(selectedCourse)
+      .then(detail => {
+        // Load quiz config cho từng chương song song
+        const base: ChapterWithQuiz[] = detail.chapters.map(ch => ({ ...ch, quizConfig: undefined }));
+        setChapters(base);
+
+        Promise.all(
+          detail.chapters.map(ch =>
+            quizService.getQuizConfig(ch.id)
+              .then(cfg => ({ id: ch.id, cfg }))
+              .catch(() => ({ id: ch.id, cfg: null }))
+          )
+        ).then(results => {
+          setChapters(prev => prev.map(ch => {
+            const found = results.find(r => r.id === ch.id);
+            return found ? { ...ch, quizConfig: found.cfg } : ch;
+          }));
+        });
+      })
+      .catch(() => notify.error('Không tải được danh sách chương'))
+      .finally(() => setLoadingChapters(false));
+  }, [selectedCourse]);
+
+  // ── Select chapter → load config + bank ───────────────────────────
+  const selectChapter = useCallback(async (ch: ChapterWithQuiz) => {
+    setSelectedChapter(ch);
+    setSelectedIds(new Set());
+    setBankFilter('all');
+
+    // Điền form từ config hiện có (nếu có)
+    if (ch.quizConfig) {
+      const c = ch.quizConfig;
+      const m = (c.selectionMode ?? 'random') as 'random' | 'manual';
+      setMode(m);
+      setRandomForm({
+        totalQuestions:   c.totalQuestions,
+        easyCount:        c.easyCount,
+        mediumCount:      c.mediumCount,
+        hardCount:        c.hardCount,
+        timeLimitMinutes: c.timeLimitMinutes?.toString() ?? '',
+        passingScore:     c.passingScore,
+        shuffleQuestions: c.shuffleQuestions,
+        shuffleChoices:   c.shuffleChoices,
+        maxAttempts:      c.maxAttempts?.toString() ?? '',
       });
+      if (m === 'manual' && c.selectedQuestionIds) {
+        setSelectedIds(new Set(c.selectedQuestionIds));
+      }
+    } else {
+      setMode('random');
+      setRandomForm(DEFAULT_RANDOM);
     }
-  }
 
-  // ── Handler: đổi khóa học ───────────────────────────────────────
-  // Khi đổi khóa → đóng form và reset chương đang chọn để tránh hiển thị sai
-  function changeCourse(courseId: string) {
-    setSelectedCourseId(courseId);
-    setSelectedChapterId(null);
-    setForm(null);
-  }
+    // Load ngân hàng câu hỏi cho chương này
+    setLoadingBank(true);
+    try {
+      const page = await questionService.listQuestions({ chapterId: ch.id, size: 200 });
+      setBankQuestions(page.items);
+    } catch {
+      notify.error('Không tải được ngân hàng câu hỏi');
+    } finally {
+      setLoadingBank(false);
+    }
+  }, []);
 
-  // ── Handler: thêm 1 câu hỏi mới vào form ────────────────────────
-  // Khởi tạo câu hỏi rỗng kiểu 'single' với 2 lựa chọn để GV nhập luôn
-  function addQuestion() {
-    if (!form) return;
-    const newQuestion: Question = {
-      id: `q-${Date.now()}`,
-      text: '',
-      type: 'single',
-      options: ['', ''],
-      correctIndices: [],
-      points: 1,
+  // ── Save ──────────────────────────────────────────────────────────
+  async function handleSave() {
+    if (!selectedChapter) return;
+
+    const req: quizService.QuizConfigRequest = {
+      totalQuestions:   randomForm.totalQuestions,
+      easyCount:        randomForm.easyCount,
+      mediumCount:      randomForm.mediumCount,
+      hardCount:        randomForm.hardCount,
+      timeLimitMinutes: randomForm.timeLimitMinutes ? Number(randomForm.timeLimitMinutes) : undefined,
+      passingScore:     randomForm.passingScore,
+      shuffleQuestions: randomForm.shuffleQuestions,
+      shuffleChoices:   randomForm.shuffleChoices,
+      maxAttempts:      randomForm.maxAttempts ? Number(randomForm.maxAttempts) : undefined,
+      selectionMode:    mode,
+      selectedQuestionIds: mode === 'manual' ? Array.from(selectedIds) : undefined,
     };
-    setForm({ ...form, questions: [...form.questions, newQuestion] });
-  }
 
-  // ── Handler: cập nhật 1 câu hỏi (gọi từ QuestionCard.onChange) ──
-  function updateQuestion(idx: number, updated: Question) {
-    if (!form) return;
-    const newQuestions = form.questions.map((q, i) => i === idx ? updated : q);
-    setForm({ ...form, questions: newQuestions });
-  }
-
-  // ── Handler: xóa 1 câu hỏi ──────────────────────────────────────
-  function deleteQuestion(idx: number) {
-    if (!form) return;
-    setForm({ ...form, questions: form.questions.filter((_, i) => i !== idx) });
-  }
-
-  // ── Handler: lưu quiz ───────────────────────────────────────────
-  // Validate cơ bản trước khi commit:
-  //   - Tên quiz không rỗng
-  //   - Thời gian > 0
-  //   - Pass score trong khoảng 0-100
-  //   - Có ít nhất 1 câu hỏi
-  //   - Mỗi câu hỏi: text không rỗng, có ít nhất 1 đáp án đúng
-  function saveQuiz() {
-    if (!form || !selectedChapterId) return;
-
-    if (!form.name.trim()) {
-      notify.error('Vui lòng nhập tên quiz');
-      return;
-    }
-    if (form.durationMinutes < 1) {
-      notify.error('Thời gian làm bài phải >= 1 phút');
-      return;
-    }
-    if (form.passScorePercent < 0 || form.passScorePercent > 100) {
-      notify.error('Điểm đạt phải từ 0% đến 100%');
-      return;
-    }
-    if (form.questions.length === 0) {
-      notify.error('Quiz phải có ít nhất 1 câu hỏi');
-      return;
-    }
-    // Validate từng câu hỏi
-    for (let i = 0; i < form.questions.length; i++) {
-      const q = form.questions[i];
-      if (!q.text.trim()) {
-        notify.error(`Câu ${i + 1}: chưa nhập nội dung`);
+    if (mode === 'random') {
+      const sum = randomForm.easyCount + randomForm.mediumCount + randomForm.hardCount;
+      if (sum !== randomForm.totalQuestions) {
+        notify.error(`Tổng phân bổ (${sum}) ≠ tổng câu (${randomForm.totalQuestions})`);
         return;
       }
-      if (q.options.some(opt => !opt.trim())) {
-        notify.error(`Câu ${i + 1}: có lựa chọn còn rỗng`);
-        return;
-      }
-      if (q.correctIndices.length === 0) {
-        notify.error(`Câu ${i + 1}: chưa chọn đáp án đúng`);
+    } else {
+      if (selectedIds.size === 0) {
+        notify.error('Chọn ít nhất 1 câu hỏi');
         return;
       }
     }
 
-    // Commit: tìm course → tìm chapter → gán quiz mới
-    setData(prev => prev.map(course => {
-      if (course.id !== selectedCourseId) return course;
-      return {
-        ...course,
-        chapters: course.chapters.map(ch =>
-          ch.id === selectedChapterId ? { ...ch, quiz: form } : ch
-        ),
-      };
-    }));
-    notify.success('Đã lưu quiz');
+    setSaving(true);
+    try {
+      const saved = await quizService.saveQuizConfig(selectedChapter.id, req);
+      notify.success('Đã lưu cấu hình quiz');
+      // Cập nhật lại danh sách chương
+      setChapters(prev => prev.map(ch =>
+        ch.id === selectedChapter.id ? { ...ch, quizConfig: saved } : ch
+      ));
+      setSelectedChapter(prev => prev ? { ...prev, quizConfig: saved } : prev);
+    } catch {
+      notify.error('Không lưu được cấu hình quiz');
+    } finally {
+      setSaving(false);
+    }
   }
 
-  // ── Handler: hủy chỉnh sửa, đóng form ────────────────────────
-  function cancelEdit() {
-    setSelectedChapterId(null);
-    setForm(null);
-  }
+  function handleLogout() { logout(); navigate('/login'); }
 
-  function handleLogout() {
-    logout();
-    navigate('/login');
-  }
+  // ── Derived ───────────────────────────────────────────────────────
+  const countSum   = randomForm.easyCount + randomForm.mediumCount + randomForm.hardCount;
+  const countValid = countSum === randomForm.totalQuestions;
+  const stats = {
+    easy:   bankQuestions.filter(q => q.difficulty === 'easy').length,
+    medium: bankQuestions.filter(q => q.difficulty === 'medium').length,
+    hard:   bankQuestions.filter(q => q.difficulty === 'hard').length,
+    total:  bankQuestions.length,
+  };
+  const filteredBank = bankFilter === 'all'
+    ? bankQuestions
+    : bankQuestions.filter(q => q.difficulty === bankFilter);
 
-  // ═════════════════════════════════════════════════════════════════
-  //  RENDER
-  // ═════════════════════════════════════════════════════════════════
+  // ── Render ────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-surface flex font-sans">
+      {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
-      {/* Overlay khi sidebar mở trên mobile */}
-      {isSidebarOpen && (
-        <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
-      )}
-
-      {/* ── SIDEBAR ─────────────────────────────────────────────── */}
-      <aside className={`
-        fixed inset-y-0 left-0 z-40 w-64
-        bg-surface-container-lowest border-r border-outline-variant/30
-        flex flex-col transition-transform duration-300
-        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:relative lg:translate-x-0 lg:flex
-      `}>
+      {/* SIDEBAR */}
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-surface-container-lowest border-r border-outline-variant/30 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:relative lg:translate-x-0 lg:flex`}>
         <div className="p-6 flex items-center justify-between border-b border-outline-variant/20">
           <Link to="/teacher" className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-primary text-on-primary rounded-xl flex items-center justify-center font-extrabold text-lg shadow-md shadow-primary/20">B</div>
+            <div className="w-9 h-9 bg-primary text-on-primary rounded-xl flex items-center justify-center font-extrabold text-lg">B</div>
             <div>
               <p className="font-extrabold text-on-surface text-sm">Bee Academy</p>
-              <p className="text-xs text-on-surface-variant font-medium">Cổng Giáo Viên</p>
+              <p className="text-xs text-on-surface-variant">Cổng Giáo Viên</p>
             </div>
           </Link>
-          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-1 text-on-surface-variant">
-            <X className="w-5 h-5" />
-          </button>
+          <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-1 text-on-surface-variant"><X className="w-5 h-5" /></button>
         </div>
-
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {NAV_ITEMS.map(item => {
-            const isActive = location.pathname === item.path;
+            const active = location.pathname === item.path;
             return (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all ${
-                  isActive ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-                }`}
+              <Link key={item.path} to={item.path} onClick={() => setSidebarOpen(false)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all ${active ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'}`}
               >
-                <item.icon className="w-5 h-5 flex-shrink-0" />
-                {item.label}
-                {isActive && <div className="ml-auto w-2 h-2 bg-primary rounded-full" />}
+                <item.icon className="w-5 h-5 flex-shrink-0" />{item.label}
+                {active && <div className="ml-auto w-2 h-2 bg-primary rounded-full" />}
               </Link>
             );
           })}
         </nav>
-
         <div className="p-4 border-t border-outline-variant/20">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors text-left"
-          >
-            <LogOut className="w-5 h-5" />
-            Đăng xuất
+          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors text-left">
+            <LogOut className="w-5 h-5" /> Đăng xuất
           </button>
         </div>
       </aside>
 
-      {/* ── MAIN AREA ───────────────────────────────────────────── */}
+      {/* MAIN */}
       <div className="flex-1 flex flex-col min-w-0">
-
-        {/* Header */}
         <header className="sticky top-0 z-20 h-16 bg-surface/90 backdrop-blur-md border-b border-outline-variant/30 flex items-center justify-between px-4 md:px-6 shadow-sm">
-          <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded-lg transition-colors">
-            <Menu className="w-5 h-5" />
-          </button>
+          <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 text-on-surface-variant hover:bg-surface-container rounded-lg"><Menu className="w-5 h-5" /></button>
           <h1 className="font-extrabold text-on-surface text-lg hidden lg:block">Quiz chương</h1>
           <div className="flex items-center gap-4 ml-auto">
-            <button className="relative text-on-surface-variant hover:text-primary transition-colors">
-              <Bell className="w-5 h-5" />
-            </button>
-            <img
-              src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name ?? 'Giao Vien')}&background=7c3aed&color=fff&bold=true&size=64`}
-              alt="Teacher avatar"
-              className="w-9 h-9 rounded-full border-2 border-primary/30"
-            />
+            <button className="text-on-surface-variant hover:text-primary"><Bell className="w-5 h-5" /></button>
+            <div className="flex items-center gap-2">
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-bold text-on-surface leading-none">{user?.name ?? 'Giáo viên'}</p>
+                <p className="text-xs text-on-surface-variant mt-0.5">Giáo viên</p>
+              </div>
+              <img src={user?.avatar ?? `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name ?? 'GV')}&background=7c3aed&color=fff&bold=true&size=64`} alt="avatar" className="w-9 h-9 rounded-full border-2 border-primary/30" />
+            </div>
           </div>
         </header>
 
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
 
-          {/* Tiêu đề + dropdown chọn khóa */}
-          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-            <h2 className="text-2xl font-extrabold text-on-surface mb-1">Quiz cuối chương</h2>
-            <p className="text-on-surface-variant text-sm mb-4">
-              Mỗi chương có 1 quiz gắn ở cuối. Học sinh phải hoàn thành 100% chương mới mở được quiz.
-            </p>
-
-            <label className="block">
-              <span className="text-sm font-bold text-on-surface mb-2 block">Chọn khóa học</span>
-              <select
-                value={selectedCourseId}
-                onChange={e => changeCourse(e.target.value)}
-                className="w-full max-w-md px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-xl focus:outline-none focus:border-primary text-on-surface font-semibold"
-              >
-                {data.map(course => (
-                  <option key={course.id} value={course.id}>{course.title}</option>
-                ))}
-              </select>
-            </label>
+          {/* Title */}
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-5">
+            <h2 className="text-2xl font-extrabold text-on-surface">Quiz cuối chương</h2>
+            <p className="text-on-surface-variant text-sm mt-1">Mỗi chương có 1 quiz. Cấu hình số câu và chế độ chọn câu từ ngân hàng.</p>
           </motion.div>
 
-          {/* Grid 2 cột: trái danh sách chương, phải form quiz */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* Course selector */}
+          <div className="mb-5 relative max-w-sm">
+            <select
+              value={selectedCourse}
+              onChange={e => setSelectedCourse(e.target.value)}
+              disabled={loadingCourses}
+              className="w-full appearance-none pl-4 pr-10 py-3 bg-surface-container-lowest border border-outline-variant rounded-xl font-semibold text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
+            >
+              {loadingCourses
+                ? <option>Đang tải...</option>
+                : courses.length === 0
+                  ? <option>Chưa có khóa học nào</option>
+                  : courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)
+              }
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
+          </div>
 
-            {/* PANEL TRÁI — Danh sách chương */}
-            <motion.div
-              initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+          {/* Grid: chapters list + config panel */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+
+            {/* LEFT — Chapter list */}
+            <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
               className="lg:col-span-2 bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm h-fit"
             >
               <h3 className="font-extrabold text-on-surface mb-3 flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-primary" />
-                Danh sách chương
+                <BookOpen className="w-4 h-4 text-primary" /> Danh sách chương
               </h3>
 
-              {!currentCourse || currentCourse.chapters.length === 0 ? (
-                <p className="text-sm text-on-surface-variant text-center py-8">
-                  Khóa học chưa có chương nào
-                </p>
+              {loadingChapters ? (
+                <div className="flex items-center gap-2 py-8 justify-center text-on-surface-variant text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Đang tải...
+                </div>
+              ) : chapters.length === 0 ? (
+                <p className="text-sm text-on-surface-variant text-center py-8">Khóa học chưa có chương nào</p>
               ) : (
                 <div className="space-y-2">
-                  {currentCourse.chapters.map(chapter => {
-                    // Trạng thái: chương đã có quiz hay chưa
-                    const hasQuiz = !!chapter.quiz;
-                    const isSelected = chapter.id === selectedChapterId;
+                  {chapters.map(ch => {
+                    const isSelected = selectedChapter?.id === ch.id;
+                    const hasQuiz    = ch.quizConfig !== undefined && ch.quizConfig !== null;
+                    const loading    = ch.quizConfig === undefined;
+                    const isManual   = ch.quizConfig?.selectionMode === 'manual';
 
                     return (
-                      <button
-                        key={chapter.id}
-                        onClick={() => selectChapter(chapter)}
-                        className={`w-full text-left p-3 rounded-xl border transition-colors ${
-                          isSelected
-                            ? 'bg-primary/10 border-primary/30'
-                            : 'bg-surface-container/30 border-outline-variant/30 hover:bg-surface-container/60'
-                        }`}
+                      <button key={ch.id} onClick={() => selectChapter(ch)}
+                        className={`w-full text-left p-3 rounded-xl border transition-colors ${isSelected ? 'bg-primary/10 border-primary/30' : 'bg-surface-container/30 border-outline-variant/30 hover:bg-surface-container/60'}`}
                       >
-                        <p className={`font-bold text-sm mb-1 line-clamp-1 ${isSelected ? 'text-primary' : 'text-on-surface'}`}>
-                          {chapter.title}
-                        </p>
-                        {/* Hiển thị status quiz: đã có hay chưa */}
-                        {hasQuiz ? (
+                        <p className={`font-bold text-sm mb-1 line-clamp-1 ${isSelected ? 'text-primary' : 'text-on-surface'}`}>{ch.title}</p>
+                        {loading ? (
+                          <p className="text-xs text-on-surface-variant/50 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Đang kiểm tra...</p>
+                        ) : hasQuiz ? (
                           <p className="text-xs text-green-600 flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3" />
-                            Đã có quiz · {chapter.quiz!.questions.length} câu · {chapter.quiz!.durationMinutes} phút
+                            {isManual
+                              ? `Tùy chọn · ${ch.quizConfig!.selectedQuestionIds?.length ?? 0} câu`
+                              : `Ngẫu nhiên · ${ch.quizConfig!.totalQuestions} câu`
+                            }
+                            {ch.quizConfig!.timeLimitMinutes && ` · ${ch.quizConfig!.timeLimitMinutes} phút`}
                           </p>
                         ) : (
-                          <p className="text-xs text-on-surface-variant flex items-center gap-1">
-                            <Circle className="w-3 h-3" />
-                            Chưa có quiz — click để tạo
-                          </p>
+                          <p className="text-xs text-on-surface-variant flex items-center gap-1"><Circle className="w-3 h-3" /> Chưa có quiz</p>
                         )}
                       </button>
                     );
@@ -723,146 +405,269 @@ export default function TeacherQuizChapterPage() {
               )}
             </motion.div>
 
-            {/* PANEL PHẢI — Form quiz */}
-            <motion.div
-              initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
-              className="lg:col-span-3 bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-5 shadow-sm"
+            {/* RIGHT — Config panel */}
+            <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
+              className="lg:col-span-3 bg-surface-container-lowest border border-outline-variant/40 rounded-2xl shadow-sm overflow-hidden"
             >
-              {!form || !currentChapter ? (
-                // Khi chưa chọn chương nào
-                <div className="text-center py-16">
+              {!selectedChapter ? (
+                <div className="text-center py-20">
                   <PenSquare className="w-12 h-12 text-on-surface-variant/30 mx-auto mb-4" />
-                  <p className="text-on-surface-variant">
-                    Chọn 1 chương ở bên trái để bắt đầu tạo/sửa quiz
-                  </p>
+                  <p className="text-on-surface-variant">Chọn 1 chương bên trái để cấu hình quiz</p>
                 </div>
               ) : (
                 <>
-                  {/* Tiêu đề + tên chương đang edit */}
-                  <div className="mb-5 pb-4 border-b border-outline-variant/30">
-                    <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1">
-                      Đang chỉnh sửa quiz cho
-                    </p>
-                    <h3 className="font-extrabold text-on-surface text-lg">
-                      {currentChapter.title}
-                    </h3>
+                  {/* Chapter header */}
+                  <div className="px-5 pt-5 pb-4 border-b border-outline-variant/20">
+                    <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1">Chương đang cấu hình</p>
+                    <h3 className="font-extrabold text-on-surface text-lg">{selectedChapter.title}</h3>
+                    {/* Stats ngân hàng */}
+                    {!loadingBank && bankQuestions.length > 0 && (
+                      <div className="flex items-center gap-3 mt-2 flex-wrap">
+                        <span className="text-xs text-on-surface-variant">Ngân hàng:</span>
+                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">{stats.easy} dễ</span>
+                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">{stats.medium} TB</span>
+                        <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold">{stats.hard} khó</span>
+                        <span className="text-xs text-on-surface-variant">= {stats.total} câu active</span>
+                      </div>
+                    )}
+                    {!loadingBank && bankQuestions.length === 0 && (
+                      <div className="flex items-center gap-2 mt-2 text-amber-600 text-xs">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Ngân hàng chưa có câu hỏi cho chương này —{' '}
+                        <Link to="/teacher/questions" className="underline font-semibold">thêm câu hỏi</Link>
+                      </div>
+                    )}
                   </div>
 
-                  {/* ── PHẦN 1: Cài đặt chung ──────────────────── */}
-                  <div className="space-y-4 mb-6">
-                    <p className="text-sm font-bold text-on-surface">Cài đặt chung</p>
+                  <div className="p-5 space-y-5">
 
-                    <label className="block">
-                      <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
-                        Tên quiz <span className="text-red-500">*</span>
-                      </span>
-                      <input
-                        type="text"
-                        value={form.name}
-                        onChange={e => setForm({ ...form, name: e.target.value })}
-                        placeholder="VD: Quiz cuối chương 1"
-                        className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant"
-                      />
-                    </label>
+                    {/* Mode tabs */}
+                    <div>
+                      <p className="text-sm font-bold text-on-surface mb-2">Chế độ chọn câu hỏi</p>
+                      <div className="flex rounded-xl overflow-hidden border border-outline-variant">
+                        <button
+                          type="button" onClick={() => setMode('random')}
+                          className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors ${mode === 'random' ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}
+                        >
+                          <Shuffle className="w-4 h-4" /> Ngẫu nhiên
+                        </button>
+                        <button
+                          type="button" onClick={() => setMode('manual')}
+                          className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors ${mode === 'manual' ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}
+                        >
+                          <ListChecks className="w-4 h-4" /> Tùy chọn
+                        </button>
+                      </div>
+                    </div>
 
-                    {/* Thời gian + Pass score + Tổng điểm (3 cột) */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <label className="block">
-                        <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
-                          Thời gian (phút)
-                        </span>
-                        <input
-                          type="number"
-                          min={1}
-                          value={form.durationMinutes}
-                          onChange={e => setForm({ ...form, durationMinutes: parseInt(e.target.value) || 1 })}
-                          className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
-                          Điểm đạt (%)
-                        </span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={form.passScorePercent}
-                          onChange={e => setForm({ ...form, passScorePercent: parseInt(e.target.value) || 0 })}
-                          className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
-                        />
-                      </label>
-                      <div>
-                        <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
-                          Tổng điểm
-                        </span>
-                        {/* Tổng điểm là derived — không cho sửa, hiển thị để tham khảo */}
-                        <div className="w-full px-3 py-2 text-sm bg-surface-container/50 border border-outline-variant/50 rounded-lg text-on-surface font-bold">
-                          {totalPoints} điểm
+                    {/* ── RANDOM MODE ── */}
+                    {mode === 'random' && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {([
+                            ['Tổng câu', 'totalQuestions', 1, 100],
+                            ['Câu dễ',   'easyCount',      0, 50 ],
+                            ['Câu TB',   'mediumCount',    0, 50 ],
+                            ['Câu khó',  'hardCount',      0, 50 ],
+                          ] as const).map(([label, key, min, max]) => (
+                            <label key={key} className="block">
+                              <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1 block">{label}</span>
+                              <input
+                                type="number" min={min} max={max}
+                                value={randomForm[key]}
+                                onChange={e => setRandomForm(f => ({ ...f, [key]: Math.max(min, Number(e.target.value)) }))}
+                                className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl focus:outline-none focus:border-primary text-on-surface"
+                              />
+                            </label>
+                          ))}
                         </div>
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* ── PHẦN 2: Danh sách câu hỏi ─────────────── */}
-                  <div className="space-y-3 mb-6">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-bold text-on-surface">
-                        Câu hỏi <span className="text-on-surface-variant font-normal">({form.questions.length})</span>
-                      </p>
-                    </div>
+                        <div className={`flex items-center gap-2 text-sm font-medium ${countValid ? 'text-green-600' : 'text-red-500'}`}>
+                          {countValid
+                            ? <><CheckCircle2 className="w-4 h-4" /> Phân bổ hợp lệ ({countSum} = {randomForm.totalQuestions})</>
+                            : <><AlertTriangle className="w-4 h-4" /> Tổng ({countSum}) ≠ tổng câu ({randomForm.totalQuestions})</>
+                          }
+                        </div>
 
-                    {form.questions.length === 0 ? (
-                      <div className="text-center py-8 border-2 border-dashed border-outline-variant/40 rounded-xl">
-                        <p className="text-sm text-on-surface-variant">
-                          Chưa có câu hỏi nào
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {form.questions.map((q, idx) => (
-                          <QuestionCard
-                            key={q.id}
-                            question={q}
-                            index={idx}
-                            onChange={updated => updateQuestion(idx, updated)}
-                            onDelete={() => deleteQuestion(idx)}
-                          />
-                        ))}
+                        {/* Stats cảnh báo thiếu */}
+                        {bankQuestions.length > 0 && (
+                          <div className="flex gap-2 flex-wrap text-xs">
+                            {([['easy', randomForm.easyCount, stats.easy], ['medium', randomForm.mediumCount, stats.medium], ['hard', randomForm.hardCount, stats.hard]] as const).map(
+                              ([d, need, have]) => need > have ? (
+                                <span key={d} className="flex items-center gap-1 bg-red-50 text-red-600 px-2 py-1 rounded-lg font-medium">
+                                  <AlertTriangle className="w-3 h-3" /> {d === 'easy' ? 'Dễ' : d === 'medium' ? 'TB' : 'Khó'}: cần {need}, có {have}
+                                </span>
+                              ) : null
+                            )}
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                          <label className="block">
+                            <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1 block">Thời gian (phút)</span>
+                            <input type="number" min={1} placeholder="Không giới hạn"
+                              value={randomForm.timeLimitMinutes}
+                              onChange={e => setRandomForm(f => ({ ...f, timeLimitMinutes: e.target.value }))}
+                              className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant/50"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1 block">Điểm đạt (0–10)</span>
+                            <input type="number" min={0} max={10} step={0.5}
+                              value={randomForm.passingScore}
+                              onChange={e => setRandomForm(f => ({ ...f, passingScore: Number(e.target.value) }))}
+                              className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl focus:outline-none focus:border-primary text-on-surface"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1 block">Số lần tối đa</span>
+                            <input type="number" min={1} placeholder="Không giới hạn"
+                              value={randomForm.maxAttempts}
+                              onChange={e => setRandomForm(f => ({ ...f, maxAttempts: e.target.value }))}
+                              className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant/50"
+                            />
+                          </label>
+                        </div>
+
+                        <div className="space-y-3 pt-1">
+                          <Toggle label="Trộn ngẫu nhiên thứ tự câu hỏi" checked={randomForm.shuffleQuestions} onChange={v => setRandomForm(f => ({ ...f, shuffleQuestions: v }))} />
+                          <Toggle label="Trộn ngẫu nhiên thứ tự đáp án" checked={randomForm.shuffleChoices}   onChange={v => setRandomForm(f => ({ ...f, shuffleChoices:   v }))} />
+                        </div>
                       </div>
                     )}
 
-                    {/* Nút thêm câu hỏi */}
-                    <button
-                      onClick={addQuestion}
-                      className="w-full flex items-center justify-center gap-2 py-3 text-sm font-bold text-primary border-2 border-dashed border-primary/30 hover:bg-primary/5 rounded-xl transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Thêm câu hỏi
-                    </button>
-                  </div>
+                    {/* ── MANUAL MODE ── */}
+                    {mode === 'manual' && (
+                      <div className="space-y-3">
+                        {/* Time + passing + attempts (dùng chung) */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <label className="block">
+                            <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1 block">Thời gian (phút)</span>
+                            <input type="number" min={1} placeholder="Không giới hạn"
+                              value={randomForm.timeLimitMinutes}
+                              onChange={e => setRandomForm(f => ({ ...f, timeLimitMinutes: e.target.value }))}
+                              className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant/50"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1 block">Điểm đạt (0–10)</span>
+                            <input type="number" min={0} max={10} step={0.5}
+                              value={randomForm.passingScore}
+                              onChange={e => setRandomForm(f => ({ ...f, passingScore: Number(e.target.value) }))}
+                              className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl focus:outline-none focus:border-primary text-on-surface"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1 block">Số lần tối đa</span>
+                            <input type="number" min={1} placeholder="Không giới hạn"
+                              value={randomForm.maxAttempts}
+                              onChange={e => setRandomForm(f => ({ ...f, maxAttempts: e.target.value }))}
+                              className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant/50"
+                            />
+                          </label>
+                        </div>
+                        <Toggle label="Trộn thứ tự câu hỏi" checked={randomForm.shuffleQuestions} onChange={v => setRandomForm(f => ({ ...f, shuffleQuestions: v }))} />
+                        <Toggle label="Trộn thứ tự đáp án"   checked={randomForm.shuffleChoices}   onChange={v => setRandomForm(f => ({ ...f, shuffleChoices: v }))} />
 
-                  {/* ── Nút hành động ──────────────────────────── */}
-                  <div className="flex items-center justify-end gap-2 pt-4 border-t border-outline-variant/30">
-                    <button
-                      onClick={cancelEdit}
-                      className="px-5 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors"
-                    >
-                      Hủy
-                    </button>
-                    <button
-                      onClick={saveQuiz}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-md shadow-primary/20"
-                    >
-                      <Save className="w-4 h-4" />
-                      Lưu quiz
-                    </button>
+                        {/* Question picker */}
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-bold text-on-surface">
+                              Chọn câu hỏi{' '}
+                              <span className="text-primary font-normal">({selectedIds.size} đã chọn)</span>
+                            </p>
+                            <div className="flex gap-1">
+                              {(['all', 'easy', 'medium', 'hard'] as const).map(f => (
+                                <button key={f} onClick={() => setBankFilter(f)}
+                                  className={`px-2 py-1 text-xs font-bold rounded-lg transition-colors ${bankFilter === f ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}
+                                >
+                                  {f === 'all' ? 'Tất cả' : f === 'easy' ? 'Dễ' : f === 'medium' ? 'TB' : 'Khó'}
+                                </button>
+                              ))}
+                              {selectedIds.size > 0 && (
+                                <button onClick={() => setSelectedIds(new Set())}
+                                  className="px-2 py-1 text-xs font-bold text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                >
+                                  Bỏ chọn hết
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {loadingBank ? (
+                            <div className="flex items-center justify-center py-8 gap-2 text-on-surface-variant text-sm">
+                              <Loader2 className="w-4 h-4 animate-spin" /> Đang tải ngân hàng...
+                            </div>
+                          ) : filteredBank.length === 0 ? (
+                            <div className="py-8 text-center border-2 border-dashed border-outline-variant/40 rounded-xl">
+                              <p className="text-sm text-on-surface-variant">
+                                {bankQuestions.length === 0
+                                  ? 'Chưa có câu hỏi nào trong ngân hàng cho chương này'
+                                  : 'Không có câu hỏi ở mức độ đã chọn'
+                                }
+                              </p>
+                              {bankQuestions.length === 0 && (
+                                <Link to="/teacher/questions" className="mt-2 inline-block text-sm font-bold text-primary hover:underline">
+                                  → Thêm câu hỏi vào ngân hàng
+                                </Link>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="border border-outline-variant/40 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                              {filteredBank.map(q => {
+                                const checked = selectedIds.has(q.id);
+                                return (
+                                  <label key={q.id}
+                                    className={`flex items-start gap-3 px-4 py-3 cursor-pointer border-b border-outline-variant/10 last:border-0 transition-colors ${checked ? 'bg-primary/5' : 'hover:bg-surface-container/30'}`}
+                                  >
+                                    <input type="checkbox" checked={checked}
+                                      onChange={e => {
+                                        const next = new Set(selectedIds);
+                                        e.target.checked ? next.add(q.id) : next.delete(q.id);
+                                        setSelectedIds(next);
+                                      }}
+                                      className="mt-0.5 w-4 h-4 accent-primary flex-shrink-0"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm text-on-surface font-medium line-clamp-2">{q.content}</p>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <DiffBadge d={q.difficulty} />
+                                        <span className="text-xs text-on-surface-variant">
+                                          {q.type === 'multiple_choice' ? 'Trắc nghiệm' : 'Đúng/Sai'}
+                                        </span>
+                                        {q.usageCount > 0 && (
+                                          <span className="text-xs text-on-surface-variant">· dùng {q.usageCount} lần</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Save button */}
+                    <div className="flex items-center justify-end gap-3 pt-2 border-t border-outline-variant/20">
+                      <button onClick={() => setSelectedChapter(null)}
+                        className="px-5 py-2.5 text-sm font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high rounded-xl transition-colors"
+                      >
+                        Đóng
+                      </button>
+                      <button onClick={handleSave} disabled={saving || (mode === 'random' && !countValid) || (mode === 'manual' && selectedIds.size === 0)}
+                        className="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-md shadow-primary/20 disabled:opacity-50"
+                      >
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        {saving ? 'Đang lưu...' : 'Lưu cấu hình'}
+                      </button>
+                    </div>
                   </div>
                 </>
               )}
             </motion.div>
           </div>
-
         </main>
       </div>
     </div>

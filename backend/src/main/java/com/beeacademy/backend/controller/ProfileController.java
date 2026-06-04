@@ -2,9 +2,11 @@ package com.beeacademy.backend.controller;
 
 import com.beeacademy.backend.dto.request.UpdateProfileRequest;
 import com.beeacademy.backend.dto.response.ApiResponse;
+import com.beeacademy.backend.dto.response.CourseSummaryResponse;
 import com.beeacademy.backend.dto.response.ProfileResponse;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import com.beeacademy.backend.security.CurrentUser;
+import com.beeacademy.backend.service.CourseService;
 import com.beeacademy.backend.service.ProfileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 /**
  * REST controller cho phân hệ Profile (UC05).
@@ -39,6 +43,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class ProfileController {
 
     private final ProfileService profileService;
+    private final CourseService  courseService;
 
     /**
      * UC05.1 - Lấy hồ sơ của chính user đang đăng nhập.
@@ -86,5 +91,15 @@ public class ProfileController {
         AuthenticatedUser me = CurrentUser.required();
         ProfileResponse updated = profileService.uploadAvatar(me, file);
         return ApiResponse.ok(updated, "Cập nhật ảnh đại diện thành công");
+    }
+
+    /**
+     * Danh sách khoá học mà user hiện tại đã enroll (đã mua / được gán).
+     * Dùng cho tab "Khóa học của tôi" trong CoursesPage.
+     */
+    @GetMapping("/courses")
+    public ApiResponse<List<CourseSummaryResponse>> getMyCourses() {
+        AuthenticatedUser me = CurrentUser.required();
+        return ApiResponse.ok(courseService.getMyCourses(me));
     }
 }

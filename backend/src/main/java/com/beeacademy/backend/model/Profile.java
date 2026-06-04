@@ -86,6 +86,8 @@ public class Profile {
     @Column(name = "linkedin_url")
     private String linkedinUrl;
 
+    @Column(name = "is_blocked", nullable = false)
+    private boolean isBlocked = false;
 
     /** Hibernate tự set khi INSERT - KHÔNG override. */
     @CreationTimestamp
@@ -156,5 +158,8 @@ public class Profile {
         this.avatarUrl = newAvatarUrl;
     }
 
+    public void block()   { this.isBlocked = true; }
+    public void unblock() { this.isBlocked = false; }
+    public void changeRole(UserRole newRole) { this.role = newRole; }
 }
 

@@ -32,11 +32,12 @@ export interface LinkedStudent {
   id: string;
   name: string;
   avatar?: string;
+  code: string;
   grade: string;
   avgProgress?: number;
   coursesCount?: { active: number; completed: number };
   recentScores?: { quiz: number; exam: number };
-  weeklyActivity?: number[]; // Số giờ học từ Thứ 2 đến Chủ nhật (mảng 7 phần tử)
+  weeklyActivity?: number[];
 }
 
 /**
@@ -117,6 +118,7 @@ export const useAuthStore = create<AuthState>()(
           user: toUiUser(payload.user),
           accessToken: payload.accessToken,
           refreshToken: payload.refreshToken,
+          linkedStudents: [], // reset danh sách con khi login account mới
         }),
 
       updateUser: (partial) =>
@@ -140,12 +142,12 @@ export const useAuthStore = create<AuthState>()(
             id: item.id.toString(),
             name: item.name,
             avatar: item.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name)}&background=feb700&color=1a1b1e&bold=true&size=128`,
+            code: item.code,
             grade: item.grade,
-            // Fallbacks cho tương thích ngược
             avgProgress: 0,
             coursesCount: { active: 0, completed: 0 },
             recentScores: { quiz: 0, exam: 0 },
-            weeklyActivity: [0, 0, 0, 0, 0, 0, 0]
+            weeklyActivity: [0, 0, 0, 0, 0, 0, 0],
           }));
           set({ linkedStudents: mapped });
         } catch (error) {

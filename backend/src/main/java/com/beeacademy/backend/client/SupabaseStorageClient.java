@@ -124,6 +124,61 @@ public class SupabaseStorageClient {
     }
 
     /**
+     * Tạo signed URL tạm thời cho object trong private bucket.
+     *
+     * <p>Dùng cho video bài giảng — student stream qua URL này, URL hết hạn
+     * sau {@code expiresInSeconds} giây (thường 3600 = 1 giờ).
+     *
+     * <p>Supabase API: {@code POST /storage/v1/object/sign/{bucket}/{path}}
+     * Body: {@code {"expiresIn": 3600}}
+     * Response: {@code {"signedURL": "/storage/v1/object/sign/..."}}
+     *
+     * @param bucket          tên bucket private (vd: "course-videos")
+     * @param objectPath      path trong bucket (vd: "uuid/uuid/uuid.mp4")
+     * @param expiresInSeconds thời gian hiệu lực tính bằng giây
+     * @return full signed URL có thể dùng ngay để stream/download
+     */
+    public String generateSignedUrl(String bucket, String objectPath, int expiresInSeconds) {
+        String uri = "/storage/v1/object/sign/" + bucket + "/" + objectPath;
+        String requestBody = "{\"expiresIn\":" + expiresInSeconds + "}";
+
+        try {
+            // Response dạng: {"signedURL":"/storage/v1/object/sign/bucket/path?token=..."}
+            SignedUrlResponse response = restClient.post()
+                    .uri(uri)
+                    .header("apikey", serviceRoleKey)
+                    .header("Authorization", "Bearer " + serviceRoleKey)
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .body(requestBody)
+                    .retrieve()
+                    .body(SignedUrlResponse.class);
+
+            if (response == null || response.signedURL() == null) {
+                throw new BusinessException("SIGNED_URL_FAILED",
+                        "Không thể tạo đường dẫn xem video. Vui lòng thử lại.");
+            }
+            // Supabase trả về path dạng "/object/sign/..." (thiếu /storage/v1/ prefix)
+            // URL đúng phải là: {supabaseUrl}/storage/v1/object/sign/...
+            String signedPath = response.signedURL();
+            if (signedPath.startsWith("http")) return signedPath;
+            if (!signedPath.startsWith("/storage/v1")) {
+                signedPath = "/storage/v1" + signedPath;
+            }
+            return supabaseUrl + signedPath;
+
+        } catch (org.springframework.web.client.HttpClientErrorException ex) {
+            throw mapClientError(ex, "sign " + objectPath);
+        } catch (org.springframework.web.client.RestClientException ex) {
+            log.error("Lỗi khi tạo signed URL: {}", ex.getMessage());
+            throw new BusinessException("SIGNED_URL_FAILED",
+                    "Không thể tạo đường dẫn xem video. Vui lòng thử lại.");
+        }
+    }
+
+    /** DTO nội bộ để parse response signed URL từ Supabase. */
+    private record SignedUrlResponse(String signedURL) {}
+
+    /**
      * Build public URL theo format chuẩn của Supabase Storage cho bucket public.
      */
     private String buildPublicUrl(String bucket, String objectPath) {

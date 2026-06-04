@@ -17,6 +17,7 @@ import FavoritesPage from './pages/student/FavoritesPage';
 import AccountPage from './pages/student/AccountPage';
 import AvatarPage from './pages/student/AvatarPage';
 import ComplaintsPage from './pages/student/ComplaintsPage';
+import StudentQuizPage from './pages/student/StudentQuizPage';
 import DashboardAdmin from './pages/admin/DashboardAdmin';
 import DashboardTeacher from './pages/teacher/DashboardTeacher';
 import TeacherCoursesPage from './pages/teacher/CoursesPage';
@@ -28,13 +29,16 @@ import TeacherQAPage from './pages/teacher/QAPage';
 import TeacherRevenuePage from './pages/teacher/RevenuePage';
 import TeacherBankPage from './pages/teacher/BankPage';
 import TeacherComplaintsPage from './pages/teacher/ComplaintsPage';
+import QuestionBankPage from './pages/teacher/QuestionBankPage';
+import ApprovalsPage from './pages/admin/ApprovalsPage';
+import CourseReviewPage from './pages/admin/CourseReviewPage';
 import OAuthCallbackPage from './pages/common/OAuthCallbackPage';
 import ParentDashboard from './pages/parents/ParentDashboard';
 import ParentCourses from './pages/parents/ParentCourses';
-
 import ParentProgress from './pages/parents/ParentProgress';
 import ParentMessages from './pages/parents/ParentMessages';
 import ParentStudentLink from './pages/parents/ParentStudentLink';
+import ProtectedRoute from './components/ProtectedRoute';
 
 export default function App() {
   return (
@@ -49,48 +53,51 @@ export default function App() {
         <Route path="/auth/callback" element={<OAuthCallbackPage />} />
 
 
-        {/* ── Student ── */}
-        <Route path="/quiz" element={<QuizPage />} />
+        {/* ── Student (cần đăng nhập) ── */}
+        <Route path="/quiz" element={<ProtectedRoute><QuizPage /></ProtectedRoute>} />
         <Route path="/courses" element={<CoursesPage />} />
         <Route path="/courses/:id" element={<CourseDetailPage />} />
-        <Route path="/checkout" element={<CheckoutPage />} />
-        <Route path="/payment-result" element={<PaymentResultPage />} />
-        <Route path="/orders" element={<OrdersPage />} />
-        <Route path="/favorites"     element={<FavoritesPage />} />
-        <Route path="/messages"      element={<MessagesPage />} />
-        <Route path="/profile"       element={<ProfilePage />} />
-        <Route path="/account/type"  element={<ComingSoonPage title="Loại tài khoản"        subtitle="Quản lý gói đăng ký của bạn" />} />
-        <Route path="/account/photo" element={<AvatarPage />} />
-        <Route path="/account"       element={<AccountPage />} />
-        <Route path="/complaints"    element={<ComplaintsPage />} />
+        <Route path="/courses/:courseId/chapters/:chapterId/quiz" element={<ProtectedRoute><StudentQuizPage /></ProtectedRoute>} />
+        <Route path="/checkout"      element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
+        <Route path="/payment-result" element={<ProtectedRoute><PaymentResultPage /></ProtectedRoute>} />
+        <Route path="/orders"        element={<ProtectedRoute><OrdersPage /></ProtectedRoute>} />
+        <Route path="/favorites"     element={<ProtectedRoute><FavoritesPage /></ProtectedRoute>} />
+        <Route path="/messages"      element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
+        <Route path="/profile"       element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+        <Route path="/account/type"  element={<ProtectedRoute><ComingSoonPage title="Loại tài khoản" subtitle="Quản lý gói đăng ký của bạn" /></ProtectedRoute>} />
+        <Route path="/account/photo" element={<ProtectedRoute><AvatarPage /></ProtectedRoute>} />
+        <Route path="/account"       element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+        <Route path="/complaints"    element={<ProtectedRoute><ComplaintsPage /></ProtectedRoute>} />
 
-        {/* ── Parent ── */}
-        <Route path="/parent" element={<ParentDashboard />} />
-        <Route path="/parent/courses" element={<ParentCourses />} />
+        {/* ── Parent (chỉ role=parent) ── */}
+        <Route path="/parent"          element={<ProtectedRoute role="parent"><ParentDashboard /></ProtectedRoute>} />
+        <Route path="/parent/courses"  element={<ProtectedRoute role="parent"><ParentCourses /></ProtectedRoute>} />
+        <Route path="/parent/progress" element={<ProtectedRoute role="parent"><ParentProgress /></ProtectedRoute>} />
+        <Route path="/parent/messages" element={<ProtectedRoute role="parent"><ParentMessages /></ProtectedRoute>} />
+        <Route path="/parent/link"     element={<ProtectedRoute role="parent"><ParentStudentLink /></ProtectedRoute>} />
 
-        <Route path="/parent/progress" element={<ParentProgress />} />
-        <Route path="/parent/messages" element={<ParentMessages />} />
-        <Route path="/parent/link" element={<ParentStudentLink />} />
+        {/* ── Teacher (chỉ role=teacher) ── */}
+        <Route path="/teacher"            element={<ProtectedRoute role="teacher"><DashboardTeacher /></ProtectedRoute>} />
+        <Route path="/teacher/courses"    element={<ProtectedRoute role="teacher"><TeacherCoursesPage /></ProtectedRoute>} />
+        <Route path="/teacher/content"    element={<ProtectedRoute role="teacher"><TeacherContentPage /></ProtectedRoute>} />
+        <Route path="/teacher/quiz"       element={<ProtectedRoute role="teacher"><TeacherQuizChapterPage /></ProtectedRoute>} />
+        <Route path="/teacher/exam"       element={<ProtectedRoute role="teacher"><TeacherExamPage /></ProtectedRoute>} />
+        <Route path="/teacher/grades"     element={<ProtectedRoute role="teacher"><TeacherGradesPage /></ProtectedRoute>} />
+        <Route path="/teacher/qa"         element={<ProtectedRoute role="teacher"><TeacherQAPage /></ProtectedRoute>} />
+        <Route path="/teacher/complaints" element={<ProtectedRoute role="teacher"><TeacherComplaintsPage /></ProtectedRoute>} />
+        <Route path="/teacher/revenue"    element={<ProtectedRoute role="teacher"><TeacherRevenuePage /></ProtectedRoute>} />
+        <Route path="/teacher/bank"       element={<ProtectedRoute role="teacher"><TeacherBankPage /></ProtectedRoute>} />
+        <Route path="/teacher/questions"  element={<ProtectedRoute role="teacher"><QuestionBankPage /></ProtectedRoute>} />
 
-        {/* ── Teacher ── */}
-        <Route path="/teacher"          element={<DashboardTeacher />} />
-        <Route path="/teacher/courses"  element={<TeacherCoursesPage />} />
-        <Route path="/teacher/content"  element={<TeacherContentPage />} />
-        <Route path="/teacher/quiz"     element={<TeacherQuizChapterPage />} />
-        <Route path="/teacher/exam"     element={<TeacherExamPage />} />
-        <Route path="/teacher/grades"   element={<TeacherGradesPage />} />
-        <Route path="/teacher/qa"       element={<TeacherQAPage />} />
-        <Route path="/teacher/complaints" element={<TeacherComplaintsPage />} />
-        <Route path="/teacher/revenue"  element={<TeacherRevenuePage />} />
-        <Route path="/teacher/bank"     element={<TeacherBankPage />} />
-
-        {/* ── Admin ── */}
-        <Route path="/admin"          element={<DashboardAdmin />} />
-        <Route path="/admin/teachers"   element={<ComingSoonPage title="Quản lý giáo viên" subtitle="Danh sách và thông tin giáo viên" />} />
-        <Route path="/admin/accounting" element={<ComingSoonPage title="Kế toán"           subtitle="Quản lý thu chi và báo cáo tài chính" />} />
-        <Route path="/admin/salary"     element={<ComingSoonPage title="Lương"             subtitle="Quản lý lương giáo viên và nhân sự" />} />
-        <Route path="/admin/reports"    element={<ComingSoonPage title="Báo cáo & Thống kê" subtitle="Phân tích dữ liệu và báo cáo tổng hợp" />} />
-        <Route path="/admin/settings"   element={<ComingSoonPage title="Cài đặt hệ thống"  subtitle="Cấu hình và tuỳ chỉnh hệ thống" />} />
+        {/* ── Admin (chỉ role=admin) ── */}
+        <Route path="/admin"                     element={<ProtectedRoute role="admin"><DashboardAdmin /></ProtectedRoute>} />
+        <Route path="/admin/approvals"           element={<ProtectedRoute role="admin"><ApprovalsPage /></ProtectedRoute>} />
+        <Route path="/admin/approvals/:courseId" element={<ProtectedRoute role="admin"><CourseReviewPage /></ProtectedRoute>} />
+        <Route path="/admin/teachers"   element={<ProtectedRoute role="admin"><ComingSoonPage title="Quản lý giáo viên"    subtitle="Danh sách và thông tin giáo viên" /></ProtectedRoute>} />
+        <Route path="/admin/accounting" element={<ProtectedRoute role="admin"><ComingSoonPage title="Kế toán"              subtitle="Quản lý thu chi và báo cáo tài chính" /></ProtectedRoute>} />
+        <Route path="/admin/salary"     element={<ProtectedRoute role="admin"><ComingSoonPage title="Lương"                subtitle="Quản lý lương giáo viên và nhân sự" /></ProtectedRoute>} />
+        <Route path="/admin/reports"    element={<ProtectedRoute role="admin"><ComingSoonPage title="Báo cáo & Thống kê"   subtitle="Phân tích dữ liệu và báo cáo tổng hợp" /></ProtectedRoute>} />
+        <Route path="/admin/settings"   element={<ProtectedRoute role="admin"><ComingSoonPage title="Cài đặt hệ thống"     subtitle="Cấu hình và tuỳ chỉnh hệ thống" /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>
   );

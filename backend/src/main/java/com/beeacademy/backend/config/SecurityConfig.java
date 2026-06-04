@@ -86,14 +86,38 @@ public class SecurityConfig {
                         // Preflight CORS phải cho qua không cần auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // ----- Public endpoints (Giai đoạn 0 + 1) -----
+                        // ----- Public endpoints -----
                         .requestMatchers("/api/health").permitAll()
-                        .requestMatchers("/api/auth/**").permitAll()  // register/login/reset-password
-                        .requestMatchers(HttpMethod.GET, "/api/courses/**").permitAll()  // browse khoá học
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/courses/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categories/**").permitAll()
+
+                        // ----- Teacher Portal -----
+                        .requestMatchers("/api/teacher/**").authenticated()
+                        .requestMatchers("/api/upload/**").authenticated()
+
+                        // ----- Admin Portal -----
+                        .requestMatchers("/api/admin/**").authenticated()
+
+                        // ----- Student Quiz -----
+                        .requestMatchers("/api/student/**").authenticated()
 
                         // ----- Tất cả route còn lại cần JWT hợp lệ -----
                         .anyRequest().authenticated()
+                )
+
+                // BUG FIX: Spring Security mặc định trả 403 cho cả "chưa xác thực" (401)
+                // lẫn "không có quyền" (403). Cần tách biệt rõ:
+                //   - AuthenticationEntryPoint: xử lý khi request KHÔNG có/sai JWT → 401 + JSON
+                //   - AccessDeniedHandler: xử lý khi đã login nhưng không có quyền → 403 (mặc định)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(401);
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.getWriter().write(
+                                    "{\"success\":false,\"code\":\"UNAUTHORIZED\"," +
+                                    "\"message\":\"Vui lòng đăng nhập để tiếp tục.\"}");
+                        })
                 )
 
                 // Chèn filter verify JWT TRƯỚC filter username/password mặc định

@@ -11,11 +11,13 @@
  *  - Settings Tab      — Cấu hình phí nền tảng & chế độ bảo trì
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { notify } from '../../lib/toast';
+import { apiClient, unwrap } from '../../api/client';
+import type { ApiResponse, PageResponse } from '../../types/api';
 import {
   LayoutDashboard, BookOpen, Users, ShoppingBag,
   FileText, TrendingUp, TrendingDown, DollarSign,
@@ -97,7 +99,24 @@ interface SystemAnnouncement {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DỮ LIỆU KHỞI TẠO MOCK (Initial Mock Data)
+// TYPES API THẬT
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AdminUser {
+  id: string;
+  fullName: string | null;
+  email: string | null;
+  role: 'student' | 'teacher' | 'parent' | 'admin';
+  avatarUrl: string | null;
+  isBlocked: boolean;
+  createdAt: string;
+}
+
+interface UserStats { students: number; teachers: number; parents: number; total: number; }
+interface PendingCourseSummary { id: string; title: string; teacherName: string; submittedAt: string; }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DỮ LIỆU KHỞI TẠO MOCK (Initial Mock Data — sẽ được thay dần bằng API)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MOCK_ORDERS: Order[] = [
@@ -204,6 +223,50 @@ export default function DashboardAdmin() {
   const [filterCourseStatus, setFilterCourseStatus] = useState<string>('all');
   const [filterComplaintStatus, setFilterComplaintStatus] = useState<string>('all');
 
+  // ── STATE & CALLBACKS API THẬT (phải đặt sau filter state) ───────
+  const [apiUsers,       setApiUsers]       = useState<AdminUser[]>([]);
+  const [loadingUsers,   setLoadingUsers]   = useState(false);
+  const [userStats,      setUserStats]      = useState<UserStats | null>(null);
+  const [pendingCourses, setPendingCourses] = useState<PendingCourseSummary[]>([]);
+  const [loadingPending, setLoadingPending] = useState(false);
+  const [userPage,       setUserPage]       = useState(0);
+  const [userTotalPages, setUserTotalPages] = useState(0);
+
+  const loadUsers = useCallback(async (page = 0) => {
+    setLoadingUsers(true);
+    try {
+      const params: Record<string, string | number> = { page, size: 20 };
+      if (filterUserRole !== 'all') params.role = filterUserRole;
+      if (searchUser.trim()) params.search = searchUser.trim();
+      const res = await apiClient.get<ApiResponse<PageResponse<AdminUser>>>('/api/admin/users', { params });
+      const data = unwrap(res.data);
+      setApiUsers(data.items);
+      setUserPage(data.page);
+      setUserTotalPages(data.totalPages);
+    } catch { notify.error('Không tải được danh sách tài khoản'); }
+    finally { setLoadingUsers(false); }
+  }, [filterUserRole, searchUser]);
+
+  const loadUserStats = useCallback(async () => {
+    try {
+      const res = await apiClient.get<ApiResponse<UserStats>>('/api/admin/users/stats');
+      setUserStats(unwrap(res.data));
+    } catch {}
+  }, []);
+
+  const loadPendingCourses = useCallback(async () => {
+    setLoadingPending(true);
+    try {
+      const res = await apiClient.get<ApiResponse<PageResponse<PendingCourseSummary>>>(
+        '/api/admin/courses/pending', { params: { page: 0, size: 5, sort: 'updatedAt,asc' } });
+      setPendingCourses(unwrap(res.data).items);
+    } catch {}
+    finally { setLoadingPending(false); }
+  }, []);
+
+  useEffect(() => { loadUserStats(); loadPendingCourses(); }, [loadUserStats, loadPendingCourses]);
+  useEffect(() => { if (activeTab === 'users') loadUsers(0); }, [activeTab, loadUsers]);
+
   // ───────────────────────────────────────────────────────────────────────────
   // TÍNH TOÁN CÁC THÔNG SỐ TÀI CHÍNH DỰA TRÊN STATE ĐỘNG (UC34 & UC37)
   // ───────────────────────────────────────────────────────────────────────────
@@ -268,15 +331,17 @@ export default function DashboardAdmin() {
     });
   }, [users, searchUser, filterUserRole]);
 
-  function handleToggleBlockUser(userId: string) {
-    setUsers(prev => prev.map(u => {
-      if (u.id === userId) {
-        const newStatus = u.status === 'active' ? 'blocked' : 'active';
-        notify.success(`Đã ${newStatus === 'blocked' ? 'khóa' : 'kích hoạt lại'} tài khoản ${u.name}`);
-        return { ...u, status: newStatus };
-      }
-      return u;
-    }));
+  async function handleToggleBlockUser(userId: string) {
+    const target = apiUsers.find(u => u.id === userId);
+    if (!target) return;
+    const newBlocked = !target.isBlocked;
+    try {
+      await apiClient.patch(`/api/admin/users/${userId}/block?blocked=${newBlocked}`);
+      setApiUsers(prev => prev.map(u => u.id === userId ? { ...u, isBlocked: newBlocked } : u));
+      notify.success(`Đã ${newBlocked ? 'khóa' : 'mở khóa'} tài khoản ${target.fullName ?? target.email}`);
+    } catch (err: any) {
+      notify.error(err?.message || 'Không thực hiện được');
+    }
   }
 
   function handleOpenUserModal(user: UserAccount | null) {
@@ -737,11 +802,14 @@ export default function DashboardAdmin() {
                           <Users className="w-5 h-5" />
                         </div>
                       </div>
-                      <p className="text-2xl font-extrabold text-on-surface">{totalStudentsCount.toLocaleString('vi-VN')}</p>
-                      <p className="text-xs text-blue-600 mt-2 flex items-center gap-1 font-semibold">
-                        <TrendingUp className="w-3.5 h-3.5" />
-                        +8.2% học viên mới tuần này
+                      <p className="text-2xl font-extrabold text-on-surface">
+                        {userStats ? userStats.students.toLocaleString('vi-VN') : '…'}
                       </p>
+                      {userStats && (
+                        <p className="text-xs text-on-surface-variant mt-1 font-semibold">
+                          {userStats.teachers} GV · {userStats.parents} PH · tổng {userStats.total}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -929,12 +997,20 @@ export default function DashboardAdmin() {
                     </div>
                   </div>
 
-                  {/* Bảng danh sách người dùng */}
+                  {/* Bảng danh sách người dùng — API thật */}
                   <div className="overflow-x-auto border border-outline-variant/20 rounded-xl">
+                    {loadingUsers && (
+                      <div className="flex items-center justify-center py-12 gap-3 text-on-surface-variant">
+                        <svg className="animate-spin w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                        Đang tải danh sách...
+                      </div>
+                    )}
+                    {!loadingUsers && (
                     <table className="w-full text-sm text-left">
                       <thead>
                         <tr className="border-b border-outline-variant/20 bg-surface-container-low/50">
                           <th className="px-6 py-3 font-bold text-on-surface-variant text-xs uppercase">Hội viên</th>
+                          <th className="px-4 py-3 font-bold text-on-surface-variant text-xs uppercase">Email</th>
                           <th className="px-4 py-3 font-bold text-on-surface-variant text-xs uppercase">Vai trò</th>
                           <th className="px-4 py-3 font-bold text-on-surface-variant text-xs uppercase">Ngày tham gia</th>
                           <th className="px-4 py-3 font-bold text-on-surface-variant text-xs uppercase">Trạng thái</th>
@@ -942,172 +1018,136 @@ export default function DashboardAdmin() {
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredUsers.length === 0 ? (
+                        {apiUsers.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="px-6 py-10 text-center text-on-surface-variant">
-                              Không tìm thấy người dùng nào phù hợp.
+                            <td colSpan={6} className="px-6 py-10 text-center text-on-surface-variant">
+                              Không tìm thấy người dùng nào.
                             </td>
                           </tr>
                         ) : (
-                          filteredUsers.map((user, idx) => (
+                          apiUsers.map((user, idx) => (
                             <tr key={user.id} className={`border-b border-outline-variant/10 hover:bg-surface-container/20 transition-colors ${idx % 2 !== 0 ? 'bg-surface-container-low/20' : ''}`}>
                               <td className="px-6 py-3.5">
                                 <div className="flex items-center gap-3">
                                   <img
-                                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&size=32&background=random&bold=true`}
-                                    alt={user.name}
+                                    src={user.avatarUrl ?? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName ?? 'U')}&size=32&background=random&bold=true`}
+                                    alt={user.fullName ?? ''}
                                     className="w-8 h-8 rounded-full"
                                   />
-                                  <div>
-                                    <p className="font-bold text-on-surface">{user.name}</p>
-                                    <p className="text-[10px] text-on-surface-variant font-mono">{user.email}</p>
-                                  </div>
+                                  <p className="font-bold text-on-surface">{user.fullName ?? '(Chưa đặt tên)'}</p>
                                 </div>
                               </td>
+                              <td className="px-4 py-3.5 text-on-surface-variant text-xs font-mono">{user.email ?? '—'}</td>
                               <td className="px-4 py-3.5 font-bold">
                                 {user.role === 'student' && <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full text-xs">Học sinh</span>}
                                 {user.role === 'teacher' && <span className="text-primary bg-primary/5 px-2 py-0.5 rounded-full text-xs">Giáo viên</span>}
                                 {user.role === 'parent' && <span className="text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full text-xs">Phụ huynh</span>}
+                                {user.role === 'admin' && <span className="text-red-600 bg-red-50 px-2 py-0.5 rounded-full text-xs">Admin</span>}
                               </td>
-                              <td className="px-4 py-3.5 text-on-surface-variant font-medium">{user.createdAt}</td>
+                              <td className="px-4 py-3.5 text-on-surface-variant font-medium text-xs">
+                                {new Date(user.createdAt).toLocaleDateString('vi-VN')}
+                              </td>
                               <td className="px-4 py-3.5">
                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                                  user.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                  !user.isBlocked ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                                 }`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${user.status === 'active' ? 'bg-green-600' : 'bg-red-600'}`} />
-                                  {user.status === 'active' ? 'Hoạt động' : 'Bị khóa'}
+                                  <span className={`w-1.5 h-1.5 rounded-full ${!user.isBlocked ? 'bg-green-600' : 'bg-red-600'}`} />
+                                  {!user.isBlocked ? 'Hoạt động' : 'Bị khóa'}
                                 </span>
                               </td>
                               <td className="px-6 py-3.5 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <button
-                                    onClick={() => handleOpenUserModal(user)}
-                                    className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-lg transition-colors"
-                                    title="Sửa thông tin"
-                                  >
-                                    <Edit2 className="w-4 h-4" />
-                                  </button>
+                                {user.role !== 'admin' && (
                                   <button
                                     onClick={() => handleToggleBlockUser(user.id)}
                                     className={`p-1.5 rounded-lg transition-colors ${
-                                      user.status === 'active'
-                                        ? 'text-red-500 hover:bg-red-50'
-                                        : 'text-green-500 hover:bg-green-50'
+                                      !user.isBlocked ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'
                                     }`}
-                                    title={user.status === 'active' ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}
+                                    title={!user.isBlocked ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}
                                   >
-                                    {user.status === 'active' ? <Ban className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                                    {!user.isBlocked ? <Ban className="w-4 h-4" /> : <Check className="w-4 h-4" />}
                                   </button>
-                                </div>
+                                )}
                               </td>
                             </tr>
                           ))
                         )}
                       </tbody>
                     </table>
+                    )}
                   </div>
+
+                  {/* Phân trang */}
+                  {userTotalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 pt-2">
+                      <button disabled={userPage === 0} onClick={() => loadUsers(userPage - 1)}
+                        className="px-3 py-1.5 text-sm font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high rounded-lg disabled:opacity-40">
+                        ← Trước
+                      </button>
+                      <span className="text-sm text-on-surface-variant">Trang {userPage + 1} / {userTotalPages}</span>
+                      <button disabled={userPage >= userTotalPages - 1} onClick={() => loadUsers(userPage + 1)}
+                        className="px-3 py-1.5 text-sm font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high rounded-lg disabled:opacity-40">
+                        Sau →
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* ─────────────────────────────────────────────────────────────
-                  TAB 3: COURSES (DUYỆT KHÓA HỌC - UC36)
+                  TAB 3: COURSES (DUYỆT KHÓA HỌC - UC36) → Redirect thật
                   ───────────────────────────────────────────────────────────── */}
               {activeTab === 'courses' && (
-                <div className="space-y-6">
-                  {/* Tiêu đề & Lọc trạng thái */}
-                  <div className="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-lg font-bold">Danh sách yêu cầu kiểm duyệt khóa học</h2>
-                      <p className="text-xs text-on-surface-variant mt-0.5">Giáo viên upload tài liệu và nộp đề xuất. Admin xem xét phê duyệt hoặc yêu cầu chỉnh sửa trước khi bán.</p>
-                    </div>
-                    <div className="relative">
-                      <select
-                        value={filterCourseStatus}
-                        onChange={(e) => setFilterCourseStatus(e.target.value)}
-                        className="pl-3 pr-8 py-2 bg-surface-container border border-outline-variant/30 rounded-xl text-sm font-bold focus:outline-none appearance-none cursor-pointer"
+                <div className="space-y-5">
+                  <div className="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-6 shadow-sm">
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                      <div>
+                        <h2 className="text-lg font-bold">Duyệt khóa học</h2>
+                        <p className="text-xs text-on-surface-variant mt-0.5">
+                          Trang duyệt khóa học đầy đủ tính năng — xem nội dung, phê duyệt, từ chối, yêu cầu sửa.
+                        </p>
+                      </div>
+                      <Link to="/admin/approvals"
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-md shadow-primary/20 text-sm"
                       >
-                        <option value="all">Tất cả trạng thái</option>
-                        <option value="pending">Chờ kiểm duyệt</option>
-                        <option value="approved">Đã phê duyệt</option>
-                        <option value="revision_required">Cần chỉnh sửa</option>
-                        <option value="rejected">Bị từ chối</option>
-                      </select>
-                      <Filter className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-on-surface-variant pointer-events-none" />
+                        <BookOpen className="w-4 h-4" />
+                        Mở trang duyệt khóa học →
+                      </Link>
                     </div>
                   </div>
 
-                  {/* Grid danh sách khóa học chờ duyệt */}
-                  {filteredCoursesApproval.length === 0 ? (
-                    <div className="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-10 text-center text-on-surface-variant shadow-sm">
-                      Không có khóa học nào đang chờ xét duyệt hoặc phù hợp với bộ lọc.
+                  {/* Preview 5 khóa học đang chờ duyệt */}
+                  <div className="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-5 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-bold text-on-surface flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-amber-500" />
+                        Đang chờ duyệt ({pendingCourses.length > 0 ? `${pendingCourses.length}+` : '0'})
+                      </h3>
+                      <Link to="/admin/approvals" className="text-xs font-bold text-primary hover:underline">
+                        Xem tất cả →
+                      </Link>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {filteredCoursesApproval.map(course => (
-                        <div key={course.id} className="bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 bg-primary/10 text-primary rounded-full uppercase">
-                                {course.subject} · {course.grade}
-                              </span>
-                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                                course.status === 'pending' ? 'bg-amber-100 text-amber-700 animate-pulse' :
-                                course.status === 'approved' ? 'bg-green-100 text-green-700' :
-                                course.status === 'revision_required' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
-                              }`}>
-                                {course.status === 'pending' && 'Chờ kiểm duyệt'}
-                                {course.status === 'approved' && 'Đã phê duyệt'}
-                                {course.status === 'revision_required' && 'Cần chỉnh sửa'}
-                                {course.status === 'rejected' && 'Bị từ chối'}
-                              </span>
+                    {loadingPending ? (
+                      <p className="text-sm text-on-surface-variant text-center py-4">Đang tải...</p>
+                    ) : pendingCourses.length === 0 ? (
+                      <p className="text-sm text-on-surface-variant text-center py-6">Không có khóa học nào chờ duyệt.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {pendingCourses.map(c => (
+                          <Link key={c.id} to={`/admin/approvals/${c.id}`}
+                            className="flex items-center justify-between p-3 rounded-xl border border-outline-variant/20 hover:bg-surface-container/40 transition-colors"
+                          >
+                            <div>
+                              <p className="font-semibold text-sm text-on-surface line-clamp-1">{c.title}</p>
+                              <p className="text-xs text-on-surface-variant mt-0.5">GV: {c.teacherName}</p>
                             </div>
-                            <h3 className="font-bold text-on-surface text-base line-clamp-2">{course.title}</h3>
-                            <div className="space-y-1 text-xs text-on-surface-variant font-semibold">
-                              <p>Giảng viên: <span className="text-on-surface font-bold">{course.teacherName}</span></p>
-                              <p>Ngày nộp yêu cầu: <span className="text-on-surface font-medium">{course.submittedAt}</span></p>
-                              <p>Giá đề xuất: <span className="text-primary font-bold">{course.price.toLocaleString('vi-VN')}đ</span></p>
-                            </div>
-
-                            {/* Hiển thị lý do nếu bị từ chối hoặc yêu cầu sửa */}
-                            {course.reason && (
-                              <div className="p-3 bg-surface-container rounded-xl text-xs border border-outline-variant/40 space-y-1">
-                                <p className="font-bold text-primary flex items-center gap-1">
-                                  <AlertCircle className="w-3.5 h-3.5" />
-                                  Phản hồi của Admin:
-                                </p>
-                                <p className="italic text-on-surface">{course.reason}</p>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Nhóm thao tác phê duyệt */}
-                          {course.status === 'pending' && (
-                            <div className="mt-5 pt-4 border-t border-outline-variant/20 flex gap-2">
-                              <button
-                                onClick={() => handleApproveCourse(course.id)}
-                                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold transition-colors"
-                              >
-                                <CheckCircle className="w-4 h-4" />
-                                Phê duyệt
-                              </button>
-                              <button
-                                onClick={() => handleOpenCourseActionModal(course, 'revision')}
-                                className="inline-flex items-center justify-center gap-1 px-3 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-xl text-xs font-bold transition-colors"
-                              >
-                                Yêu cầu sửa
-                              </button>
-                              <button
-                                onClick={() => handleOpenCourseActionModal(course, 'reject')}
-                                className="inline-flex items-center justify-center gap-1 px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl text-xs font-bold transition-colors"
-                              >
-                                Từ chối
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                            <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-bold whitespace-nowrap ml-3">
+                              Chờ duyệt
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

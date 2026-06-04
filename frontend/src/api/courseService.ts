@@ -72,3 +72,16 @@ export async function listCategories(): Promise<Category[]> {
   const res = await apiClient.get<ApiResponse<Category[]>>('/api/categories');
   return unwrap(res.data);
 }
+
+// ---------------------------------------------------------------------------
+//  My Courses - khoá học đã enroll (cần JWT)
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/me/courses — danh sách khoá học user đã mua/được gán.
+ * Trả CourseSummary[] nên adapter cần set isEnrolled=true cho tất cả.
+ */
+export async function getEnrolledCourses(): Promise<CourseSummary[]> {
+  const res = await apiClient.get<ApiResponse<CourseSummary[]>>('/api/me/courses');
+  return unwrap(res.data);
+}

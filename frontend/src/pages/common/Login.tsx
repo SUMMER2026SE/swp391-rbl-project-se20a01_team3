@@ -52,18 +52,19 @@ export default function Login() {
       notify.dismiss(toastId);
       notify.success('Đăng nhập thành công!');
 
-      // Chuyển hướng thông minh theo vai trò người dùng (role)
-      let finalRedirect = redirectTo;
-      if (redirectTo === '/courses') {
-        const userRole = tokens.user?.role;
-        if (userRole === 'teacher') {
-          finalRedirect = '/teacher';
-        } else if (userRole === 'admin') {
-          finalRedirect = '/admin';
-        } else if (userRole === 'parent') {
-          finalRedirect = '/parent';
-        }
-      }
+      // Chuyển hướng theo role — luôn áp dụng nếu user chưa có đích cụ thể
+      const userRole = tokens.user?.role;
+      const roleHome: Record<string, string> = {
+        teacher: '/teacher',
+        admin:   '/admin',
+        parent:  '/parent',
+        student: '/courses',
+      };
+      // Nếu redirectTo là trang generic (/courses, /login, /) thì ưu tiên role-home
+      const genericPaths = ['/', '/login', '/courses', '/register'];
+      const finalRedirect = genericPaths.includes(redirectTo)
+        ? (userRole ? roleHome[userRole] ?? '/courses' : '/courses')
+        : redirectTo;
 
       navigate(finalRedirect, { replace: true });
     } catch (err) {

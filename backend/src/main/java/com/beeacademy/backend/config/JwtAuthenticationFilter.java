@@ -5,6 +5,8 @@ import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.beeacademy.backend.model.Profile;
+import com.beeacademy.backend.repository.ProfileRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -56,12 +58,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String BEARER_PREFIX = "Bearer ";
 
-    private final JWTVerifier es256Verifier;  // nullable nếu JWKS fetch thất bại
-    private final JWTVerifier hs256Verifier;
+    private final JWTVerifier      es256Verifier;  // nullable nếu JWKS fetch thất bại
+    private final JWTVerifier      hs256Verifier;
+    private final ProfileRepository profileRepository;
 
-    public JwtAuthenticationFilter(SupabaseProperties props) {
-        this.es256Verifier = buildEs256Verifier(props.url());
-        this.hs256Verifier = buildHs256Verifier(props.jwtSecret());
+    public JwtAuthenticationFilter(SupabaseProperties props, ProfileRepository profileRepository) {
+        this.es256Verifier    = buildEs256Verifier(props.url());
+        this.hs256Verifier    = buildHs256Verifier(props.jwtSecret());
+        this.profileRepository = profileRepository;
     }
 
     // ========================================================================
@@ -194,7 +198,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private AuthenticatedUser buildAuthenticatedUser(DecodedJWT decoded) {
         UUID userId = UUID.fromString(decoded.getSubject());
         String email = safeClaim(decoded, "email");
-        String role = extractRole(decoded);
+
+        // Lấy role từ DB profiles (nguồn sự thật) thay vì JWT metadata
+        // JWT chỉ có role="authenticated" (Supabase mặc định), không phải role ứng dụng
+        String role = profileRepository.findById(userId)
+                .map(p -> p.getRole().toDbValue())
+                .orElseGet(() -> extractRole(decoded));
+
         return new AuthenticatedUser(userId, email, role);
     }
 

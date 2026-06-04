@@ -2,7 +2,7 @@
 
 Tài liệu này ghi lại trạng thái hiện tại của **toàn bộ dự án** (frontend + backend), những gì đã hoàn thành, quyết định kiến trúc quan trọng và những phần còn dang dở.
 
-Cập nhật lần cuối: 2026-05-26
+Cập nhật lần cuối: 2026-05-31
 
 ---
 
@@ -50,45 +50,36 @@ Dùng trong toàn bộ UI — **không dùng màu Tailwind trực tiếp cho sur
 ### Frontend
 ```
 frontend/src/
-├── App.tsx                          ← Router toàn bộ app
+├── App.tsx                          ← Router + ProtectedRoute guard (role-based)
 ├── api/
 │   ├── client.ts                    ← apiClient (axios singleton + interceptor)
-│   └── authService.ts               ← login, register, logout, refresh, syncOAuthProfile
-├── store/
-│   ├── useAuthStore.ts              ← isLoggedIn, user, tokens — persist localStorage
-│   ├── useCourseStore.ts            ← purchasedIds, enrollCourses, favoritedIds, toggleFavorite
-│   └── useCartStore.ts              ← items, addToCart, removeFromCart, clearCart, getTotal
-├── types/
-│   └── api.ts                       ← ApiResponse, AuthTokenPayload, UserSummary, OAuthSyncPayload, ...
+│   ├── authService.ts               ← login, register, logout, refresh, syncOAuthProfile
+│   ├── courseService.ts             ← GET /api/courses, GET /api/courses/:id
+│   ├── parentService.ts             ← getLinkedChildren, unlinkStudent, getChildOverview
+│   ├── teacherCourseService.ts      ← ✅ CRUD course/chapter/lesson + upload video/doc
+│   ├── questionService.ts           ← ✅ CRUD câu hỏi ngân hàng
+│   └── quizService.ts               ← ✅ Config quiz + student làm bài
 ├── components/
-│   ├── DashboardHeader.tsx          ← Header sticky, search autocomplete, avatar → sidebar dropdown
-│   ├── DashboardSidebar.tsx         ← Sidebar 8 mục, dual-mode: floating + column
-│   └── PageBanner.tsx               ← Banner gradient tím h-40, SVG illustration
+│   ├── ProtectedRoute.tsx           ← ✅ Auth guard: redirect /login nếu chưa đăng nhập
+│   ├── DashboardHeader.tsx
+│   ├── DashboardSidebar.tsx
+│   └── PageBanner.tsx
 ├── pages/
-│   ├── common/
-│   │   ├── LandingPage.tsx
-│   │   ├── Login.tsx                ← Email/password + Google OAuth button
-│   │   ├── Register.tsx
-│   │   └── OAuthCallbackPage.tsx    ← ✅ Xử lý hash từ Supabase OAuth callback
-│   ├── student/
-│   │   ├── CoursesPage.tsx          ← ✅ Hoàn chỉnh
-│   │   ├── CourseDetailPage.tsx     ← ✅ Hoàn chỉnh
-│   │   ├── CheckoutPage.tsx         ← ✅ Hoàn chỉnh (mock)
-│   │   ├── PaymentResultPage.tsx    ← ✅ Hoàn chỉnh (mock)
-│   │   ├── OrdersPage.tsx           ← ✅ Hoàn chỉnh
-│   │   ├── MessagesPage.tsx         ← ✅ Hoàn chỉnh
-│   │   ├── ProfilePage.tsx          ← ✅ Hoàn chỉnh
-│   │   ├── FavoritesPage.tsx        ← ✅ Hoàn chỉnh
-│   │   ├── AccountPage.tsx          ← ✅ Hoàn chỉnh
-│   │   └── ComingSoonPage.tsx
-│   ├── admin/
-│   │   └── DashboardAdmin.tsx       ← ✅ Cơ bản hoàn chỉnh (mock data)
-│   └── teacher/
-│       ├── DashboardTeacher.tsx
-│       ├── QuizPage.tsx
-│       └── ... (các trang teacher khác — xem bên dưới)
+│   ├── common/   Login, Register, LandingPage, OAuthCallbackPage, ForgotPassword
+│   ├── student/  CoursesPage✅, CourseDetailPage✅, ProfilePage✅, AccountPage✅, AvatarPage✅, ...
+│   ├── parents/  ParentDashboard✅, ParentCourses✅, ParentProgress✅, ParentMessages✅, ParentStudentLink✅
+│   ├── teacher/
+│   │   ├── CoursesPage.tsx          ← ✅ Kết nối API thật (listMyCourses, submitForReview)
+│   │   ├── ContentPage.tsx          ← ⚠️ Skeleton (cần kết nối chapter/lesson API)
+│   │   ├── QuestionBankPage.tsx     ← ✅ Kết nối API thật (listQuestions + filter)
+│   │   ├── QuizPage.tsx             ← ✅ Form config quiz + stats ngân hàng câu hỏi
+│   │   └── ...                      các trang GV khác còn skeleton
+│   └── admin/
+│       ├── DashboardAdmin.tsx       ← ✅ Cơ bản (mock data)
+│       ├── ApprovalsPage.tsx        ← ✅ Queue duyệt khóa học
+│       └── CourseReviewPage.tsx     ← ✅ Xem + approve/reject/revise
 └── data/
-    └── mockCourses.ts               ← MOCK_COURSES (dùng tạm, cần thay bằng API)
+    └── mockCourses.ts               ← Còn dùng cho một số phần học sinh
 ```
 
 ### Backend
@@ -96,41 +87,51 @@ frontend/src/
 backend/src/main/java/com/beeacademy/backend/
 ├── controller/
 │   ├── AuthController.java          ← /api/auth/** (UC01-UC04 + OAuth)
-│   └── ...
+│   ├── CourseController.java        ← /api/courses (public)
+│   ├── ProfileController.java       ← /api/me (get/update/avatar)
+│   ├── ParentController.java        ← /api/parent/**
+│   ├── TeacherCourseController.java ← ✅ /api/teacher/courses (CRUD + submit)
+│   ├── UploadController.java        ← ✅ /api/upload/video + /api/upload/document
+│   ├── AdminApprovalController.java ← ✅ /api/admin/courses/pending + approve/reject/revise
+│   ├── QuestionController.java      ← ✅ /api/teacher/questions (CRUD ngân hàng)
+│   ├── QuizController.java          ← ✅ /api/teacher/.../quiz-config + /api/student/quiz
+│   └── HealthController.java
 ├── service/
-│   ├── AuthService.java             ← Business logic auth
-│   ├── OtpService.java              ← OTP 6 số, TTL 5 phút, DEV_MODE log to console
-│   └── ...
-├── client/
-│   └── AuthProviderClient.java      ← Gọi Supabase GoTrue REST API
-├── config/
-│   ├── JwtAuthenticationFilter.java ← Verify JWT ES256 (JWKS) + HS256 fallback
-│   ├── SecurityConfig.java          ← Spring Security stateless
-│   └── SupabaseProperties.java      ← @ConfigurationProperties("supabase")
-├── security/
-│   ├── AuthenticatedUser.java       ← record(userId, email, role)
-│   └── CurrentUser.java             ← Static helper lấy user từ SecurityContext
-├── dto/
-│   ├── request/
-│   │   ├── LoginRequest.java
-│   │   ├── RegisterRequest.java
-│   │   ├── OAuthSyncRequest.java    ← fullName, avatarUrl (nullable)
-│   │   ├── RequestOtpRequest.java
-│   │   ├── VerifyOtpRequest.java
-│   │   └── ...
-│   └── response/
-│       ├── ApiResponse.java
-│       ├── AuthTokenResponse.java
-│       └── UserSummaryResponse.java
+│   ├── AuthService.java, OtpService.java, ProfileService.java
+│   ├── CourseService.java           ← UC06-UC08 (public listing + video access)
+│   ├── ParentService.java           ← UC23-UC25
+│   ├── TeacherCourseService.java    ← ✅ Course/Chapter/Lesson CRUD (dùng repo trực tiếp)
+│   ├── ContentUploadService.java    ← ✅ Upload video (private) + doc (public) + signed URL
+│   ├── ApprovalService.java         ← ✅ Admin approve/reject/revise + lịch sử duyệt
+│   ├── QuestionService.java         ← ✅ CRUD + stats ngân hàng câu hỏi
+│   └── QuizService.java             ← ✅ Config + random pick + grading + snapshot
 ├── model/
-│   └── Profile.java                 ← JPA entity, ánh xạ bảng profiles
+│   ├── Profile.java, Course.java, Chapter.java, Lesson.java (có business methods)
+│   ├── Category.java, ParentStudentLink.java, Enrollment.java
+│   ├── CourseDocument.java          ← ✅ PDF/slide đính kèm bài giảng
+│   ├── ApprovalHistory.java         ← ✅ Lịch sử duyệt của Admin
+│   ├── Question.java                ← ✅ Câu hỏi ngân hàng
+│   ├── QuestionChoice.java          ← ✅ Đáp án lựa chọn
+│   ├── QuizConfig.java              ← ✅ Config quiz từng chương
+│   └── QuizAttempt.java             ← ✅ Lượt làm bài của học sinh (JSONB snapshot)
 ├── repository/
-│   └── ProfileRepository.java
-└── exception/
-    ├── BusinessException.java
-    ├── UnauthorizedException.java   ← Default 401 (đã sửa từ 403)
-    └── GlobalExceptionHandler.java
+│   ├── ProfileRepository, CourseRepository, CategoryRepository
+│   ├── ParentStudentLinkRepository, EnrollmentRepository
+│   ├── ChapterRepository            ← ✅ findByIdAndCourseId, findByCourseId
+│   ├── LessonRepository             ← ✅ findByIdAndChapterId, countByChapterId
+│   ├── CourseDocumentRepository     ← ✅
+│   ├── ApprovalHistoryRepository    ← ✅
+│   ├── QuestionRepository           ← ✅ findActive, countByDifficulty, incrementUsage
+│   ├── QuizConfigRepository         ← ✅
+│   └── QuizAttemptRepository        ← ✅
+└── client/
+    ├── SupabaseStorageClient.java   ← upload + delete + generateSignedUrl (✅ mới thêm)
+    └── SupabaseAuthClient.java, AuthProviderClient.java
 ```
+
+### SQL cần chạy trên Supabase
+File: `backend/supabase_migration_teacher_quiz.sql`
+Tạo: 3 enums + 6 bảng mới (course_documents, course_approval_history, questions, question_choices, quiz_configs, quiz_attempts)
 
 ---
 
@@ -163,47 +164,54 @@ backend/src/main/java/com/beeacademy/backend/
 | `/register` | Register | ✅ |
 | `/auth/callback` | OAuthCallbackPage | ✅ Google OAuth callback |
 
-### Student Routes
+### Student Routes (bảo vệ bởi ProtectedRoute)
 
 | Route | Component | Trạng thái |
 |---|---|---|
-| `/courses` | CoursesPage | ✅ Hoàn chỉnh (mock data) |
-| `/courses/:id` | CourseDetailPage | ✅ Hoàn chỉnh (mock data) |
-| `/checkout` | CheckoutPage | ✅ Mock |
-| `/payment-result` | PaymentResultPage | ✅ Mock |
+| `/courses` | CoursesPage | ✅ Kết nối API thật |
+| `/courses/:id` | CourseDetailPage | ✅ Kết nối API thật |
+| `/checkout` | CheckoutPage | ⚠️ Mock |
+| `/payment-result` | PaymentResultPage | ⚠️ Mock |
 | `/orders` | OrdersPage | ✅ |
 | `/favorites` | FavoritesPage | ✅ |
 | `/messages` | MessagesPage | ✅ |
-| `/profile` | ProfilePage | ✅ (chưa gọi API) |
-| `/account` | AccountPage | ✅ (chưa gọi API) |
-| `/account/type` | ComingSoonPage | ⏳ Placeholder |
+| `/profile` | ProfilePage | ✅ Kết nối API thật |
+| `/account` | AccountPage | ✅ Kết nối API thật |
 | `/account/photo` | AvatarPage | ✅ Hoàn chỉnh |
 
-### Teacher Routes
+### Teacher Routes (role=teacher)
 
 | Route | Component | Trạng thái |
 |---|---|---|
 | `/teacher` | DashboardTeacher | ⏳ Skeleton |
-| `/teacher/quiz` | QuizPage | ⏳ Skeleton |
-| `/teacher/bank` | BankPage | ⏳ Skeleton |
-| `/teacher/complaints` | ComplaintsPage (teacher) | ⏳ Skeleton |
-| `/teacher/content` | ContentPage | ⏳ Skeleton |
-| `/teacher/courses` | CoursesPage (teacher) | ⏳ Skeleton |
+| `/teacher/courses` | CoursesPage (teacher) | ✅ Kết nối API + submit duyệt |
+| `/teacher/content` | ContentPage | ⚠️ Skeleton (cần wire chapter/lesson API) |
+| `/teacher/quiz` | QuizChapterPage | ⏳ Skeleton |
+| `/teacher/questions` | QuestionBankPage | ✅ Kết nối API thật |
+| `/teacher/bank` | BankPage (TK ngân hàng) | ⏳ Skeleton |
 | `/teacher/exam` | ExamPage | ⏳ Skeleton |
 | `/teacher/grades` | GradesPage | ⏳ Skeleton |
 | `/teacher/qa` | QAPage | ⏳ Skeleton |
-| `/teacher/quiz/:chapterId` | QuizChapterPage | ⏳ Skeleton |
 | `/teacher/revenue` | RevenuePage | ⏳ Skeleton |
 
-### Admin Routes
+### Admin Routes (role=admin)
 
 | Route | Component | Trạng thái |
 |---|---|---|
 | `/admin` | DashboardAdmin | ✅ Cơ bản (mock data) |
-| `/admin/users` | ComingSoonPage | ⏳ |
-| `/admin/courses` | ComingSoonPage | ⏳ |
+| `/admin/approvals` | ApprovalsPage | ✅ Danh sách chờ duyệt |
+| `/admin/approvals/:courseId` | CourseReviewPage | ✅ Duyệt / từ chối / yêu cầu sửa |
 | `/admin/reports` | ComingSoonPage | ⏳ |
-| `/admin/complaints` | ComingSoonPage | ⏳ |
+
+### Parent Routes (role=parent)
+
+| Route | Component | Trạng thái |
+|---|---|---|
+| `/parent` | ParentDashboard | ✅ Kết nối API thật |
+| `/parent/courses` | ParentCourses | ✅ |
+| `/parent/progress` | ParentProgress | ✅ |
+| `/parent/messages` | ParentMessages | ✅ |
+| `/parent/link` | ParentStudentLink | ✅ |
 
 ---
 
@@ -289,15 +297,19 @@ File `exception/UnauthorizedException.java` đã được sửa để default `H
 
 ---
 
-## Bug đã biết cần sửa
+## Bug đã fix
 
-### `course_status` enum mismatch — ảnh hưởng `/api/courses`
+### ✅ `course_status` enum mismatch
+**Đã sửa tại** `CourseSpecifications.onlyPublished()`: dùng `CourseStatus.PUBLISHED.toDbValue()` (`"published"` lowercase) thay vì truyền enum object → Hibernate không gọi `.name()` sinh uppercase nữa.
 
-Log lỗi: `ERROR: invalid input value for enum course_status: "PUBLISHED"`
+### ✅ Enrollment luôn trả false
+**Đã sửa**: tạo bảng `enrollments` + `EnrollmentRepository` + `CourseService.canUserAccessAllVideos()` gọi `existsByUserIdAndCourseId()` thật.
 
-**Nguyên nhân:** Java enum `CourseStatus.PUBLISHED` serialize thành chuỗi `"PUBLISHED"` (uppercase), nhưng Postgres enum `course_status` có thể lưu lowercase (`"published"`). Spring Data JPA gặp mismatch khi query.
+### ✅ ParentService hardcode tên học sinh
+**Đã sửa**: xóa toàn bộ `if (name.contains("Minh Anh"))` — trả `grade: ""` kèm TODO rõ ràng (bảng profiles chưa có cột grade).
 
-**Cách sửa:** Thêm `@Enumerated(EnumType.STRING)` vào field trong entity, hoặc thêm `@Column` converter, hoặc đổi Postgres enum values sang uppercase cho khớp. Cần kiểm tra schema thực tế trong Supabase.
+### ✅ TeacherCourseService dùng removeIf trên unmodifiable list
+**Đã sửa**: thay bằng `chapterRepository.delete()` và `lessonRepository.delete()` trực tiếp.
 
 ---
 
@@ -305,40 +317,45 @@ Log lỗi: `ERROR: invalid input value for enum course_status: "PUBLISHED"`
 
 | Phần | Trạng thái |
 |---|---|
-| Auth (login/register/logout/refresh) | ✅ Đã kết nối qua `authService.ts` |
+| Auth (login/register/logout/refresh) | ✅ Kết nối qua `authService.ts` |
 | Google OAuth | ✅ Hoạt động end-to-end |
-| Danh sách khóa học (`/courses`) | ❌ Vẫn dùng `MOCK_COURSES` |
-| Chi tiết khóa học (`/courses/:id`) | ❌ Vẫn dùng `MOCK_COURSES` |
-| Hồ sơ & Tài khoản (save & password) | ✅ Đã kết nối API thực (`ProfilePage` & `AccountPage`) |
-| Tải lên ảnh đại diện (`/account/photo`) | ✅ Đã hoàn thành và kết nối API thực (`AvatarPage`) |
-| Checkout / Payment | ❌ Mock, chưa tích hợp VNPay/MoMo |
-| Teacher portal | ❌ Skeleton UI, chưa có API |
-| Parent portal | ❌ Chưa có UI (Đã lên kế hoạch chi tiết tại [implementation_plan.md](file:///C:/Users/ADMIN/.gemini/antigravity-ide/brain/05dd681a-bf53-4b8c-9810-3777724fcc2e/implementation_plan.md)) |
+| Danh sách khóa học (`/courses`) | ✅ Kết nối API thật |
+| Chi tiết khóa học (`/courses/:id`) | ✅ Kết nối API thật |
+| Hồ sơ & Tài khoản | ✅ Kết nối API thật |
+| Avatar upload | ✅ Kết nối API thật |
+| Auth guards (ProtectedRoute) | ✅ Toàn bộ routes cần auth đều được bảo vệ |
+| Parent portal | ✅ Backend xong + FE kết nối API thật |
+| Teacher: CRUD khóa học + submit duyệt | ✅ Backend + FE kết nối |
+| Teacher: Upload video (private) + doc | ✅ Backend xong (FE cần thêm UI upload) |
+| Admin: Duyệt khóa học | ✅ Backend + FE kết nối |
+| Ngân hàng câu hỏi | ✅ Backend + FE kết nối |
+| Quiz config + làm bài + chấm điểm | ✅ Backend xong (FE cần trang student quiz) |
+| Checkout / Payment | ⚠️ Mock, chưa tích hợp VNPay/MoMo |
 
 ---
 
 ## Còn lại cần làm (theo thứ tự ưu tiên)
 
+### ⚠️ Bắt buộc trước khi chạy backend mới
+1. **Chạy `backend/supabase_migration_teacher_quiz.sql`** trên Supabase SQL Editor
+2. **Tạo 2 Storage buckets** trên Supabase Dashboard:
+   - `course-videos` → **Private** (video bài giảng)
+   - `course-docs` → **Public** (PDF, slide)
+
 ### Ưu tiên cao
-1. **Phát triển Phân hệ Phụ huynh (Parent Portal)** — 5 trang (UC23–UC25, UC47, UC49) theo kế hoạch chi tiết tại [implementation_plan.md](file:///C:/Users/ADMIN/.gemini/antigravity-ide/brain/05dd681a-bf53-4b8c-9810-3777724fcc2e/implementation_plan.md):
-   - Cấu hình định tuyến `/parent/**` và menu trong `DashboardSidebar.tsx`
-   - Giao diện `ParentDashboard` với biểu đồ SVG động và drop-down quản lý các con liên kết
-   - Giao diện chat Phụ huynh - Giáo viên `ParentMessages`
-   - Giao diện kết nối tài khoản học sinh `ParentStudentLink`
-   - Các trang phụ trợ `ParentCourses` và `ParentSchedule`
-2. **Fix `course_status` enum bug** — backend không load được khóa học
-3. **Kết nối `/api/courses`** — thay `MOCK_COURSES` bằng API call thực
-4. **Authentication guard** — redirect về `/login` nếu chưa đăng nhập cho các route cần auth
+3. **ContentPage wire API** — kết nối chapter/lesson CRUD với `teacherCourseService` thật (hiện còn mock)
+4. **Trang student làm quiz** — `/courses/:id/chapters/:chId/quiz` → gọi `quizService.startAttempt` + `submitQuiz`
+5. **VNPay / MoMo checkout** — thay mock, tạo bảng `orders` + `order_items`
 
 ### Ưu tiên trung bình
-5. **Teacher portal** — 10 trang (UC26–UC33, UC45–UC46)
-6. **Admin pages** — UC35–UC41 (users, approvals, reports, complaints, payouts, notifications)
-7. **VNPay / MoMo checkout** — thay mock
+6. **Teacher portal** — ContentPage nâng cao, DashboardTeacher (doanh thu realtime)
+7. **Admin users** — quản lý tài khoản (UC35), payouts (UC39-40)
+8. **Parent link invite** — UC47: gửi email mời liên kết con qua email
 
 ### Ưu tiên thấp hơn
-8. **Chứng chỉ** — UC42–UC43 (`/certificates`)
-9. **`useCartStore` persist localStorage**
-10. **Search header** — kết nối API thay vì search MOCK_COURSES
+9. **Chứng chỉ** — UC42-UC43 (`/certificates`)
+10. **`useCartStore` persist localStorage**
+11. **Search header** — kết nối API thay vì search mock
 
 ---
 
@@ -385,3 +402,18 @@ Log lỗi: `ERROR: invalid input value for enum course_status: "PUBLISHED"`
 **Quyết định**: Toolbar Bold/Italic trong ProfilePage chèn `**text**` / `*text*` vào textarea thuần.
 
 **Lý do**: Không muốn thêm rich text editor (Quill, TipTap) cho MVP.
+
+### 9. TeacherCourseService dùng ChapterRepository/LessonRepository trực tiếp
+**Quyết định**: Không mutate `Course.getChapters()` hay `Chapter.getLessons()` để add/delete — dùng repo riêng.
+
+**Lý do**: `getChapters()` và `getLessons()` trả `Collections.unmodifiableList()` — gọi `add()`/`remove()` ném `UnsupportedOperationException`. Dùng repo trực tiếp rõ ràng hơn và tránh N+1 khi không cần load toàn bộ collection.
+
+### 10. Quiz snapshot JSONB — nguồn sự thật cho chấm điểm
+**Quyết định**: `quiz_attempts.questions_snapshot` (JSONB) lưu toàn bộ câu hỏi + đáp án đúng tại lúc bắt đầu làm bài.
+
+**Lý do**: GV có thể sửa/xóa câu hỏi sau mà không ảnh hưởng bài đã làm. Khi chấm điểm chỉ dùng snapshot, không query lại `questions` table.
+
+### 11. Video private bucket — lưu storagePath, không lưu URL
+**Quyết định**: `Lesson.videoStoragePath` lưu path trong bucket `course-videos` (private), không phải URL. Khi học sinh xem, backend generate signed URL TTL 1 giờ.
+
+**Lý do**: Video trong public URL sẽ bị truy cập trực tiếp không qua auth. Signed URL tự hết hạn bảo vệ nội dung có phí.

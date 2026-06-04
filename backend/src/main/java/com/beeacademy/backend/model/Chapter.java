@@ -79,4 +79,27 @@ public class Chapter {
     public List<Lesson> getLessons() {
         return Collections.unmodifiableList(lessons);
     }
+
+    // ========================================================================
+    // Factory + business methods
+    // ========================================================================
+
+    /** Tạo chapter mới thuộc một course. */
+    public static Chapter createNew(Course course, String title,
+                                    String description, Integer position) {
+        Chapter c    = new Chapter();
+        c.id          = UUID.randomUUID();
+        c.course      = course;
+        c.title       = title;
+        c.description = description;
+        c.position    = position;
+        return c;
+    }
+
+    /** Cập nhật tiêu đề / mô tả / vị trí. */
+    public void update(String title, String description, Integer position) {
+        if (title != null && !title.isBlank()) this.title = title.trim();
+        if (description != null) this.description = description;
+        if (position != null && position > 0) this.position = position;
+    }
 }

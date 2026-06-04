@@ -30,6 +30,7 @@ import DashboardHeader from '../../components/DashboardHeader';
 import { useCartStore } from '../../store/useCartStore';
 import { useCourseStore } from '../../store/useCourseStore';
 import { notify } from '../../lib/toast';
+import { enrollCourses as enrollCoursesApi } from '../../api/enrollmentService';
 
 export default function CheckoutPage() {
   // ── Store: Giỏ hàng ──────────────────────────────────────────────────────
@@ -89,15 +90,20 @@ export default function CheckoutPage() {
   const processPaymentSuccess = () => {
     setShowQRModal(false);
 
-    // Bước 1: Ghi các courseId vào Zustand store
-    // → useCourseStore.purchasedIds sẽ được cập nhật
-    // → CoursesPage sẽ tự re-render và hiển thị các khóa học này trong "Khóa Học Của Tôi"
     const courseIds = items.map(item => item.id);
+
+    // Bước 1: Ghi vào Zustand store ngay lập tức (UX responsive)
     enrollCourses(courseIds);
 
-    // Bước 2: Chuyển đến trang kết quả
-    // → PaymentResultPage sẽ đọc ?status=success và gọi clearCart()
-    // → Không gọi clearCart() ở đây để đảm bảo giỏ hàng còn nguyên nếu navigation thất bại
+    // Bước 2: Đồng bộ enrollment lên backend (fire-and-forget — không block navigation).
+    // Khi student vào CourseDetailPage, backend sẽ biết họ đã enrolled
+    // và trả về videoUrl đầy đủ cho các bài giảng.
+    // Nếu gọi này fail, CourseDetailPage sẽ auto-retry khi load trang.
+    enrollCoursesApi(courseIds).catch(() => {
+      // Không block UX — CourseDetailPage có cơ chế tự sync khi cần
+    });
+
+    // Bước 3: Chuyển đến trang kết quả
     navigate(`/payment-result?status=success`);
   };
 

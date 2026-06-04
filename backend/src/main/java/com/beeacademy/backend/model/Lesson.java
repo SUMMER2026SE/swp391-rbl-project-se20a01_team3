@@ -54,11 +54,30 @@ public class Lesson {
     @Column(name = "title", nullable = false)
     private String title;
 
-    /** Cloudinary/Supabase Storage URL. Nullable cho lesson dạng PDF/quiz. */
+    @Column(name = "description")
+    private String description;
+
+    /**
+     * URL embed (YouTube/Vimeo). Nullable — chỉ có khi videoSource = 'embed'.
+     * Không cần signed URL vì là link công khai.
+     */
+    @Column(name = "video_embed_url")
+    private String videoEmbedUrl;
+
+    /**
+     * Path trong Supabase Storage private bucket "course-videos".
+     * Dạng: "{courseId}/{chapterId}/{lessonId}.mp4"
+     * Khi không null → backend generate signed URL khi student xem.
+     * Khi null → dùng videoUrl hoặc videoEmbedUrl.
+     */
+    @Column(name = "video_storage_path")
+    private String videoStoragePath;
+
+    /** URL công khai (Supabase public bucket hoặc URL cũ). Nullable. */
     @Column(name = "video_url")
     private String videoUrl;
 
-    /** Thời lượng tính bằng giây. */
+    /** Thời lượng tính bằng giây. Mặc định 0 trước khi upload xong. */
     @Column(name = "duration_sec", nullable = false)
     private Integer durationSec;
 
@@ -73,4 +92,49 @@ public class Lesson {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    // ========================================================================
+    // Factory + business methods
+    // ========================================================================
+
+    /**
+     * Tạo lesson mới cho một chapter.
+     *
+     * @param chapter  chapter cha
+     * @param title    tiêu đề bài học
+     * @param position thứ tự trong chapter (bắt đầu từ 1)
+     * @param isFree   cho phép guest xem thử không
+     */
+    public static Lesson createNew(Chapter chapter, String title,
+                                   String description, Integer position, boolean isFree) {
+        Lesson l = new Lesson();
+        l.id          = UUID.randomUUID();
+        l.chapter     = chapter;
+        l.title       = title;
+        l.description = description;
+        l.position    = position;
+        l.isFree      = isFree;
+        l.durationSec = 0;
+        return l;
+    }
+
+    /** Cập nhật thông tin bài học (không thay đổi video). */
+    public void update(String title, String description, Integer position,
+                       boolean isFree, String videoEmbedUrl) {
+        if (title != null && !title.isBlank()) this.title = title.trim();
+        if (description != null) this.description = description;
+        if (position != null && position > 0) this.position = position;
+        this.isFree       = isFree;
+        this.videoEmbedUrl = videoEmbedUrl;
+    }
+
+    /**
+     * Ghi nhận video đã upload lên Supabase Storage private bucket.
+     * Path được dùng sau này để generate signed URL.
+     */
+    public void setVideoStoragePath(String path, int durationSec) {
+        this.videoStoragePath = path;
+        this.videoUrl         = null;   // xoá URL cũ nếu có, ưu tiên storage path
+        this.durationSec      = durationSec;
+    }
 }

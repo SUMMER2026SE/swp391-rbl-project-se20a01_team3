@@ -1,54 +1,64 @@
 package com.beeacademy.backend.dto.response;
 
+import com.beeacademy.backend.model.CourseDocument;
 import com.beeacademy.backend.model.Lesson;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
-/**
- * Bài học gọn nhẹ - dùng trong curriculum accordion ở trang chi tiết khoá.
- *
- * <p>Quy tắc giấu video:
- * <ul>
- *   <li>Lesson {@code isFree=true} → trả {@code videoUrl} đầy đủ (UC08
- *       cho guest xem thử).</li>
- *   <li>Lesson {@code isFree=false} → service sẽ truyền {@code includeUrl=false}
- *       khi user chưa enrolled; URL trả về null. Khi user đã mua khoá thì
- *       trả URL đầy đủ.</li>
- * </ul>
- *
- * <p>Logic quyết định {@code includeUrl} nằm ở {@code CourseService}, DTO
- * chỉ là cấu trúc dữ liệu.
- *
- * @param id          UUID bài học
- * @param title       tiêu đề
- * @param videoUrl    URL video (null nếu bị giấu)
- * @param durationSec thời lượng (giây)
- * @param position    thứ tự trong chapter
- * @param isFree      có cho xem thử miễn phí không
- */
 public record LessonResponse(
         UUID id,
         String title,
         String videoUrl,
+        String videoEmbedUrl,
         Integer durationSec,
         Integer position,
-        Boolean isFree
+        Boolean isFree,
+        List<DocumentDto> documents
 ) {
 
-    /**
-     * Map từ entity. {@code includeUrl} quyết định có expose video URL hay không.
-     *
-     * @param lesson     entity
-     * @param includeUrl true = user có quyền xem (đã mua hoặc lesson free)
-     */
+    /** Tài liệu đính kèm (PDF/slide) — public URL truy cập trực tiếp. */
+    public record DocumentDto(String name, String fileUrl, String fileType, Long fileSizeBytes) {
+        public static DocumentDto fromEntity(CourseDocument d) {
+            return new DocumentDto(d.getName(), d.getFileUrl(), d.getFileType(), d.getFileSizeBytes());
+        }
+    }
+
+    /** Map không có signed URL và không có documents. */
     public static LessonResponse fromEntity(Lesson lesson, boolean includeUrl) {
+        return fromEntity(lesson, includeUrl, null, Collections.emptyList());
+    }
+
+    /** Map đầy đủ: signed URL + danh sách tài liệu. */
+    public static LessonResponse fromEntity(Lesson lesson, boolean includeUrl,
+                                             String signedUrl,
+                                             List<CourseDocument> docs) {
+        boolean canSee = includeUrl || Boolean.TRUE.equals(lesson.getIsFree());
+        String videoUrl = canSee
+                ? (signedUrl != null ? signedUrl : lesson.getVideoUrl())
+                : null;
+        String embedUrl = canSee ? lesson.getVideoEmbedUrl() : null;
+
+        List<DocumentDto> docDtos = (docs != null && !docs.isEmpty())
+                ? docs.stream().map(DocumentDto::fromEntity).toList()
+                : Collections.emptyList();
+
         return new LessonResponse(
                 lesson.getId(),
                 lesson.getTitle(),
-                includeUrl ? lesson.getVideoUrl() : null,
+                videoUrl,
+                embedUrl,
                 lesson.getDurationSec(),
                 lesson.getPosition(),
-                lesson.getIsFree()
+                lesson.getIsFree(),
+                docDtos
         );
+    }
+
+    /** Compat overload giữ nguyên cho ChapterResponse.fromEntity cũ. */
+    public static LessonResponse fromEntityWithSignedUrl(Lesson lesson, boolean canSee,
+                                                          String signedUrl) {
+        return fromEntity(lesson, canSee, signedUrl, Collections.emptyList());
     }
 }

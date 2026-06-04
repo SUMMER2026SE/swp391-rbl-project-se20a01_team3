@@ -169,4 +169,107 @@ public class Course {
     public boolean isOnSale() {
         return salePriceVnd != null && salePriceVnd < priceVnd;
     }
+
+    // ========================================================================
+    // Factory + business methods (Teacher Portal)
+    // ========================================================================
+
+    /**
+     * Factory: GV tạo khóa học mới — bắt đầu ở trạng thái DRAFT.
+     *
+     * @param teacher    profile giáo viên tạo khoá
+     * @param title      tiêu đề khoá học
+     * @param description mô tả
+     * @param category   danh mục (môn học)
+     * @param grades     mảng lớp mục tiêu [6], [7,8], v.v.
+     * @param priceVnd   giá gốc (VND)
+     */
+    public static Course createByTeacher(Profile teacher, String title, String description,
+                                         Category category, int[] grades, int priceVnd) {
+        Course c       = new Course();
+        c.id           = UUID.randomUUID();
+        c.teacher      = teacher;
+        c.title        = title.trim();
+        c.description  = description;
+        c.category     = category;
+        c.grades       = grades;
+        c.priceVnd     = priceVnd;
+        c.status       = CourseStatus.DRAFT;
+        c.isFeatured   = false;
+        c.totalChapters    = 0;
+        c.totalLessons     = 0;
+        c.totalDurationSec = 0;
+        // slug tạm thời — service sẽ tạo slug duy nhất sau
+        c.slug = title.trim().toLowerCase()
+                     .replaceAll("[^a-z0-9\\s-]", "")
+                     .replaceAll("\\s+", "-");
+        return c;
+    }
+
+    /** Cập nhật thông tin cơ bản khoá học (chỉ khi DRAFT/NEEDS_REVISION). */
+    public void update(String title, String description, Category category,
+                       int[] grades, int priceVnd, Integer salePriceVnd, String thumbnailUrl) {
+        if (title != null && !title.isBlank()) this.title = title.trim();
+        if (description != null) this.description = description;
+        if (category != null) this.category = category;
+        if (grades != null) this.grades = grades;
+        if (priceVnd > 0) this.priceVnd = priceVnd;
+        this.salePriceVnd = salePriceVnd;
+        if (thumbnailUrl != null) this.thumbnailUrl = thumbnailUrl;
+    }
+
+    /** Cập nhật URL thumbnail sau khi upload ảnh bìa. */
+    public void setThumbnailUrl(String url) {
+        this.thumbnailUrl = url;
+    }
+
+    /** Đếm lại tổng chapter/lesson (gọi sau mỗi thao tác thêm/xóa). */
+    public void recalculateCounts() {
+        this.totalChapters = chapters.size();
+        this.totalLessons  = chapters.stream()
+                .mapToInt(ch -> ch.getLessons().size()).sum();
+        this.totalDurationSec = chapters.stream()
+                .flatMap(ch -> ch.getLessons().stream())
+                .mapToInt(l -> l.getDurationSec() != null ? l.getDurationSec() : 0)
+                .sum();
+    }
+
+    // ── State transitions ────────────────────────────────────────────────────
+
+    /**
+     * GV nộp khóa học để Admin duyệt.
+     * Chỉ hợp lệ khi status ∈ {DRAFT, NEEDS_REVISION}.
+     */
+    public void submitForReview() {
+        if (status != CourseStatus.DRAFT && status != CourseStatus.NEEDS_REVISION) {
+            throw new IllegalStateException(
+                "Chỉ có thể nộp duyệt khi khóa học ở trạng thái Bản nháp hoặc Cần sửa.");
+        }
+        this.status = CourseStatus.PENDING_REVIEW;
+    }
+
+    /** Admin duyệt → tự động publish. */
+    public void approve() {
+        if (status != CourseStatus.PENDING_REVIEW) {
+            throw new IllegalStateException("Chỉ duyệt được khi khóa học đang chờ duyệt.");
+        }
+        this.status      = CourseStatus.PUBLISHED;
+        this.publishedAt = java.time.Instant.now();
+    }
+
+    /** Admin từ chối. */
+    public void reject() {
+        if (status != CourseStatus.PENDING_REVIEW) {
+            throw new IllegalStateException("Chỉ từ chối được khi khóa học đang chờ duyệt.");
+        }
+        this.status = CourseStatus.REJECTED;
+    }
+
+    /** Admin yêu cầu GV sửa lại. */
+    public void needsRevision() {
+        if (status != CourseStatus.PENDING_REVIEW) {
+            throw new IllegalStateException("Chỉ yêu cầu sửa khi khóa học đang chờ duyệt.");
+        }
+        this.status = CourseStatus.NEEDS_REVISION;
+    }
 }

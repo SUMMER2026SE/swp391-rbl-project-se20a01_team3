@@ -9,6 +9,13 @@ export interface QuizQuestion {
   explanation: string;
 }
 
+export interface LessonDocument {
+  name: string;
+  fileUrl: string;
+  fileType: string;
+  fileSizeBytes: number;
+}
+
 export interface Lesson {
   id: string;
   title: string;
@@ -17,6 +24,7 @@ export interface Lesson {
   url: string;
   isCompleted?: boolean;
   questions?: QuizQuestion[];
+  documents?: LessonDocument[];
 }
 
 export interface Course {

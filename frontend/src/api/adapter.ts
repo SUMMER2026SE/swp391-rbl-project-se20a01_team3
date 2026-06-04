@@ -70,6 +70,7 @@ function gradesToLabel(grades: number[]): Grade {
  */
 function adaptLesson(lesson: ApiLesson): UiLesson {
   const titleLower = lesson.title.toLowerCase();
+  const hasVideo = !!(lesson.videoUrl || lesson.videoEmbedUrl);
   let type: 'video' | 'pdf' | 'quiz' = 'video';
   let questions: QuizQuestion[] | undefined = undefined;
 
@@ -87,18 +88,33 @@ function adaptLesson(lesson: ApiLesson): UiLesson {
     } else {
       questions = QUIZ_TOAN_C1;
     }
-  } else if (!lesson.videoUrl || titleLower.includes('pdf') || titleLower.includes('tài liệu') || titleLower.includes('đọc')) {
+  } else if (
+    // type='pdf' CHỈ khi bài KHÔNG có video VÀ có tài liệu hoặc tên bài chỉ rõ là tài liệu.
+    // Nếu bài có cả video + tài liệu → type='video', tài liệu hiển thị ở tab Tổng quan.
+    !hasVideo && (
+      lesson.documents?.length > 0 ||
+      titleLower.includes('pdf') ||
+      titleLower.includes('tài liệu') ||
+      titleLower.includes('đọc')
+    )
+  ) {
     type = 'pdf';
   }
+
+  // Có video → url là video; không có video → url là tài liệu đầu tiên (cho PDF player)
+  const url = hasVideo
+    ? (lesson.videoUrl ?? lesson.videoEmbedUrl ?? '#')
+    : (lesson.documents?.[0]?.fileUrl ?? '#');
 
   return {
     id: lesson.id,
     title: lesson.title,
     duration: formatDurationSec(lesson.durationSec),
     type,
-    url: lesson.videoUrl ?? '#',
+    url,
     isCompleted: false,
     questions,
+    documents: lesson.documents ?? [],
   };
 }
 
@@ -115,7 +131,7 @@ export function flattenChaptersToLessons(chapters: ApiChapter[]): UiLesson[] {
  * CourseSummary API (list view) → Course UI.
  * Không có chapters/lessons - field lessons = undefined.
  */
-export function adaptCourseSummary(summary: ApiCourseSummary): UiCourse {
+export function adaptCourseSummary(summary: ApiCourseSummary, isEnrolled = false): UiCourse {
   return {
     id: summary.id,
     title: summary.title,
@@ -124,13 +140,10 @@ export function adaptCourseSummary(summary: ApiCourseSummary): UiCourse {
     subject: SLUG_TO_SUBJECT[summary.categorySlug ?? ''] ?? 'Tất cả',
     grade: gradesToLabel(summary.grades),
     image: summary.thumbnailUrl ?? '',
-    // BE chưa có rating/students, mock tạm bằng số ổn định dựa trên ID
-    // để UI không bị "0 học viên" trông xấu. Sẽ thay bằng dữ liệu thật ở
-    // Module 2 phase 2 khi có bảng reviews.
     rating: 4.7,
     students: 1000,
     instructor: summary.teacherName ?? 'Bee Academy',
-    isEnrolled: false, // Module 3 sẽ check enrollments thật
+    isEnrolled,
   };
 }
 
@@ -154,7 +167,7 @@ export function adaptCourseDetail(detail: ApiCourseDetail): UiCourse {
     rating: 4.7,
     students: 1000,
     instructor: detail.teacherName ?? 'Bee Academy',
-    isEnrolled: false,
+    isEnrolled: detail.enrolled,  // ✅ từ backend: true nếu đã mua / GV sở hữu / Admin
     lessons: flattenChaptersToLessons(detail.chapters),
   };
 }

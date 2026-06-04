@@ -113,13 +113,22 @@ export interface CourseSummary {
   totalDurationSec: number;
 }
 
+export interface LessonDocumentDto {
+  name: string;
+  fileUrl: string;
+  fileType: string;
+  fileSizeBytes: number;
+}
+
 export interface LessonDetail {
   id: string;
   title: string;
   videoUrl: string | null;
+  videoEmbedUrl: string | null;
   durationSec: number;
   position: number;
   isFree: boolean;
+  documents: LessonDocumentDto[];
 }
 
 export interface ChapterDetail {
@@ -134,6 +143,7 @@ export interface ChapterDetail {
 export interface CourseDetail extends Omit<CourseSummary, 'isFeatured'> {
   publishedAt: string | null;
   chapters: ChapterDetail[];
+  enrolled: boolean; // true nếu đã mua / là GV sở hữu / là Admin
 }
 
 // ============================================================================

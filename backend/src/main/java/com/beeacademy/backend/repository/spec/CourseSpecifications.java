@@ -36,9 +36,22 @@ public final class CourseSpecifications {
      * Chỉ lấy khoá học đã PUBLISHED (ẩn draft/pending/archived khỏi public).
      *
      * <p>Spec này KHÔNG bao giờ null - luôn áp dụng cho mọi query public.
+     *
+     * <p><b>Tại sao dùng toDbValue() thay vì truyền enum trực tiếp?</b><br>
+     * Field {@code status} có cả {@code @Convert} lẫn {@code @ColumnTransformer(write="?::course_status")}.
+     * Khi Hibernate 6 build Criteria predicate với enum object, nó gọi {@code .name()} → {@code "PUBLISHED"}
+     * (uppercase), rồi SQL trở thành {@code status = 'PUBLISHED'::course_status}.
+     * Postgres enum {@code course_status} lưu lowercase ({@code "published"}) nên ném lỗi:
+     * {@code invalid input value for enum course_status: "PUBLISHED"}.
+     * <br>
+     * Giải pháp: truyền chuỗi {@code "published"} trực tiếp (qua {@code toDbValue()}).
+     * Hibernate bind chuỗi literal → SQL: {@code status = 'published'::course_status} → khớp Postgres.
      */
     public static Specification<Course> onlyPublished() {
-        return (root, query, cb) -> cb.equal(root.get("status"), CourseStatus.PUBLISHED);
+        return (root, query, cb) -> cb.equal(
+                root.get("status"),
+                CourseStatus.PUBLISHED.toDbValue()   // "published" — lowercase khớp Postgres enum
+        );
     }
 
     /**
