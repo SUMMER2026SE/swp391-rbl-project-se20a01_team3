@@ -56,4 +56,6 @@ Thumbs.db
 File UseCase.txt
 GEMINI.md
 Thông tin trang web.txt
-*.pngChiaCode/
+*.png
+ChiaCode/
+.codegraph/
