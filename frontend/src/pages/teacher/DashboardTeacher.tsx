@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'motion/react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -13,7 +13,7 @@ import {
   ChevronRight, Bell, LogOut, Menu, X,
   CheckCircle2, PlusCircle,
   PenSquare, Landmark, BarChart2, ClipboardList,
-  GraduationCap, Megaphone, Loader2, PackageOpen,
+  GraduationCap, Megaphone, Database, Loader2, PackageOpen,
 } from 'lucide-react';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -44,6 +44,25 @@ function pctChange(cur: number, prev: number) {
   return Math.round(((cur - prev) / prev) * 100);
 }
 
+function courseStatusMeta(status: TeacherCourseResponse['status']) {
+  switch (status) {
+    case 'published':
+      return { label: 'Đang bán', className: 'bg-green-500/10 text-green-600' };
+    case 'pending_review':
+      return { label: 'Chờ duyệt', className: 'bg-amber-500/10 text-amber-600' };
+    case 'draft':
+      return { label: 'Bản nháp', className: 'bg-surface-container text-on-surface-variant' };
+    case 'approved':
+      return { label: 'Đã duyệt', className: 'bg-blue-500/10 text-blue-600' };
+    case 'rejected':
+      return { label: 'Bị từ chối', className: 'bg-red-500/10 text-red-600' };
+    case 'needs_revision':
+      return { label: 'Cần sửa', className: 'bg-orange-500/10 text-orange-600' };
+    default:
+      return { label: status, className: 'bg-surface-container text-on-surface-variant' };
+  }
+}
+
 // ─── Nav ────────────────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
@@ -51,6 +70,7 @@ const NAV_ITEMS = [
   { icon: BookOpen,        label: 'Khóa học của tôi', path: '/teacher/courses'   },
   { icon: FileText,        label: 'Bài giảng',         path: '/teacher/content'   },
   { icon: PenSquare,       label: 'Quiz chương',       path: '/teacher/quiz'      },
+  { icon: Database,        label: 'Ngân hàng câu hỏi', path: '/teacher/questions' },
   { icon: GraduationCap,   label: 'Bài kiểm tra',      path: '/teacher/exam'      },
   { icon: ClipboardList,   label: 'Chấm điểm',         path: '/teacher/grades'    },
   { icon: HelpCircle,      label: 'Hỏi & Đáp',         path: '/teacher/qa'        },
@@ -137,17 +157,8 @@ function MyCoursesList({ items }: { items: CourseStat[] }) {
             />
           </div>
           <div className="flex items-center gap-2 mt-1">
-            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-              course.status === 'PUBLISHED'
-                ? 'bg-green-500/10 text-green-600'
-                : course.status === 'PENDING_REVIEW'
-                ? 'bg-amber-500/10 text-amber-600'
-                : 'bg-surface-container text-on-surface-variant'
-            }`}>
-              {course.status === 'PUBLISHED' ? 'Đang bán'
-                : course.status === 'PENDING_REVIEW' ? 'Chờ duyệt'
-                : course.status === 'DRAFT' ? 'Bản nháp'
-                : course.status}
+            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${courseStatusMeta(course.status).className}`}>
+              {courseStatusMeta(course.status).label}
             </span>
           </div>
         </div>
@@ -164,6 +175,7 @@ export default function DashboardTeacher() {
   const [splits, setSplits] = useState<RevenueSplitResponse[]>([]);
   const [periods, setPeriods] = useState<PayoutPeriodResponse[]>([]);
   const [courses, setCourses] = useState<TeacherCourseResponse[]>([]);
+  const didLoadOverviewRef = useRef(false);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -171,17 +183,40 @@ export default function DashboardTeacher() {
   const user = useAuthStore(s => s.user);
 
   useEffect(() => {
-    Promise.all([
+    if (didLoadOverviewRef.current) return;
+    didLoadOverviewRef.current = true;
+
+    setLoading(true);
+    Promise.allSettled([
       getRevenueSplits(),
       getPayoutPeriods(),
       listMyCourses(0, 50).then(p => p.items),
     ])
-      .then(([s, p, c]) => {
-        setSplits(s);
-        setPeriods(p);
-        setCourses(c);
+      .then(([splitsResult, periodsResult, coursesResult]) => {
+        const failedSections: string[] = [];
+
+        if (splitsResult.status === 'fulfilled') {
+          setSplits(splitsResult.value);
+        } else {
+          failedSections.push('doanh thu');
+        }
+
+        if (periodsResult.status === 'fulfilled') {
+          setPeriods(periodsResult.value);
+        } else {
+          failedSections.push('kỳ thanh toán');
+        }
+
+        if (coursesResult.status === 'fulfilled') {
+          setCourses(coursesResult.value);
+        } else {
+          failedSections.push('khóa học');
+        }
+
+        if (failedSections.length > 0) {
+          notify.error(`Không thể tải ${failedSections.join(', ')}`);
+        }
       })
-      .catch(() => notify.error('Không thể tải dữ liệu tổng quan'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -202,7 +237,7 @@ export default function DashboardTeacher() {
 
     const uniqueStudents = new Set(splits.map(s => s.studentName)).size;
 
-    const publishedCourses = courses.filter(c => c.status === 'PUBLISHED').length;
+    const publishedCourses = courses.filter(c => c.status === 'published').length;
 
     return {
       curRevenue,

@@ -9,6 +9,7 @@ import { GoogleGenAI } from '@google/genai';
 import { notify } from '../../lib/toast';
 import * as questionService from '../../api/questionService';
 import type { CreateQuestionRequest } from '../../api/questionService';
+import { isApiError } from '../../api/client';
 import { listCategories } from '../../api/courseService';
 import { listMyCourses, getCourseDetail } from '../../api/teacherCourseService';
 import type { TeacherCourseResponse, TeacherChapterResponse } from '../../api/teacherCourseService';
@@ -71,6 +72,24 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (isApiError(err)) return err.message;
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
+function wasNetworkErrorAlreadyToasted(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : '';
+  return message.startsWith('Không thể kết nối') || message.startsWith('Mất kết nối');
+}
+
+function responseText(response: unknown): string {
+  const value = (response as { text?: unknown }).text;
+  if (typeof value === 'function') {
+    return String((value as () => unknown).call(response) ?? '');
+  }
+  return String(value ?? '');
+}
+
 function parseGeminiResponse(raw: string): ParsedQuestion[] {
   // Tìm JSON array trong response (đề phòng Gemini thêm text thừa)
   const match = raw.match(/\[[\s\S]*\]/);
@@ -81,25 +100,32 @@ function parseGeminiResponse(raw: string): ParsedQuestion[] {
 
   return arr.map((item: any, i: number): ParsedQuestion => {
     try {
-      const choices: Array<{ content: string; isCorrect: boolean }> =
+      let choices: Array<{ content: string; isCorrect: boolean }> =
         (item.choices ?? []).map((c: any) => ({
           content:   String(c.content ?? '').trim(),
           isCorrect: Boolean(c.isCorrect),
-        }));
+        })).filter((c: { content: string; isCorrect: boolean }) => c.content);
+
+      let error: string | undefined;
+      if (choices.length > 4) {
+        error = 'Tối đa 4 đáp án';
+        choices = choices.slice(0, 4);
+      }
 
       // Đảm bảo đúng 1 đáp án đúng
-      const correctCount = choices.filter(c => c.isCorrect).length;
+      let correctCount = choices.filter(c => c.isCorrect).length;
       if (correctCount === 0 && choices.length > 0) choices[0].isCorrect = true;
       if (correctCount > 1) {
         // Giữ lại đáp án đúng đầu tiên
         let found = false;
         choices.forEach(c => { if (c.isCorrect && found) c.isCorrect = false; else if (c.isCorrect) found = true; });
       }
+      correctCount = choices.filter(c => c.isCorrect).length;
 
-      let error: string | undefined;
       if (!item.content?.trim())        error = 'Thiếu nội dung câu hỏi';
       else if (choices.length < 2)      error = 'Cần ít nhất 2 đáp án';
       else if (choices.some(c => !c.content)) error = 'Đáp án trống';
+      else if (correctCount !== 1)      error = 'Cần đúng 1 đáp án đúng';
 
       const difficulty: Difficulty =
         item.difficulty === 'easy' ? 'easy' : item.difficulty === 'hard' ? 'hard' : 'medium';
@@ -151,6 +177,7 @@ type Step = 'setup' | 'scanning' | 'preview' | 'done';
 export default function AIScanModal({ open, onClose, onImported }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const apiKey  = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+  const geminiModel = (import.meta.env.VITE_GEMINI_MODEL as string | undefined)?.trim() || 'gemini-2.0-flash';
   const hasKey  = Boolean(apiKey?.trim());
 
   // Context
@@ -169,7 +196,7 @@ export default function AIScanModal({ open, onClose, onImported }: Props) {
   const [progress,  setProgress]  = useState('');
   const [questions, setQuestions] = useState<ParsedQuestion[]>([]);
   const [importing, setImporting] = useState(false);
-  const [result,    setResult]    = useState<{ created: number; failed: number } | null>(null);
+  const [result,    setResult]    = useState<questionService.BulkImportResult | null>(null);
 
   // Load metadata on open
   useEffect(() => {
@@ -228,7 +255,7 @@ export default function AIScanModal({ open, onClose, onImported }: Props) {
 
       const ai = new GoogleGenAI({ apiKey: apiKey! });
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: geminiModel,
         contents: [
           {
             role: 'user',
@@ -246,18 +273,19 @@ export default function AIScanModal({ open, onClose, onImported }: Props) {
       });
 
       setProgress('Đang xử lý kết quả...');
-      const rawText = response.text ?? '';
+      const rawText = responseText(response);
       const parsed  = parseGeminiResponse(rawText);
       setQuestions(parsed);
       setStep('preview');
-    } catch (err: any) {
-      notify.error(err.message?.includes('API_KEY') ? 'API key không hợp lệ' : `Lỗi AI: ${err.message ?? 'Không xác định'}`);
+    } catch (err) {
+      const msg = getErrorMessage(err, 'Không xác định');
+      notify.error(msg.includes('API_KEY') ? 'API key không hợp lệ' : `Lỗi AI: ${msg}`);
       setStep('setup');
       setFileName('');
     } finally {
       setProgress('');
     }
-  }, [apiKey, categoryId]);
+  }, [apiKey, categoryId, geminiModel]);
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -295,9 +323,13 @@ export default function AIScanModal({ open, onClose, onImported }: Props) {
       if (res.created > 0) {
         notify.success(`Nhập thành công ${res.created} câu hỏi từ AI`);
         onImported();
+      } else if (res.failed > 0) {
+        notify.error(res.errors?.[0]?.message ?? 'Không nhập được câu hỏi nào');
       }
-    } catch {
-      notify.error('Nhập thất bại');
+    } catch (err) {
+      if (!wasNetworkErrorAlreadyToasted(err)) {
+        notify.error(getErrorMessage(err, 'Nhập thất bại'));
+      }
     } finally {
       setImporting(false);
     }
@@ -606,6 +638,15 @@ export default function AIScanModal({ open, onClose, onImported }: Props) {
                           {result.created} câu hỏi đã được thêm vào ngân hàng từ AI.
                           {result.failed > 0 && ` ${result.failed} câu bị bỏ qua.`}
                         </p>
+                        {result.errors && result.errors.length > 0 && (
+                          <ul className="mt-2 space-y-1 text-xs text-amber-800">
+                            {result.errors.slice(0, 3).map(err => (
+                              <li key={`${err.row}-${err.message}`}>
+                                Câu {err.row}: {err.message}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
                     </motion.div>
                   )}

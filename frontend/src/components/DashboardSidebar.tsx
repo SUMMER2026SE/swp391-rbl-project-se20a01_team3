@@ -25,7 +25,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   BookOpen, CreditCard, Heart, MessageSquare,
   ShoppingBag, UserCircle, Camera, LogOut, Lock, Megaphone,
-  DollarSign, BarChart2, Settings, Calendar, TrendingUp
+  DollarSign, BarChart2, Settings, Calendar, TrendingUp, Database
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -56,6 +56,7 @@ const TEACHER_MENU_ITEMS = [
   { icon: BookOpen,      label: 'Khóa học của tôi',     path: '/teacher/courses' },
   { icon: BookOpen,      label: 'Nội dung giảng dạy',   path: '/teacher/content' },
   { icon: BookOpen,      label: 'Quản lý Quiz',         path: '/teacher/quiz'  },
+  { icon: Database,      label: 'Ngân hàng câu hỏi',    path: '/teacher/questions' },
   { icon: BookOpen,      label: 'Quản lý Đề kiểm tra',  path: '/teacher/exam'  },
   { icon: BookOpen,      label: 'Bảng điểm học sinh',   path: '/teacher/grades' },
   { icon: MessageSquare, label: 'Hỏi đáp (Q&A)',         path: '/teacher/qa'    },

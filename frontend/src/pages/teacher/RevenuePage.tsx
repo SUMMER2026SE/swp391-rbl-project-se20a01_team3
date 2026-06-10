@@ -26,7 +26,7 @@ import {
   Bell, LogOut, Menu, X,
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, DollarSign, Clock, CheckCircle2,
-  TrendingUp, Calendar, Receipt, ArrowRight, Megaphone,
+  TrendingUp, Calendar, Receipt, ArrowRight, Megaphone, Database,
 } from 'lucide-react';
 
 type PayoutStatus = 'pending' | 'processing' | 'paid';
@@ -46,6 +46,7 @@ const NAV_ITEMS = [
   { icon: BookOpen,        label: 'Khóa học của tôi',  path: '/teacher/courses',  },
   { icon: FileText,        label: 'Bài giảng',          path: '/teacher/content',  },
   { icon: PenSquare,       label: 'Quiz chương',        path: '/teacher/quiz',     },
+  { icon: Database,        label: 'Ngân hàng câu hỏi',  path: '/teacher/questions',},
   { icon: GraduationCap,   label: 'Bài kiểm tra',       path: '/teacher/exam',     },
   { icon: ClipboardList,   label: 'Chấm điểm',          path: '/teacher/grades',   },
   { icon: HelpCircle,      label: 'Hỏi & Đáp',          path: '/teacher/qa',       },
