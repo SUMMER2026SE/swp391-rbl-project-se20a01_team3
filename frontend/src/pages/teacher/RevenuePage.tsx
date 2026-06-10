@@ -15,10 +15,12 @@
  *   - Click "Xem giao dịch kỳ này" ở Tab 2 → chuyển sang Tab 1 với filter sẵn theo kỳ đó
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
+import { getRevenueSplits, getPayoutPeriods } from '../../api/revenueService';
+import type { RevenueSplitResponse, PayoutPeriodResponse } from '../../api/revenueService';
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle,
   Bell, LogOut, Menu, X,
@@ -27,101 +29,14 @@ import {
   TrendingUp, Calendar, Receipt, ArrowRight, Megaphone,
 } from 'lucide-react';
 
-// ═══════════════════════════════════════════════════════════════════
-//  PHẦN 1 — TYPES
-// ═══════════════════════════════════════════════════════════════════
-
-// Trạng thái kỳ thanh toán
-//   - pending:    kỳ đang diễn ra hoặc chờ Admin xuất Excel
-//   - processing: Admin đã xuất Excel, đang chuyển khoản (chưa xác nhận)
-//   - paid:       Admin đã xác nhận chuyển khoản xong (UC40)
 type PayoutStatus = 'pending' | 'processing' | 'paid';
+type RevenueSplit = RevenueSplitResponse;
+type PayoutPeriod = PayoutPeriodResponse & { monthYearDisplay: string };
 
-// 1 giao dịch trong revenue_splits — sinh ra khi HS mua khóa học
-interface RevenueSplit {
-  id: string;
-  studentName: string;
-  courseId: string;
-  courseTitle: string;
-
-  // 3 số tiền — tách biệt để GV thấy rõ cách chia hoa hồng
-  grossAmount: number;     // HS đã trả
-  platformFee: number;     // Nền tảng giữ
-  teacherAmount: number;   // GV được hưởng (grossAmount - platformFee)
-  // Tỷ lệ % GV nhận — hiển thị để minh bạch hệ số chia
-  // Lưu vào row vì có thể thay đổi theo từng khóa hoặc theo thời điểm
-  teacherPercent: number;
-
-  occurredAt: string;      // ISO datetime — lúc HS mua
-
-  // Liên kết đến kỳ thanh toán → để biết khi nào được chuyển
-  payoutPeriodId: string;
+function formatMonthYear(yyyyMM: string): string {
+  const [year, month] = yyyyMM.split('-');
+  return `Tháng ${parseInt(month)} / ${year}`;
 }
-
-// 1 kỳ thanh toán (thường = 1 tháng)
-interface PayoutPeriod {
-  id: string;
-  monthYear: string;       // vd "Tháng 5 / 2026"
-
-  // Tổng hợp các giao dịch trong kỳ — derived nhưng cache vào để render nhanh
-  // (Hoặc có thể compute từ splits.filter(s => s.payoutPeriodId === id))
-  transactionCount: number;
-  totalGross: number;
-  totalPlatformFee: number;
-  totalTeacherAmount: number;
-
-  status: PayoutStatus;
-
-  // ── Thông tin chuyển khoản (chỉ có khi status === 'paid') ──
-  paidAt?: string;
-  paidByAdminName?: string;
-  transferReference?: string;  // Mã GD ngân hàng — để GV đối chiếu sao kê
-  transferContent?: string;    // Nội dung chuyển khoản
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  PHẦN 2 — MOCK DATA
-// ═══════════════════════════════════════════════════════════════════
-// 2 kỳ: tháng 4/2026 đã paid, tháng 5/2026 đang pending (kỳ hiện tại)
-const MOCK_PERIODS: PayoutPeriod[] = [
-  {
-    id: 'p-2026-05',
-    monthYear: 'Tháng 5 / 2026',
-    transactionCount: 4,
-    totalGross: 2_350_000,
-    totalPlatformFee: 705_000,
-    totalTeacherAmount: 1_645_000,
-    status: 'pending',
-  },
-  {
-    id: 'p-2026-04',
-    monthYear: 'Tháng 4 / 2026',
-    transactionCount: 5,
-    totalGross: 2_750_000,
-    totalPlatformFee: 825_000,
-    totalTeacherAmount: 1_925_000,
-    status: 'paid',
-    paidAt: '2026-05-05T10:30:00',
-    paidByAdminName: 'Admin Trần Hữu Phước',
-    transferReference: 'VCB202605050001245',
-    transferContent: 'BEE ACADEMY thanh toan hoa hong T4/2026 - GV Nguyen Van Bee',
-  },
-];
-
-const MOCK_SPLITS: RevenueSplit[] = [
-  // Tháng 5/2026 (pending)
-  { id: 's1', studentName: 'Nguyễn Văn An',  courseId: 'c1', courseTitle: 'Toán Đại Số - Lớp 8',  grossAmount: 499_000, platformFee: 149_700, teacherAmount: 349_300, teacherPercent: 70, occurredAt: '2026-05-20T14:30:00', payoutPeriodId: 'p-2026-05' },
-  { id: 's2', studentName: 'Trần Thị Bích',  courseId: 'c1', courseTitle: 'Toán Đại Số - Lớp 8',  grossAmount: 499_000, platformFee: 149_700, teacherAmount: 349_300, teacherPercent: 70, occurredAt: '2026-05-19T09:00:00', payoutPeriodId: 'p-2026-05' },
-  { id: 's3', studentName: 'Lê Minh Cường',  courseId: 'c2', courseTitle: 'Vật Lý - Lớp 9',       grossAmount: 550_000, platformFee: 165_000, teacherAmount: 385_000, teacherPercent: 70, occurredAt: '2026-05-18T20:10:00', payoutPeriodId: 'p-2026-05' },
-  { id: 's4', studentName: 'Phạm Thị Dung',  courseId: 'c1', courseTitle: 'Toán Đại Số - Lớp 8',  grossAmount: 802_000, platformFee: 240_600, teacherAmount: 561_400, teacherPercent: 70, occurredAt: '2026-05-15T11:20:00', payoutPeriodId: 'p-2026-05' },
-
-  // Tháng 4/2026 (paid)
-  { id: 's5', studentName: 'Hoàng Quốc Đạt', courseId: 'c1', courseTitle: 'Toán Đại Số - Lớp 8',  grossAmount: 499_000, platformFee: 149_700, teacherAmount: 349_300, teacherPercent: 70, occurredAt: '2026-04-28T16:00:00', payoutPeriodId: 'p-2026-04' },
-  { id: 's6', studentName: 'Vũ Minh Hùng',   courseId: 'c2', courseTitle: 'Vật Lý - Lớp 9',       grossAmount: 550_000, platformFee: 165_000, teacherAmount: 385_000, teacherPercent: 70, occurredAt: '2026-04-25T13:45:00', payoutPeriodId: 'p-2026-04' },
-  { id: 's7', studentName: 'Đỗ Khánh Linh',  courseId: 'c1', courseTitle: 'Toán Đại Số - Lớp 8',  grossAmount: 499_000, platformFee: 149_700, teacherAmount: 349_300, teacherPercent: 70, occurredAt: '2026-04-20T19:30:00', payoutPeriodId: 'p-2026-04' },
-  { id: 's8', studentName: 'Bùi Quang Huy',  courseId: 'c2', courseTitle: 'Vật Lý - Lớp 9',       grossAmount: 550_000, platformFee: 165_000, teacherAmount: 385_000, teacherPercent: 70, occurredAt: '2026-04-15T10:00:00', payoutPeriodId: 'p-2026-04' },
-  { id: 's9', studentName: 'Lý Thu Trang',   courseId: 'c1', courseTitle: 'Toán Đại Số - Lớp 8',  grossAmount: 652_000, platformFee: 195_600, teacherAmount: 456_400, teacherPercent: 70, occurredAt: '2026-04-10T08:30:00', payoutPeriodId: 'p-2026-04' },
-];
 
 // ═══════════════════════════════════════════════════════════════════
 //  PHẦN 3 — NAV_ITEMS (đồng bộ sidebar teacher)
@@ -195,9 +110,22 @@ function PayoutStatusBadge({ status }: { status: PayoutStatus }) {
 // ═══════════════════════════════════════════════════════════════════
 
 export default function TeacherRevenuePage() {
-  // ── State chính ─────────────────────────────────────────────────
-  const [periods] = useState<PayoutPeriod[]>(MOCK_PERIODS);
-  const [splits]  = useState<RevenueSplit[]>(MOCK_SPLITS);
+  const [periods, setPeriods] = useState<PayoutPeriod[]>([]);
+  const [splits, setSplits]   = useState<RevenueSplit[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([getRevenueSplits(), getPayoutPeriods()])
+      .then(([splitsData, periodsData]) => {
+        setSplits(splitsData);
+        setPeriods(periodsData.map(p => ({
+          ...p,
+          monthYearDisplay: formatMonthYear(p.monthYear),
+          status: p.status.toLowerCase() as PayoutStatus,
+        })));
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   // Tab đang chọn — mặc định mở Chi tiết giao dịch vì là realtime
   const [activeTab, setActiveTab] = useState<'transactions' | 'periods'>('transactions');
@@ -276,7 +204,7 @@ export default function TeacherRevenuePage() {
   // ── Map periodId → label để hiển thị trong table ────────────────
   const periodLabelMap = useMemo(() => {
     const map = new Map<string, string>();
-    periods.forEach(p => map.set(p.id, p.monthYear));
+    periods.forEach(p => map.set(p.id, p.monthYearDisplay));
     return map;
   }, [periods]);
 
@@ -386,6 +314,13 @@ export default function TeacherRevenuePage() {
             </p>
           </motion.div>
 
+          {loading && (
+            <div className="flex items-center justify-center py-20">
+              <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+          {!loading && (
+          <>
           {/* ── 4 STAT CARDS ───────────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -504,7 +439,7 @@ export default function TeacherRevenuePage() {
                     >
                       <option value="all">Tất cả kỳ</option>
                       {periods.map(p => (
-                        <option key={p.id} value={p.id}>{p.monthYear}</option>
+                        <option key={p.id} value={p.id}>{p.monthYearDisplay}</option>
                       ))}
                     </select>
                   </label>
@@ -618,7 +553,7 @@ export default function TeacherRevenuePage() {
                       <div>
                         <h3 className="font-extrabold text-on-surface text-lg flex items-center gap-2">
                           <Calendar className="w-5 h-5 text-primary" />
-                          {period.monthYear}
+                          {period.monthYearDisplay}
                         </h3>
                         <p className="text-xs text-on-surface-variant mt-0.5">
                           {period.transactionCount} giao dịch
@@ -652,7 +587,7 @@ export default function TeacherRevenuePage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                           <div>
                             <p className="text-xs text-on-surface-variant">Admin xác nhận</p>
-                            <p className="font-semibold text-on-surface">{period.paidByAdminName}</p>
+                            <p className="font-semibold text-on-surface">{period.transferRef}</p>
                           </div>
                           <div>
                             <p className="text-xs text-on-surface-variant">Ngày chuyển khoản</p>
@@ -662,7 +597,7 @@ export default function TeacherRevenuePage() {
                           </div>
                           <div>
                             <p className="text-xs text-on-surface-variant">Mã giao dịch ngân hàng</p>
-                            <p className="font-mono font-semibold text-on-surface">{period.transferReference}</p>
+                            <p className="font-mono font-semibold text-on-surface">{period.transferRef}</p>
                           </div>
                           <div>
                             <p className="text-xs text-on-surface-variant">Nội dung chuyển khoản</p>
@@ -686,6 +621,8 @@ export default function TeacherRevenuePage() {
             </motion.div>
           )}
 
+          </>
+          )}
         </main>
       </div>
     </div>

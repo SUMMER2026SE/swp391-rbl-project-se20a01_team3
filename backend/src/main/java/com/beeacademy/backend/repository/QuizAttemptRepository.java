@@ -32,4 +32,7 @@ public interface QuizAttemptRepository extends JpaRepository<QuizAttempt, UUID> 
 
     /** Tìm attempt theo id + student (verify ownership trước khi submit). */
     Optional<QuizAttempt> findByIdAndStudentId(UUID id, UUID studentId);
+
+    /** Lần làm quiz gần nhất đã nộp của một học sinh (cho Parent overview). */
+    Optional<QuizAttempt> findFirstByStudentIdAndSubmittedAtIsNotNullOrderBySubmittedAtDesc(UUID studentId);
 }

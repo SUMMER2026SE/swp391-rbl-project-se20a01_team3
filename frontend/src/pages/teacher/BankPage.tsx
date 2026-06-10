@@ -19,11 +19,15 @@
  *   - Click row → expand để xem chi tiết old → new từng trường
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { notify } from '../../lib/toast';
+import {
+  getBankInfo, upsertBankInfo, getBankAuditLog,
+  parseChanges, type BankVerifyStatus, type BankAuditLogResponse,
+} from '../../api/bankService';
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle,
   Bell, LogOut, Menu, X, Save, Pencil,
@@ -33,46 +37,30 @@ import {
   Megaphone,
 } from 'lucide-react';
 
-// ═══════════════════════════════════════════════════════════════════
-//  PHẦN 1 — TYPES
-// ═══════════════════════════════════════════════════════════════════
-
-// Trạng thái xác minh TK:
-//   - pending:  TK đã nhập nhưng Admin chưa xác minh
-//   - verified: Admin đã xác minh → dùng được cho UC39 (xuất Excel CK)
-//   - rejected: Admin từ chối (vd: tên không khớp) — GV cần sửa
 type VerifyStatus = 'pending' | 'verified' | 'rejected';
 
-// Thông tin TK ngân hàng
 interface BankInfo {
-  bankName: string;       // Tên ngân hàng (chọn từ dropdown)
-  accountNumber: string;  // Số TK
-  accountHolder: string;  // Tên chủ TK (in hoa, không dấu — chuẩn ngân hàng)
-  branch: string;         // Chi nhánh
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  branch: string;
   verifyStatus: VerifyStatus;
 }
 
-// 1 trường đã thay đổi trong 1 lần save
 interface FieldChange {
-  field: string;       // Tên hiển thị, vd "Tên ngân hàng"
+  field: string;
   oldValue: string;
   newValue: string;
 }
 
-// 1 entry trong audit log = 1 lần GV save (có thể đổi nhiều trường cùng lúc)
 interface AuditEntry {
   id: string;
-  changedBy: string;     // Tên người sửa (= GV đang đăng nhập)
-  changedAt: string;     // ISO datetime
+  changedBy: string;
+  changedAt: string;
   changes: FieldChange[];
-  reason?: string;       // Lý do (tùy chọn) — hữu ích cho compliance / dispute
+  reason?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  PHẦN 2 — CONSTANTS
-// ═══════════════════════════════════════════════════════════════════
-// Danh sách 14 NH phổ biến VN — dùng dropdown thay free text
-// để tránh sai chính tả → mismatch với hệ thống ngân hàng khi CK
 const VN_BANKS = [
   'Vietcombank (VCB)',
   'BIDV',
@@ -90,44 +78,6 @@ const VN_BANKS = [
   'VIB',
 ];
 
-// ═══════════════════════════════════════════════════════════════════
-//  PHẦN 3 — MOCK DATA
-// ═══════════════════════════════════════════════════════════════════
-// TK hiện tại + 2 entry audit log mẫu để demo
-const INITIAL_BANK: BankInfo = {
-  bankName: 'Vietcombank (VCB)',
-  accountNumber: '0123456789012',
-  accountHolder: 'NGUYEN VAN BEE',
-  branch: 'CN Hồ Chí Minh',
-  verifyStatus: 'verified',
-};
-
-const INITIAL_AUDIT: AuditEntry[] = [
-  {
-    id: 'a1',
-    changedBy: 'Giáo viên Bee',
-    changedAt: '2026-04-15T10:30:00',
-    changes: [
-      { field: 'Chi nhánh', oldValue: 'CN Quận 1', newValue: 'CN Hồ Chí Minh' },
-    ],
-    reason: 'Đổi chi nhánh giao dịch chính.',
-  },
-  {
-    id: 'a2',
-    changedBy: 'Giáo viên Bee',
-    changedAt: '2026-03-01T14:00:00',
-    changes: [
-      { field: 'Tên ngân hàng', oldValue: 'Techcombank', newValue: 'Vietcombank (VCB)' },
-      { field: 'Số tài khoản',  oldValue: '19036789012345', newValue: '0123456789012' },
-      { field: 'Chi nhánh',     oldValue: 'CN Cầu Giấy', newValue: 'CN Quận 1' },
-    ],
-    reason: 'Đóng TK Techcombank, chuyển sang Vietcombank.',
-  },
-];
-
-// ═══════════════════════════════════════════════════════════════════
-//  PHẦN 4 — NAV_ITEMS (đồng bộ sidebar teacher)
-// ═══════════════════════════════════════════════════════════════════
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Tổng quan',         path: '/teacher',          },
   { icon: BookOpen,        label: 'Khóa học của tôi',  path: '/teacher/courses',  },
@@ -194,31 +144,39 @@ function VerifyStatusBadge({ status }: { status: VerifyStatus }) {
 //  PHẦN 7 — MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════
 
+const EMPTY_BANK: BankInfo = {
+  bankName: VN_BANKS[0],
+  accountNumber: '',
+  accountHolder: '',
+  branch: '',
+  verifyStatus: 'pending',
+};
+
+function mapVerifyStatus(s: BankVerifyStatus): VerifyStatus {
+  return s.toLowerCase() as VerifyStatus;
+}
+
+function mapAuditLog(entries: BankAuditLogResponse[]): AuditEntry[] {
+  return entries.map(e => ({
+    id: e.id,
+    changedBy: e.changedByName ?? 'Giáo viên',
+    changedAt: e.changedAt,
+    changes: parseChanges(e.changesJson),
+    reason: e.reason ?? undefined,
+  }));
+}
+
 export default function TeacherBankPage() {
-  // ── State chính ─────────────────────────────────────────────────
-  // bank: TK hiện tại đã commit (source of truth)
-  const [bank, setBank] = useState<BankInfo>(INITIAL_BANK);
-  // auditLog: lịch sử các lần thay đổi
-  const [auditLog, setAuditLog] = useState<AuditEntry[]>(INITIAL_AUDIT);
-
-  // Mode hiển thị: 'view' = readonly, 'edit' = đang sửa
+  const [bank, setBank] = useState<BankInfo | null>(null);
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
+  const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<'view' | 'edit'>('view');
-
-  // Form state — chỉ dùng khi mode='edit'
-  // Tách khỏi bank để "Hủy" không ảnh hưởng state gốc
-  const [form, setForm] = useState<BankInfo>(INITIAL_BANK);
-  const [reasonInput, setReasonInput] = useState<string>('');
-
-  // Toggle hiện/ẩn số TK (mặc định ẩn để an toàn)
-  const [showAccountNumber, setShowAccountNumber] = useState<boolean>(false);
-
-  // Confirm dialog hiển thị hay không
-  const [showConfirm, setShowConfirm] = useState<boolean>(false);
-
-  // Audit log: id đang được expand (null = không expand row nào)
+  const [form, setForm] = useState<BankInfo>(EMPTY_BANK);
+  const [reasonInput, setReasonInput] = useState('');
+  const [showAccountNumber, setShowAccountNumber] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
-
-  // Sidebar mobile
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const navigate = useNavigate();
@@ -226,96 +184,92 @@ export default function TeacherBankPage() {
   const logout = useAuthStore(state => state.logout);
   const user = useAuthStore(state => state.user);
 
-  // ── Handler: vào chế độ chỉnh sửa ───────────────────────────────
-  // Copy bank hiện tại vào form để GV sửa
+  useEffect(() => {
+    Promise.all([getBankInfo(), getBankAuditLog()])
+      .then(([info, logs]) => {
+        if (info) {
+          setBank({
+            bankName: info.bankName,
+            accountNumber: info.accountNumber,
+            accountHolder: info.accountHolder,
+            branch: info.branch ?? '',
+            verifyStatus: mapVerifyStatus(info.verifyStatus),
+          });
+        }
+        setAuditLog(mapAuditLog(logs));
+      })
+      .catch(() => notify.error('Không thể tải thông tin ngân hàng'))
+      .finally(() => setLoading(false));
+  }, []);
+
   function startEdit() {
-    setForm({ ...bank });
+    setForm(bank ?? EMPTY_BANK);
     setReasonInput('');
     setMode('edit');
   }
 
-  // ── Handler: hủy chỉnh sửa ──────────────────────────────────────
   function cancelEdit() {
     setMode('view');
     setShowConfirm(false);
   }
 
-  // ── Handler: tính các trường đã đổi ─────────────────────────────
-  // Compare form với bank để liệt kê các field đã thay đổi
-  // Trả về mảng FieldChange — dùng cho confirm dialog & audit log
   function computeChanges(): FieldChange[] {
+    if (!bank) return [];
     const changes: FieldChange[] = [];
-    if (form.bankName !== bank.bankName) {
+    if (form.bankName !== bank.bankName)
       changes.push({ field: 'Tên ngân hàng', oldValue: bank.bankName, newValue: form.bankName });
-    }
-    if (form.accountNumber !== bank.accountNumber) {
+    if (form.accountNumber !== bank.accountNumber)
       changes.push({ field: 'Số tài khoản', oldValue: bank.accountNumber, newValue: form.accountNumber });
-    }
-    if (form.accountHolder !== bank.accountHolder) {
+    if (form.accountHolder !== bank.accountHolder)
       changes.push({ field: 'Tên chủ tài khoản', oldValue: bank.accountHolder, newValue: form.accountHolder });
-    }
-    if (form.branch !== bank.branch) {
+    if (form.branch !== bank.branch)
       changes.push({ field: 'Chi nhánh', oldValue: bank.branch, newValue: form.branch });
-    }
     return changes;
   }
 
-  // ── Handler: bắt đầu lưu — validate rồi mở confirm dialog ───────
   function attemptSave() {
-    // Validate cơ bản — các field bắt buộc không được rỗng
     if (!form.bankName.trim() || !form.accountNumber.trim() || !form.accountHolder.trim() || !form.branch.trim()) {
       notify.error('Vui lòng nhập đầy đủ thông tin');
       return;
     }
-    // Số TK phải toàn số (banking convention VN)
     if (!/^\d+$/.test(form.accountNumber.trim())) {
       notify.error('Số tài khoản chỉ được chứa chữ số');
       return;
     }
-
-    // Nếu không có thay đổi gì thì không cần lưu
-    const changes = computeChanges();
-    if (changes.length === 0) {
+    if (bank && computeChanges().length === 0) {
       notify.info('Không có thay đổi nào để lưu');
       return;
     }
-
-    // Mở confirm dialog (vì là tiền bạc, cần xác nhận kép)
     setShowConfirm(true);
   }
 
-  // ── Handler: xác nhận lưu (sau confirm dialog) ──────────────────
-  // Logic:
-  //   1. Tạo 1 entry audit log với danh sách changes + reason
-  //   2. Commit form về bank, reset verifyStatus về 'pending'
-  //      (vì Admin cần xác minh lại sau khi đổi)
-  //   3. Đóng confirm + về mode view
-  function confirmSave() {
-    const changes = computeChanges();
-
-    // Trang này thuộc teacher portal → người sửa luôn là Giáo viên.
-    // Không lấy từ user?.name vì useAuthStore mặc định trả về tên Học viên
-    // (chưa có role-based auth thật, default mock là student).
-    // Khi tích hợp backend với role thật → đổi thành user?.name (đã có role check).
-    const TEACHER_DISPLAY_NAME = 'Giáo viên Bee';
-
-    const newEntry: AuditEntry = {
-      id: `a-${Date.now()}`,
-      changedBy: TEACHER_DISPLAY_NAME,
-      changedAt: new Date().toISOString(),
-      changes,
-      reason: reasonInput.trim() || undefined,
-    };
-
-    // Push entry mới lên ĐẦU audit log (DESC theo thời gian)
-    setAuditLog(prev => [newEntry, ...prev]);
-
-    // Commit + reset verify
-    setBank({ ...form, verifyStatus: 'pending' });
-
-    setShowConfirm(false);
-    setMode('view');
-    notify.success('Đã cập nhật TK ngân hàng. Admin sẽ xác minh lại.');
+  async function confirmSave() {
+    setSaving(true);
+    try {
+      const result = await upsertBankInfo({
+        bankName: form.bankName,
+        accountNumber: form.accountNumber,
+        accountHolder: form.accountHolder,
+        branch: form.branch,
+        reason: reasonInput.trim() || undefined,
+      });
+      setBank({
+        bankName: result.bankName,
+        accountNumber: result.accountNumber,
+        accountHolder: result.accountHolder,
+        branch: result.branch ?? '',
+        verifyStatus: mapVerifyStatus(result.verifyStatus),
+      });
+      const logs = await getBankAuditLog();
+      setAuditLog(mapAuditLog(logs));
+      setShowConfirm(false);
+      setMode('view');
+      notify.success('Đã cập nhật TK ngân hàng. Admin sẽ xác minh lại.');
+    } catch {
+      notify.error('Không thể lưu thông tin. Vui lòng thử lại.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   // ── Handler: toggle expand 1 row audit log ──────────────────────
@@ -421,6 +375,13 @@ export default function TeacherBankPage() {
             </p>
           </motion.div>
 
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+
+          <>
           {/* ── CARD: TK HIỆN TẠI ─────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -431,11 +392,21 @@ export default function TeacherBankPage() {
                 <Landmark className="w-5 h-5 text-primary" />
                 Thông tin tài khoản
               </h3>
-              <VerifyStatusBadge status={bank.verifyStatus} />
+              {bank && <VerifyStatusBadge status={bank.verifyStatus} />}
             </div>
 
+            {/* Cảnh báo chưa nhập TK */}
+            {!bank && mode === 'view' && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-4 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-700">
+                  Bạn chưa nhập thông tin TK ngân hàng. Vui lòng thêm để Admin có thể chuyển khoản hoa hồng.
+                </p>
+              </div>
+            )}
+
             {/* Cảnh báo nếu pending */}
-            {bank.verifyStatus === 'pending' && (
+            {bank?.verifyStatus === 'pending' && (
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-4 flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-amber-700">
@@ -447,43 +418,43 @@ export default function TeacherBankPage() {
             {/* ── MODE VIEW (readonly) ─────────────────────── */}
             {mode === 'view' && (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                  <div>
-                    <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1">Tên ngân hàng</p>
-                    <p className="text-on-surface font-semibold">{bank.bankName}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1">Tên chủ tài khoản</p>
-                    <p className="text-on-surface font-semibold uppercase">{bank.accountHolder}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1">Số tài khoản</p>
-                    <div className="flex items-center gap-2">
-                      <p className="text-on-surface font-mono font-bold">
-                        {showAccountNumber ? bank.accountNumber : maskAccountNumber(bank.accountNumber)}
-                      </p>
-                      {/* Toggle hiện/ẩn số TK — bảo mật khi share màn hình */}
-                      <button
-                        onClick={() => setShowAccountNumber(!showAccountNumber)}
-                        title={showAccountNumber ? 'Ẩn số TK' : 'Hiện số TK'}
-                        className="p-1 text-on-surface-variant hover:text-primary transition-colors"
-                      >
-                        {showAccountNumber ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
+                {bank && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                    <div>
+                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1">Tên ngân hàng</p>
+                      <p className="text-on-surface font-semibold">{bank.bankName}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1">Tên chủ tài khoản</p>
+                      <p className="text-on-surface font-semibold uppercase">{bank.accountHolder}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1">Số tài khoản</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-on-surface font-mono font-bold">
+                          {showAccountNumber ? bank.accountNumber : maskAccountNumber(bank.accountNumber)}
+                        </p>
+                        <button
+                          onClick={() => setShowAccountNumber(!showAccountNumber)}
+                          title={showAccountNumber ? 'Ẩn số TK' : 'Hiện số TK'}
+                          className="p-1 text-on-surface-variant hover:text-primary transition-colors"
+                        >
+                          {showAccountNumber ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1">Chi nhánh</p>
+                      <p className="text-on-surface font-semibold">{bank.branch}</p>
                     </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1">Chi nhánh</p>
-                    <p className="text-on-surface font-semibold">{bank.branch}</p>
-                  </div>
-                </div>
-
+                )}
                 <button
                   onClick={startEdit}
                   className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-md shadow-primary/20"
                 >
                   <Pencil className="w-4 h-4" />
-                  Cập nhật TK
+                  {bank ? 'Cập nhật TK' : 'Thêm TK ngân hàng'}
                 </button>
               </>
             )}
@@ -675,6 +646,8 @@ export default function TeacherBankPage() {
               </div>
             )}
           </motion.div>
+          </>
+          )}
 
         </main>
       </div>
@@ -726,8 +699,10 @@ export default function TeacherBankPage() {
                 </button>
                 <button
                   onClick={confirmSave}
-                  className="px-5 py-2.5 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors"
+                  disabled={saving}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-60"
                 >
+                  {saving && <div className="w-4 h-4 border-2 border-on-primary border-t-transparent rounded-full animate-spin" />}
                   Xác nhận lưu
                 </button>
               </div>

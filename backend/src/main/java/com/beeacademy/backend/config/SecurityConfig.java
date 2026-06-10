@@ -92,6 +92,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/courses/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categories/**").permitAll()
 
+                        // PayOS gọi vào không có JWT — xác thực bằng HMAC signature trong controller
+                        .requestMatchers(HttpMethod.POST, "/api/webhooks/payos").permitAll()
+
+
                         // ----- Teacher Portal -----
                         .requestMatchers("/api/teacher/**").authenticated()
                         .requestMatchers("/api/upload/**").authenticated()

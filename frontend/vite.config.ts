@@ -1,4 +1,4 @@
-﻿import tailwindcss from '@tailwindcss/vite';
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
@@ -17,12 +17,31 @@ export default defineConfig(({mode}) => {
     },
     server: {
       port: 3000,
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-ui': ['motion/react', 'lucide-react'],
+            'vendor-utils': ['axios', 'zustand'],
+            'pages-admin': [
+              './src/pages/admin/DashboardAdmin',
+              './src/pages/admin/ApprovalsPage',
+              './src/pages/admin/CourseReviewPage',
+            ],
+            'pages-teacher': [
+              './src/pages/teacher/CoursesPage',
+              './src/pages/teacher/QuestionBankPage',
+              './src/pages/teacher/QuizPage',
+              './src/pages/teacher/RevenuePage',
+              './src/pages/teacher/BankPage',
+            ],
+          },
+        },
+      },
     },
   };
 });
-

@@ -12,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -42,11 +41,11 @@ public class AdminUserController {
     public ApiResponse<PageResponse<AdminUserResponse>> listUsers(
             @RequestParam(required = false) String role,
             @RequestParam(required = false) String search,
-            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
+            @PageableDefault(size = 20)
             Pageable pageable) {
 
-        String roleParam   = (role   != null && !role.isBlank())   ? role.toLowerCase()   : null;
-        String searchParam = (search != null && !search.isBlank()) ? search               : null;
+        String roleParam   = (role   != null && !role.isBlank())   ? role.toLowerCase() : "";
+        String searchParam = (search != null && !search.isBlank()) ? search             : "";
 
         Page<Object[]> raw = profileRepository.findAllWithEmail(roleParam, searchParam, pageable);
         List<AdminUserResponse> items = raw.getContent().stream()

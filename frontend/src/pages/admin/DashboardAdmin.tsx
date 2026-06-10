@@ -191,11 +191,6 @@ export default function DashboardAdmin() {
   // ───────────────────────────────────────────────────────────────────────────
   // STATE CHO CÁC BIỂU MẪU & MODALS
   // ───────────────────────────────────────────────────────────────────────────
-  // Modal Quản lý Người dùng
-  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<UserAccount | null>(null);
-  const [userForm, setUserForm] = useState({ name: '', email: '', role: 'student' as UserAccount['role'] });
-
   // Modal Phê duyệt Khóa học (Từ chối / Cần chỉnh sửa)
   const [courseActionModal, setCourseActionModal] = useState<{ isOpen: boolean; course: CourseApproval | null; action: 'reject' | 'revision' | null }>({
     isOpen: false, course: null, action: null
@@ -217,6 +212,7 @@ export default function DashboardAdmin() {
 
   // Tìm kiếm và lọc
   const [searchUser, setSearchUser] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterUserRole, setFilterUserRole] = useState<string>('all');
   const [searchPayout, setSearchPayout] = useState('');
   const [filterPayoutStatus, setFilterPayoutStatus] = useState<string>('all');
@@ -237,7 +233,7 @@ export default function DashboardAdmin() {
     try {
       const params: Record<string, string | number> = { page, size: 20 };
       if (filterUserRole !== 'all') params.role = filterUserRole;
-      if (searchUser.trim()) params.search = searchUser.trim();
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       const res = await apiClient.get<ApiResponse<PageResponse<AdminUser>>>('/api/admin/users', { params });
       const data = unwrap(res.data);
       setApiUsers(data.items);
@@ -245,7 +241,7 @@ export default function DashboardAdmin() {
       setUserTotalPages(data.totalPages);
     } catch { notify.error('Không tải được danh sách tài khoản'); }
     finally { setLoadingUsers(false); }
-  }, [filterUserRole, searchUser]);
+  }, [filterUserRole, debouncedSearch]);
 
   const loadUserStats = useCallback(async () => {
     try {
@@ -264,8 +260,12 @@ export default function DashboardAdmin() {
     finally { setLoadingPending(false); }
   }, []);
 
-  useEffect(() => { loadUserStats(); loadPendingCourses(); }, [loadUserStats, loadPendingCourses]);
+  useEffect(() => { Promise.all([loadUserStats(), loadPendingCourses()]); }, [loadUserStats, loadPendingCourses]);
   useEffect(() => { if (activeTab === 'users') loadUsers(0); }, [activeTab, loadUsers]);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchUser), 300);
+    return () => clearTimeout(t);
+  }, [searchUser]);
 
   // ───────────────────────────────────────────────────────────────────────────
   // TÍNH TOÁN CÁC THÔNG SỐ TÀI CHÍNH DỰA TRÊN STATE ĐỘNG (UC34 & UC37)
@@ -323,14 +323,6 @@ export default function DashboardAdmin() {
   // ───────────────────────────────────────────────────────────────────────────
   // WORKFLOW 1: QUẢN LÝ TÀI KHOẢN NGƯỜI DÙNG (UC35)
   // ───────────────────────────────────────────────────────────────────────────
-  const filteredUsers = useMemo(() => {
-    return users.filter(u => {
-      const matchSearch = u.name.toLowerCase().includes(searchUser.toLowerCase()) || u.email.toLowerCase().includes(searchUser.toLowerCase());
-      const matchRole = filterUserRole === 'all' || u.role === filterUserRole;
-      return matchSearch && matchRole;
-    });
-  }, [users, searchUser, filterUserRole]);
-
   async function handleToggleBlockUser(userId: string) {
     const target = apiUsers.find(u => u.id === userId);
     if (!target) return;
@@ -339,46 +331,22 @@ export default function DashboardAdmin() {
       await apiClient.patch(`/api/admin/users/${userId}/block?blocked=${newBlocked}`);
       setApiUsers(prev => prev.map(u => u.id === userId ? { ...u, isBlocked: newBlocked } : u));
       notify.success(`Đã ${newBlocked ? 'khóa' : 'mở khóa'} tài khoản ${target.fullName ?? target.email}`);
-    } catch (err: any) {
-      notify.error(err?.message || 'Không thực hiện được');
+    } catch (err: unknown) {
+      notify.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Không thực hiện được');
     }
   }
 
-  function handleOpenUserModal(user: UserAccount | null) {
-    setSelectedUser(user);
-    if (user) {
-      setUserForm({ name: user.name, email: user.email, role: user.role });
-    } else {
-      setUserForm({ name: '', email: '', role: 'student' });
+  async function handleChangeRole(userId: string, newRole: AdminUser['role']) {
+    const target = apiUsers.find(u => u.id === userId);
+    if (!target || target.role === newRole) return;
+    try {
+      await apiClient.patch(`/api/admin/users/${userId}/role?role=${newRole}`);
+      setApiUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+      const roleLabel: Record<AdminUser['role'], string> = { student: 'Học sinh', teacher: 'Giáo viên', parent: 'Phụ huynh', admin: 'Admin' };
+      notify.success(`Đã đổi vai trò ${target.fullName ?? target.email} → ${roleLabel[newRole]}`);
+    } catch (err: unknown) {
+      notify.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Không đổi được vai trò');
     }
-    setIsUserModalOpen(true);
-  }
-
-  function handleSaveUser(e: React.FormEvent) {
-    e.preventDefault();
-    if (!userForm.name || !userForm.email) {
-      notify.error('Vui lòng nhập đầy đủ tên và email!');
-      return;
-    }
-
-    if (selectedUser) {
-      // Edit
-      setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, ...userForm } : u));
-      notify.success('Cập nhật tài khoản thành công!');
-    } else {
-      // Add
-      const newUser: UserAccount = {
-        id: `USR-${String(users.length + 1).padStart(3, '0')}`,
-        name: userForm.name,
-        email: userForm.email,
-        role: userForm.role,
-        status: 'active',
-        createdAt: new Date().toLocaleDateString('vi-VN')
-      };
-      setUsers(prev => [newUser, ...prev]);
-      notify.success('Tạo tài khoản mới thành công!');
-    }
-    setIsUserModalOpen(false);
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -954,18 +922,28 @@ export default function DashboardAdmin() {
                   ───────────────────────────────────────────────────────────── */}
               {activeTab === 'users' && (
                 <div className="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-6 shadow-sm space-y-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
-                      <h2 className="text-lg font-bold">Danh sách thành viên trên hệ thống</h2>
-                      <p className="text-xs text-on-surface-variant mt-0.5">Admin quản lý thông tin, chặn/mở chặn tài khoản học sinh, phụ huynh và đối tác giáo viên.</p>
-                    </div>
-                    <button
-                      onClick={() => handleOpenUserModal(null)}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-xl text-sm font-bold shadow-md hover:bg-primary-container transition-colors self-start sm:self-auto"
-                    >
-                      <PlusCircle className="w-4 h-4" />
-                      Tạo tài khoản mới
-                    </button>
+                  <div>
+                    <h2 className="text-lg font-bold">Danh sách thành viên trên hệ thống</h2>
+                    <p className="text-xs text-on-surface-variant mt-0.5">Admin quản lý thông tin, chặn/mở chặn và đổi vai trò tài khoản.</p>
+                    {userStats && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-bold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          {userStats.students.toLocaleString('vi-VN')} Học sinh
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary/5 text-primary rounded-full text-xs font-bold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                          {userStats.teachers.toLocaleString('vi-VN')} Giáo viên
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 rounded-full text-xs font-bold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                          {userStats.parents.toLocaleString('vi-VN')} Phụ huynh
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-surface-container text-on-surface-variant rounded-full text-xs font-semibold">
+                          Tổng {userStats.total.toLocaleString('vi-VN')}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Thanh tìm kiếm và bộ lọc */}
@@ -1030,7 +1008,7 @@ export default function DashboardAdmin() {
                               <td className="px-6 py-3.5">
                                 <div className="flex items-center gap-3">
                                   <img
-                                    src={user.avatarUrl ?? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName ?? 'U')}&size=32&background=random&bold=true`}
+                                    src={user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName || 'U')}&size=32&background=random&bold=true`}
                                     alt={user.fullName ?? ''}
                                     className="w-8 h-8 rounded-full"
                                   />
@@ -1055,17 +1033,30 @@ export default function DashboardAdmin() {
                                   {!user.isBlocked ? 'Hoạt động' : 'Bị khóa'}
                                 </span>
                               </td>
-                              <td className="px-6 py-3.5 text-right">
-                                {user.role !== 'admin' && (
-                                  <button
-                                    onClick={() => handleToggleBlockUser(user.id)}
-                                    className={`p-1.5 rounded-lg transition-colors ${
-                                      !user.isBlocked ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'
-                                    }`}
-                                    title={!user.isBlocked ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}
-                                  >
-                                    {!user.isBlocked ? <Ban className="w-4 h-4" /> : <Check className="w-4 h-4" />}
-                                  </button>
+                              <td className="px-6 py-3.5">
+                                {user.role !== 'admin' ? (
+                                  <div className="flex items-center justify-end gap-2">
+                                    <select
+                                      value={user.role}
+                                      onChange={(e) => handleChangeRole(user.id, e.target.value as AdminUser['role'])}
+                                      className="text-xs border border-outline-variant/30 rounded-lg px-2 py-1 bg-surface-container-low focus:outline-none focus:border-primary cursor-pointer"
+                                    >
+                                      <option value="student">Học sinh</option>
+                                      <option value="teacher">Giáo viên</option>
+                                      <option value="parent">Phụ huynh</option>
+                                    </select>
+                                    <button
+                                      onClick={() => handleToggleBlockUser(user.id)}
+                                      className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
+                                        !user.isBlocked ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'
+                                      }`}
+                                      title={!user.isBlocked ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}
+                                    >
+                                      {!user.isBlocked ? <Ban className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="flex justify-end text-xs text-on-surface-variant italic">—</span>
                                 )}
                               </td>
                             </tr>
@@ -1565,84 +1556,6 @@ export default function DashboardAdmin() {
       <AnimatePresence>
         
         {/* 1. MODAL TẠO / SỬA USER (UC35) */}
-        {isUserModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={() => setIsUserModalOpen(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-surface-container-lowest border border-outline-variant/30 rounded-3xl w-full max-w-md p-6 shadow-2xl z-10 relative overflow-hidden"
-            >
-              <h3 className="text-lg font-bold text-on-surface mb-1">
-                {selectedUser ? 'Chỉnh sửa tài khoản' : 'Tạo tài khoản thành viên'}
-              </h3>
-              <p className="text-xs text-on-surface-variant mb-4">Cung cấp thông tin truy cập hệ thống đầy đủ.</p>
-              
-              <form onSubmit={handleSaveUser} className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase">Họ và tên</label>
-                  <input
-                    type="text"
-                    required
-                    value={userForm.name}
-                    onChange={(e) => setUserForm(p => ({ ...p, name: e.target.value }))}
-                    className="w-full px-3 py-2 bg-surface-container-low border border-outline-variant/30 rounded-xl text-sm focus:outline-none"
-                    placeholder="Nguyễn Văn A"
-                  />
-                </div>
-                
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase">Địa chỉ Email</label>
-                  <input
-                    type="email"
-                    required
-                    value={userForm.email}
-                    onChange={(e) => setUserForm(p => ({ ...p, email: e.target.value }))}
-                    className="w-full px-3 py-2 bg-surface-container-low border border-outline-variant/30 rounded-xl text-sm focus:outline-none"
-                    placeholder="email@beeacademy.edu.vn"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase">Phân quyền hệ thống</label>
-                  <select
-                    value={userForm.role}
-                    onChange={(e) => setUserForm(p => ({ ...p, role: e.target.value as any }))}
-                    className="w-full px-3 py-2 bg-surface-container-low border border-outline-variant/30 rounded-xl text-sm focus:outline-none"
-                  >
-                    <option value="student">Học sinh (Student)</option>
-                    <option value="teacher">Giáo viên (Teacher)</option>
-                    <option value="parent">Phụ huynh (Parent)</option>
-                  </select>
-                </div>
-
-                <div className="flex gap-2 pt-3">
-                  <button
-                    type="submit"
-                    className="flex-1 py-2 bg-primary text-on-primary rounded-xl text-sm font-bold shadow-md hover:bg-primary-container transition-colors"
-                  >
-                    Lưu tài khoản
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsUserModalOpen(false)}
-                    className="px-4 py-2 bg-surface-container-high hover:bg-surface-container-highest rounded-xl text-sm font-bold transition-colors"
-                  >
-                    Hủy bỏ
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-
         {/* 2. MODAL TỪ CHỐI / CẦN SỬA KHÓA HỌC (UC36) */}
         {courseActionModal.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

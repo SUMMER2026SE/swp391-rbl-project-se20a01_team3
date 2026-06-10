@@ -4,6 +4,7 @@ import com.beeacademy.backend.model.Enrollment;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -35,4 +36,10 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
      */
     /** Kiểm tra học sinh đã enroll khóa học chưa. Cột DB: student_id */
     boolean existsByStudentIdAndCourseId(UUID studentId, UUID courseId);
+
+    /** Tất cả khóa học đã enroll của một học sinh. */
+    List<Enrollment> findByStudentId(UUID studentId);
+
+    /** Đếm số khóa học đã enroll của học sinh. */
+    int countByStudentId(UUID studentId);
 }

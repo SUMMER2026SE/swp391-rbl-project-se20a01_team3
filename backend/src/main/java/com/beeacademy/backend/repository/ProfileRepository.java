@@ -46,22 +46,21 @@ public interface ProfileRepository extends JpaRepository<Profile, UUID> {
      * Join auth.users để lấy email.
      */
     @Query(value = """
-        SELECT p.id, p.full_name, p.avatar_url, CAST(p.role AS TEXT), p.is_blocked, p.created_at,
-               u.email
-        FROM profiles p
-        JOIN auth.users u ON u.id = p.id
-        WHERE (:role IS NULL OR CAST(p.role AS TEXT) = :role)
-          AND (:search IS NULL OR LOWER(p.full_name) LIKE LOWER(CONCAT('%', :search, '%'))
-               OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))
-        ORDER BY p.created_at DESC
+        SELECT id, full_name, avatar_url, role, is_blocked, created_at, email
+        FROM public.profiles_with_email
+        WHERE (:role = '' OR role = :role)
+          AND (:search = ''
+               OR LOWER(full_name) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(email)     LIKE LOWER(CONCAT('%', :search, '%')))
+        ORDER BY created_at DESC
         """,
         countQuery = """
         SELECT COUNT(*)
-        FROM profiles p
-        JOIN auth.users u ON u.id = p.id
-        WHERE (:role IS NULL OR CAST(p.role AS TEXT) = :role)
-          AND (:search IS NULL OR LOWER(p.full_name) LIKE LOWER(CONCAT('%', :search, '%'))
-               OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))
+        FROM public.profiles_with_email
+        WHERE (:role = '' OR role = :role)
+          AND (:search = ''
+               OR LOWER(full_name) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(email)     LIKE LOWER(CONCAT('%', :search, '%')))
         """,
         nativeQuery = true)
     Page<Object[]> findAllWithEmail(@Param("role") String role,

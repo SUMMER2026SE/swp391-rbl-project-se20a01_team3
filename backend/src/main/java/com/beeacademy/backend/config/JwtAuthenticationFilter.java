@@ -199,11 +199,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         UUID userId = UUID.fromString(decoded.getSubject());
         String email = safeClaim(decoded, "email");
 
-        // Lấy role từ DB profiles (nguồn sự thật) thay vì JWT metadata
-        // JWT chỉ có role="authenticated" (Supabase mặc định), không phải role ứng dụng
-        String role = profileRepository.findById(userId)
-                .map(p -> p.getRole().toDbValue())
-                .orElseGet(() -> extractRole(decoded));
+        // Lấy role từ DB profiles (nguồn sự thật) thay vì JWT metadata.
+        // Wrap try/catch riêng để lỗi DB không làm silent-fail toàn bộ JWT filter.
+        String role;
+        try {
+            role = profileRepository.findById(userId)
+                    .map(p -> p.getRole().toDbValue())
+                    .orElseGet(() -> extractRole(decoded));
+        } catch (Exception ex) {
+            log.error("Không thể lấy role từ DB cho user {} — fallback JWT metadata: {}",
+                    userId, ex.getMessage());
+            role = extractRole(decoded);
+        }
 
         return new AuthenticatedUser(userId, email, role);
     }

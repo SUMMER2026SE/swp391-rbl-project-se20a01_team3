@@ -4,10 +4,14 @@ import com.beeacademy.backend.dto.response.ChildOverviewResponse;
 import com.beeacademy.backend.dto.response.LinkedStudentResponse;
 import com.beeacademy.backend.exception.BusinessException;
 import com.beeacademy.backend.exception.ResourceNotFoundException;
+import com.beeacademy.backend.model.Enrollment;
 import com.beeacademy.backend.model.ParentStudentLink;
 import com.beeacademy.backend.model.Profile;
+import com.beeacademy.backend.model.QuizAttempt;
+import com.beeacademy.backend.repository.EnrollmentRepository;
 import com.beeacademy.backend.repository.ParentStudentLinkRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
+import com.beeacademy.backend.repository.QuizAttemptRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +19,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -31,6 +37,8 @@ public class ParentService {
 
     private final ProfileRepository profileRepository;
     private final ParentStudentLinkRepository linkRepository;
+    private final EnrollmentRepository enrollmentRepository;
+    private final QuizAttemptRepository quizAttemptRepository;
 
     /**
      * Lấy danh sách học sinh (con) đã được liên kết với tài khoản phụ huynh đang đăng nhập.
@@ -108,21 +116,36 @@ public class ParentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Profile", studentId));
 
         String studentName = student.getFullName();
-        
-        // 3. Xây dựng báo cáo tổng quan.
-        // TODO Module 4 (Tiến độ học tập): thay các giá trị mặc định bằng dữ liệu
-        //   thực từ bảng enrollments, quiz_attempts, exam_results khi Module 4 hoàn thiện.
-        //   Hiện tại trả về 0 / rỗng vì các bảng trên chưa tồn tại.
-        ChildOverviewResponse.ChildOverviewResponseBuilder builder = ChildOverviewResponse.builder()
-                .studentName(studentName)
-                .grade("")           // chưa có cột grade trong profiles — xem TODO ParentService.getLinkedChildren
-                .avgProgress(0.0)
-                .activeCourses(0)
-                .completedCourses(0)
-                .latestQuizScore(0.0)
-                .latestExamScore(0.0)
-                .weeklyActivityHours(List.of(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
 
-        return builder.build();
+        // 3. Tính toán tiến độ từ enrollments thực tế
+        List<Enrollment> enrollments = enrollmentRepository.findByStudentId(studentId);
+        int totalCourses = enrollments.size();
+        int completed = (int) enrollments.stream()
+                .filter(e -> e.getProgressPct() != null && e.getProgressPct() >= 100)
+                .count();
+        int active = totalCourses - completed;
+        double avgProgress = totalCourses == 0 ? 0.0 :
+                enrollments.stream()
+                        .mapToInt(e -> e.getProgressPct() != null ? e.getProgressPct() : 0)
+                        .average()
+                        .orElse(0.0);
+
+        // 4. Điểm quiz gần nhất
+        Optional<QuizAttempt> latestAttempt = quizAttemptRepository
+                .findFirstByStudentIdAndSubmittedAtIsNotNullOrderBySubmittedAtDesc(studentId);
+        double latestQuizScore = latestAttempt
+                .map(a -> a.getScore() != null ? a.getScore().doubleValue() : 0.0)
+                .orElse(0.0);
+
+        return ChildOverviewResponse.builder()
+                .studentName(studentName)
+                .grade("")
+                .avgProgress(Math.round(avgProgress * 10.0) / 10.0)
+                .activeCourses(active)
+                .completedCourses(completed)
+                .latestQuizScore(latestQuizScore)
+                .latestExamScore(0.0)
+                .weeklyActivityHours(Collections.nCopies(7, 0.0))
+                .build();
     }
 }

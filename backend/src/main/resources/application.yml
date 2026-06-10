@@ -25,9 +25,9 @@ spring:
     password: ${SUPABASE_DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      # Pool size nhỏ - Supabase free tier giới hạn connection
-      maximum-pool-size: 10
-      minimum-idle: 2
+      # Pool size - Supabase free tier giới hạn ~25 concurrent connections
+      maximum-pool-size: 15
+      minimum-idle: 3
       connection-timeout: 10000   # 10s
       idle-timeout: 300000        # 5 phút
       max-lifetime: 1800000       # 30 phút
@@ -45,8 +45,9 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        # Tắt format SQL trong log production - chỉ bật ở dev
         format_sql: false
+        show_sql: false
+        generate_statistics: false
         # Dùng tên cột snake_case đúng như Supabase (created_at, user_id...)
         physical_naming_strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
     open-in-view: false   # Tắt OSIV - tránh lazy load ngoài transaction (best practice)
@@ -89,6 +90,24 @@ app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   dev-mode: ${DEV_MODE:false}
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+
+# ============================================================================
+# SePay Webhook — xác thực API key
+# Lấy API key tại: sepay.vn → Cài đặt → Webhook → API Key
+# Đặt vào backend/.env: SEPAY_API_KEY=your_key_here
+# ============================================================================
+payos:
+  client-id: ${PAYOS_CLIENT_ID:}
+  api-key: ${PAYOS_API_KEY:}
+  checksum-key: ${PAYOS_CHECKSUM_KEY:}
+
+# ============================================================================
+# MoMo Payment API v2
+# Lấy credentials từ: https://developers.momo.vn → Sandbox credentials
+# ipn-url phải accessible từ internet khi dev → dùng ngrok:
+#   ngrok http 8080  →  copy URL → đặt vào MOMO_IPN_URL
+# ============================================================================
 
 # ============================================================================
 # Logging
@@ -96,5 +115,5 @@ app:
 logging:
   level:
     root: INFO
-    com.beeacademy: DEBUG
-    org.springframework.security: INFO
+    com.beeacademy: INFO
+    org.springframework.security: WARN
