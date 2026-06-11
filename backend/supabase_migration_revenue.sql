@@ -39,6 +39,11 @@ CREATE TABLE IF NOT EXISTS revenue_splits (
     occurred_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
+-- Nếu bảng đã tồn tại từ schema cũ thiếu cột, ADD COLUMN IF NOT EXISTS đảm bảo
+-- cột luôn có mặt trước khi tạo index (tránh lỗi 42703).
+ALTER TABLE revenue_splits ADD COLUMN IF NOT EXISTS payout_period_id UUID REFERENCES payout_periods(id);
+ALTER TABLE revenue_splits ADD COLUMN IF NOT EXISTS teacher_percent   INTEGER NOT NULL DEFAULT 70;
+
 CREATE INDEX IF NOT EXISTS idx_revenue_splits_teacher_id       ON revenue_splits(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_revenue_splits_payout_period_id ON revenue_splits(payout_period_id);
 CREATE INDEX IF NOT EXISTS idx_revenue_splits_order_id         ON revenue_splits(order_id);
