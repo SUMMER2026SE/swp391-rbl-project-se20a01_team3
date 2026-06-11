@@ -40,7 +40,7 @@ import { useCourseStore } from '../../store/useCourseStore';
 import { getCourseDetail as courseServiceGetDetail } from '../../api/courseService';
 import { adaptCourseDetail } from '../../api/adapter';
 import { isApiError } from '../../api/client';
-import { enrollCourse } from '../../api/enrollmentService';
+import { listOrders, verifyPayment } from '../../api/orderService';
 import type { ChapterDetail } from '../../types/api';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -526,15 +526,12 @@ function QuizModal({ lesson, prevScore, onClose, onComplete }: QuizModalProps) {
 function MarketingView({ course }: { course: Course }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'syllabus' | 'instructor'>('overview');
 
-  // Store: addToCart thêm course vào giỏ hàng (Zustand useCartStore)
   const addToCart = useCartStore(state => state.addToCart);
-
-  // Store: kiểm tra đăng nhập trước khi cho phép mua
   const isLoggedIn = useAuthStore(state => state.isLoggedIn);
-
-  // Store: kiểm tra đã mua rồi chưa (tránh mua trùng)
   const purchasedIds = useCourseStore(state => state.purchasedIds);
+  const enrollCourses = useCourseStore(state => state.enrollCourses);
   const navigate = useNavigate();
+  const [activating, setActivating] = useState(false);
 
   function handleAddToCart() {
     // Guard 1: chưa đăng nhập → redirect sang /login
@@ -556,6 +553,38 @@ function MarketingView({ course }: { course: Course }) {
       image: course.image,
     });
     notify.success(`Đã thêm "${course.title}" vào giỏ hàng!`);
+  }
+
+  // Kích hoạt khóa học khi đã thanh toán nhưng enrollment chưa được ghi
+  async function handleActivate() {
+    if (!isLoggedIn) {
+      navigate('/login', { state: { from: `/courses/${course.id}` } });
+      return;
+    }
+    setActivating(true);
+    try {
+      const orders = await listOrders();
+      const pending = orders.find(o =>
+        o.status === 'PENDING' &&
+        o.items.some(i => i.courseId === course.id)
+      );
+      if (!pending) {
+        notify.error('Không tìm thấy đơn hàng cho khóa học này.');
+        return;
+      }
+      const result = await verifyPayment(pending.id);
+      if (result.status === 'PAID') {
+        enrollCourses([course.id]);
+        notify.success('Kích hoạt thành công! Đang tải...');
+        window.location.reload();
+      } else {
+        notify.error('PayOS chưa xác nhận thanh toán. Vui lòng thử lại sau.');
+      }
+    } catch {
+      notify.error('Không thể kích hoạt. Vui lòng liên hệ hỗ trợ.');
+    } finally {
+      setActivating(false);
+    }
   }
 
   return (
@@ -723,11 +752,21 @@ function MarketingView({ course }: { course: Course }) {
               {/* CTA: handleAddToCart() — chỉ thêm vào giỏ khi đã đăng nhập */}
               <button
                 onClick={handleAddToCart}
-                className="w-full py-4 bg-primary text-on-primary rounded-xl font-bold text-lg shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1 transition-all flex items-center justify-center gap-2 mb-4"
+                className="w-full py-4 bg-primary text-on-primary rounded-xl font-bold text-lg shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1 transition-all flex items-center justify-center gap-2 mb-3"
               >
                 <ShoppingCart className="w-6 h-6" />
                 Thêm vào giỏ hàng
               </button>
+              {isLoggedIn && (
+                <button
+                  onClick={handleActivate}
+                  disabled={activating}
+                  className="w-full py-2.5 border border-outline-variant text-on-surface-variant rounded-xl text-sm font-medium hover:bg-surface-container transition-colors flex items-center justify-center gap-2 mb-4 disabled:opacity-50"
+                >
+                  {activating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  {activating ? 'Đang kích hoạt...' : 'Đã thanh toán? Kích hoạt khóa học'}
+                </button>
+              )}
               <div className="text-center text-xs font-semibold text-on-surface-variant mb-6 uppercase tracking-wider">
                 Thanh toán an toàn · Truy cập trọn đời
               </div>
@@ -1442,26 +1481,8 @@ export default function CourseDetailPage() {
 
     courseServiceGetDetail(id)
       .then(async (detail) => {
-        // Auto-sync enrollment: nếu Zustand nói "đã mua" nhưng backend chưa ghi nhận
-        // (xảy ra sau mock checkout — purchasedIds được set nhưng enrollment chưa có trong DB)
-        // → gọi enroll API để backend biết → fetch lại detail để nhận videoUrl đúng.
-        const purchasedLocally = purchasedIds.includes(id);
-        if (purchasedLocally && !detail.enrolled) {
-          try {
-            await enrollCourse(id);
-            // Fetch lại để backend trả enrolled=true + signed URLs
-            const updated = await courseServiceGetDetail(id);
-            setCourse(adaptCourseDetail(updated));
-            setRawChapters(updated.chapters);
-          } catch {
-            // Nếu enroll fail (vd: khóa học không tồn tại), vẫn hiển thị detail ban đầu
-            setCourse(adaptCourseDetail(detail));
-            setRawChapters(detail.chapters);
-          }
-        } else {
-          setCourse(adaptCourseDetail(detail));
-          setRawChapters(detail.chapters);
-        }
+        setCourse(adaptCourseDetail(detail));
+        setRawChapters(detail.chapters);
       })
       .catch((err) => {
         // 404 từ BE → hiển thị empty state. Lỗi khác → toast.

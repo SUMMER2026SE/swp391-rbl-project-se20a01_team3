@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { CheckCircle2, XCircle, Clock, ArrowRight, RotateCcw, BookOpen } from 'lucide-react';
 import { getOrderStatus, verifyPayment, type OrderResponse } from '../../api/orderService';
 import { useCartStore } from '../../store/useCartStore';
+import { useCourseStore } from '../../store/useCourseStore';
 
 type ResultStatus = 'success' | 'expired' | 'cancelled' | 'loading';
 
@@ -26,6 +27,7 @@ export default function PaymentResultPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { clearCart } = useCartStore();
+  const { enrollCourses } = useCourseStore();
 
   const initialStatus = resolveInitialStatus(searchParams);
   const orderId = searchParams.get('orderId') ?? sessionStorage.getItem('pendingOrderId');
@@ -41,6 +43,10 @@ export default function PaymentResultPage() {
       setOrder(o);
       clearCart();
       sessionStorage.removeItem('pendingOrderId');
+      // Sync courseIds vào Zustand để CourseDetailPage nhận ngay không cần reload
+      if (o.items?.length) {
+        enrollCourses(o.items.map(i => i.courseId));
+      }
       setStatus('success');
     };
 
@@ -59,17 +65,20 @@ export default function PaymentResultPage() {
             const verified = await verifyPayment(orderId);
             if (verified.status === 'PAID') {
               handlePaidOrder(verified);
+            } else if (verified.status === 'EXPIRED') {
+              setStatus('expired');
+            } else if (verified.status === 'CANCELLED') {
+              setStatus('cancelled');
             } else {
-              setOrder(o);
-              setStatus(initialStatus);
+              // PENDING sau verify → PayOS chưa nhận tiền
+              setStatus('expired');
             }
           } catch {
-            setOrder(o);
-            setStatus(initialStatus);
+            setStatus('expired');
           }
         } else {
           setOrder(o);
-          setStatus(initialStatus);
+          setStatus(initialStatus ?? 'expired');
         }
       })
       .catch(() => setStatus(initialStatus));

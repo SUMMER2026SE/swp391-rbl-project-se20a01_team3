@@ -247,15 +247,22 @@ public class OrderService {
 
         List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
         for (OrderItem item : items) {
+            // Tạo enrollment trước — đây là phần quan trọng nhất
             if (!enrollmentRepository.existsByStudentIdAndCourseId(order.getUserId(), item.getCourseId())) {
                 enrollmentRepository.save(Enrollment.create(order.getUserId(), item.getCourseId()));
+                log.info("Enrollment created: user={} course={}", order.getUserId(), item.getCourseId());
             }
-            // Ghi revenue split cho GV
-            Course course = courseRepository.findById(item.getCourseId()).orElse(null);
-            if (course != null && course.getTeacher() != null) {
-                teacherRevenueService.createRevenueSplit(
-                        course.getTeacher().getId(), order.getUserId(), item.getCourseId(),
-                        order.getId(), item.getPriceAtPurchase());
+            // Ghi revenue split riêng — lỗi ở đây không được rollback enrollment
+            try {
+                Course course = courseRepository.findById(item.getCourseId()).orElse(null);
+                if (course != null && course.getTeacher() != null) {
+                    teacherRevenueService.createRevenueSplit(
+                            course.getTeacher().getId(), order.getUserId(), item.getCourseId(),
+                            order.getId(), item.getPriceAtPurchase());
+                }
+            } catch (Exception e) {
+                log.error("Revenue split thất bại cho order={} course={}: {}",
+                        order.getId(), item.getCourseId(), e.getMessage());
             }
         }
 

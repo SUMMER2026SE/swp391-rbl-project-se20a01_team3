@@ -10,6 +10,7 @@ import com.beeacademy.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.ZoneOffset;
@@ -30,7 +31,8 @@ public class TeacherRevenueService {
 
     private static final DateTimeFormatter MONTH_FMT = DateTimeFormatter.ofPattern("yyyy-MM");
 
-    @Transactional
+    // REQUIRES_NEW: chạy trong transaction riêng, lỗi ở đây không làm rollback enrollment
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void createRevenueSplit(UUID teacherId, UUID studentId, UUID courseId,
                                     UUID orderId, int grossAmount) {
         String monthYear = ZonedDateTime.now(ZoneOffset.UTC).format(MONTH_FMT);
