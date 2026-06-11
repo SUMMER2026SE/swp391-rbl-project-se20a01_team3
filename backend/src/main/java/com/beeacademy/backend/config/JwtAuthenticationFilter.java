@@ -51,6 +51,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String BEARER_PREFIX = "Bearer ";
+    private static final long JWT_CLOCK_SKEW_SECONDS = 10;
 
     // AtomicReference để hỗ trợ lazy retry thread-safe (không dùng synchronized trên mọi request)
     private final AtomicReference<JWTVerifier> es256VerifierRef = new AtomicReference<>(null);
@@ -157,7 +158,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 );
                 Algorithm algorithm = Algorithm.ECDSA256(ecKey, null);
                 log.info("ES256 verifier sẵn sàng (kid={})", key.path("kid").asText("n/a"));
-                return JWT.require(algorithm).build();
+                return JWT.require(algorithm)
+                        .acceptLeeway(JWT_CLOCK_SKEW_SECONDS)
+                        .build();
             }
 
             log.warn("Không tìm thấy EC P-256 key trong JWKS của Supabase");
@@ -175,11 +178,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             byte[] secretBytes = Base64.getDecoder().decode(jwtSecret);
             Algorithm algorithm = Algorithm.HMAC256(secretBytes);
-            return JWT.require(algorithm).build();
+            return JWT.require(algorithm)
+                    .acceptLeeway(JWT_CLOCK_SKEW_SECONDS)
+                    .build();
         } catch (Exception e) {
             log.debug("Base64 decode JWT secret thất bại, thử raw bytes: {}", e.getMessage());
             Algorithm algorithm = Algorithm.HMAC256(jwtSecret);
-            return JWT.require(algorithm).build();
+            return JWT.require(algorithm)
+                    .acceptLeeway(JWT_CLOCK_SKEW_SECONDS)
+                    .build();
         }
     }
 

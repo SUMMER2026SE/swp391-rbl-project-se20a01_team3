@@ -33,7 +33,7 @@ import {
   Bell, LogOut, Menu, X, Send, Plus,
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, CheckCircle2, Clock, AlertTriangle,
-  XCircle, Megaphone, MessageSquare, AlertCircle,
+  XCircle, Megaphone, Database, MessageSquare, AlertCircle,
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -186,6 +186,7 @@ const NAV_ITEMS = [
   { icon: BookOpen,        label: 'Khóa học của tôi',  path: '/teacher/courses',  },
   { icon: FileText,        label: 'Bài giảng',          path: '/teacher/content',  },
   { icon: PenSquare,       label: 'Quiz chương',        path: '/teacher/quiz',     },
+  { icon: Database,        label: 'Ngân hàng câu hỏi',  path: '/teacher/questions',},
   { icon: GraduationCap,   label: 'Bài kiểm tra',       path: '/teacher/exam',     },
   { icon: ClipboardList,   label: 'Chấm điểm',          path: '/teacher/grades',   },
   { icon: HelpCircle,      label: 'Hỏi & Đáp',          path: '/teacher/qa',       },

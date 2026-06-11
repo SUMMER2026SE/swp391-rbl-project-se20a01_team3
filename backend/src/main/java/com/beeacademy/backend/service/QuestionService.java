@@ -26,6 +26,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -66,6 +67,8 @@ public class QuestionService {
     @Transactional
     public QuestionResponse createQuestion(AuthenticatedUser me,
                                             CreateQuestionRequest req) {
+        validateQuestionRequest(req);
+
         Profile teacher  = loadProfile(me.userId());
         Category category = loadCategory(req.categoryId());
 
@@ -140,6 +143,8 @@ public class QuestionService {
     @Transactional
     public QuestionResponse updateQuestion(UUID questionId, AuthenticatedUser me,
                                             CreateQuestionRequest req) {
+        validateQuestionRequest(req);
+
         Question question = loadAndVerifyOwner(questionId, me.userId());
 
         long correctCount = req.choices().stream()
@@ -208,20 +213,34 @@ public class QuestionService {
                                                  List<CreateQuestionRequest> requests) {
         int created = 0;
         int failed  = 0;
+        List<BulkImportError> errors = new ArrayList<>();
+
+        if (requests == null || requests.isEmpty()) {
+            return new BulkImportResult(0, 0, errors);
+        }
+
+        if (requests.size() > 200) {
+            throw new BusinessException("BULK_LIMIT_EXCEEDED",
+                    "Mỗi lần chỉ được nhập tối đa 200 câu hỏi.");
+        }
+
         for (int i = 0; i < requests.size(); i++) {
             try {
                 self.createQuestion(me, requests.get(i)); // qua proxy → transaction riêng
                 created++;
             } catch (Exception e) {
                 failed++;
+                errors.add(new BulkImportError(i + 1, e.getMessage()));
                 log.warn("Bulk import: bỏ qua câu {} — {}", i + 1, e.getMessage());
             }
         }
         log.info("Bulk import: {}/{} thành công", created, requests.size());
-        return new BulkImportResult(created, failed);
+        return new BulkImportResult(created, failed, errors);
     }
 
-    public record BulkImportResult(int created, int failed) {}
+    public record BulkImportResult(int created, int failed, List<BulkImportError> errors) {}
+
+    public record BulkImportError(int row, String message) {}
 
     // ========================================================================
     // Stats cho quiz config UI
@@ -267,6 +286,40 @@ public class QuestionService {
     private Profile loadProfile(UUID id) {
         return profileRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Profile", id));
+    }
+
+    private void validateQuestionRequest(CreateQuestionRequest req) {
+        if (req == null) {
+            throw new BusinessException("INVALID_REQUEST", "Dữ liệu câu hỏi không hợp lệ.");
+        }
+        if (req.categoryId() == null) {
+            throw new BusinessException("CATEGORY_REQUIRED", "Vui lòng chọn môn học.");
+        }
+        if (req.content() == null || req.content().isBlank()) {
+            throw new BusinessException("CONTENT_REQUIRED", "Nội dung câu hỏi không được trống.");
+        }
+        if (!List.of("easy", "medium", "hard").contains(req.difficulty())) {
+            throw new BusinessException("INVALID_DIFFICULTY", "Độ khó phải là easy, medium hoặc hard.");
+        }
+        if (!List.of("multiple_choice", "true_false").contains(req.type())) {
+            throw new BusinessException("INVALID_TYPE", "Loại câu hỏi không hợp lệ.");
+        }
+        if (req.choices() == null || req.choices().size() < 2 || req.choices().size() > 4) {
+            throw new BusinessException("INVALID_CHOICES", "Câu hỏi phải có 2-4 đáp án.");
+        }
+        for (CreateQuestionRequest.ChoiceRequest choice : req.choices()) {
+            if (choice == null || choice.content() == null || choice.content().isBlank()) {
+                throw new BusinessException("INVALID_CHOICES", "Đáp án không được trống.");
+            }
+        }
+
+        long correctCount = req.choices().stream()
+                .filter(CreateQuestionRequest.ChoiceRequest::isCorrect)
+                .count();
+        if (correctCount != 1) {
+            throw new BusinessException("INVALID_CHOICES",
+                    "Câu hỏi phải có đúng 1 đáp án đúng (hiện có: " + correctCount + ").");
+        }
     }
 
     private Category loadCategory(UUID id) {

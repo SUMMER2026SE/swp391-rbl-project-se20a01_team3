@@ -90,7 +90,7 @@ public class QuestionController {
     /** Nhập hàng loạt từ Excel/AI parse — tối đa 200 câu mỗi lần. */
     @PostMapping("/bulk")
     public ApiResponse<QuestionService.BulkImportResult> bulkCreate(
-            @RequestBody List<@Valid CreateQuestionRequest> requests) {
+            @RequestBody List<CreateQuestionRequest> requests) {
         return ApiResponse.ok(
                 questionService.bulkCreateQuestions(CurrentUser.required(), requests),
                 "Nhập hàng loạt hoàn tất");

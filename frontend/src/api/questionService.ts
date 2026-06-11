@@ -102,12 +102,16 @@ export async function getQuestionStats(chapterId: string): Promise<QuestionStats
 export interface BulkImportResult {
   created: number;
   failed: number;
+  errors?: Array<{ row: number; message: string }>;
 }
 
 export async function bulkCreateQuestions(
   requests: CreateQuestionRequest[],
 ): Promise<BulkImportResult> {
   const res = await apiClient.post<ApiResponse<BulkImportResult>>(
-    '/api/teacher/questions/bulk', requests);
+    '/api/teacher/questions/bulk',
+    requests,
+    { timeout: 120000 },
+  );
   return unwrap(res.data);
 }

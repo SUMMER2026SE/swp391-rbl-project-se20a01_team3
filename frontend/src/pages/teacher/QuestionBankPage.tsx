@@ -536,6 +536,53 @@ function ConfirmDeleteDialog({
   );
 }
 
+function ConfirmBulkDeleteDialog({
+  count, deleting, onConfirm, onCancel,
+}: { count: number; deleting: boolean; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <AnimatePresence>
+      {count > 0 && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/50"
+            onClick={deleting ? undefined : onCancel}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+            className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-surface rounded-2xl shadow-2xl p-6 w-full max-w-sm"
+          >
+            <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6 text-red-500" />
+            </div>
+            <h3 className="text-center font-extrabold text-on-surface mb-2">Xóa câu hỏi đã chọn?</h3>
+            <p className="text-center text-sm text-on-surface-variant mb-5">
+              Bạn đang chọn <span className="font-bold text-on-surface">{count}</span> câu hỏi. Thao tác này sẽ xóa hoặc tạm ẩn câu hỏi đã được dùng.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={onCancel}
+                disabled={deleting}
+                className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high rounded-xl disabled:opacity-50"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={onConfirm}
+                disabled={deleting}
+                className="flex-1 py-2.5 text-sm font-bold text-white bg-red-500 hover:bg-red-600 rounded-xl disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {deleting && <Loader2 className="w-4 h-4 animate-spin" />}
+                {deleting ? 'Đang xóa...' : 'Xóa tất cả'}
+              </button>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  MAIN PAGE
 // ═══════════════════════════════════════════════════════════════════
@@ -582,6 +629,9 @@ export default function QuestionBankPage() {
   const [aiScanOpen,     setAiScanOpen]     = useState(false);
   const [editingQ,       setEditingQ]       = useState<QuestionResponse | null>(null);
   const [deleteTarget,   setDeleteTarget]   = useState<QuestionResponse | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting,   setBulkDeleting]   = useState(false);
+  const [selectedIds,    setSelectedIds]    = useState<string[]>([]);
 
   // ── Load metadata (categories + courses) once ─────────────────
   useEffect(() => {
@@ -616,6 +666,7 @@ export default function QuestionBankPage() {
       if (chapterFilter)           params.chapterId  = chapterFilter;
       const page = await questionService.listQuestions(params);
       setQuestions(page.items);
+      setSelectedIds(prev => prev.filter(id => page.items.some(q => q.id === id)));
     } catch {
       notify.error('Không tải được danh sách câu hỏi');
     } finally {
@@ -628,6 +679,39 @@ export default function QuestionBankPage() {
   // ── Actions ───────────────────────────────────────────────────
   function openAdd()  { setEditingQ(null); setPanelOpen(true); }
   function openEdit(q: QuestionResponse) { setEditingQ(q); setPanelOpen(true); }
+
+  const allQuestionIds = questions.map(q => q.id);
+  const selectedCount = selectedIds.length;
+  const allSelected = allQuestionIds.length > 0 && allQuestionIds.every(id => selectedIds.includes(id));
+
+  function toggleSelectQuestion(questionId: string) {
+    setSelectedIds(prev =>
+      prev.includes(questionId)
+        ? prev.filter(id => id !== questionId)
+        : [...prev, questionId],
+    );
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds(allSelected ? [] : allQuestionIds);
+  }
+
+  async function confirmBulkDelete() {
+    if (selectedIds.length === 0) return;
+    setBulkDeleting(true);
+    const idsToDelete = [...selectedIds];
+    const results = await Promise.allSettled(idsToDelete.map(id => questionService.deleteQuestion(id)));
+    const deleted = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.length - deleted;
+
+    if (deleted > 0) notify.success(`Đã xóa ${deleted} câu hỏi`);
+    if (failed > 0) notify.error(`${failed} câu hỏi chưa xóa được`);
+
+    setBulkDeleting(false);
+    setBulkDeleteOpen(false);
+    setSelectedIds([]);
+    loadQuestions();
+  }
 
   async function confirmDelete() {
     if (!deleteTarget) return;
@@ -752,6 +836,23 @@ export default function QuestionBankPage() {
               )}
             </div>
             <div className="flex items-center gap-2">
+              {selectedCount > 0 && (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-2 py-1">
+                  <span className="text-xs font-bold text-red-700 px-1">{selectedCount} đã chọn</span>
+                  <button
+                    onClick={() => setSelectedIds([])}
+                    className="text-xs font-bold text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-100"
+                  >
+                    Bỏ chọn
+                  </button>
+                  <button
+                    onClick={() => setBulkDeleteOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Xóa đã chọn
+                  </button>
+                </div>
+              )}
               <button onClick={loadQuestions} disabled={loadingQ}
                 className="p-2.5 text-on-surface-variant hover:text-primary hover:bg-primary/5 rounded-xl transition-colors"
                 title="Làm mới"
@@ -877,6 +978,15 @@ export default function QuestionBankPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-outline-variant/20 bg-surface-container/50">
+                        <th className="text-center px-4 py-3 w-12">
+                          <input
+                            type="checkbox"
+                            checked={allSelected}
+                            onChange={toggleSelectAll}
+                            aria-label="Chọn tất cả câu hỏi"
+                            className="w-4 h-4 rounded border-outline-variant accent-primary cursor-pointer"
+                          />
+                        </th>
                         <th className="text-left px-5 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide w-[38%]">Nội dung câu hỏi</th>
                         <th className="text-left px-4 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide">Độ khó</th>
                         <th className="text-left px-4 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide hidden md:table-cell">Chương</th>
@@ -893,8 +1003,19 @@ export default function QuestionBankPage() {
                           <motion.tr key={q.id}
                             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: idx * 0.025 }}
-                            className={`border-b border-outline-variant/10 hover:bg-surface-container/30 transition-colors ${idx % 2 !== 0 ? 'bg-surface-container/15' : ''}`}
+                            className={`border-b border-outline-variant/10 hover:bg-surface-container/30 transition-colors ${
+                              selectedIds.includes(q.id) ? 'bg-primary/5' : (idx % 2 !== 0 ? 'bg-surface-container/15' : '')
+                            }`}
                           >
+                            <td className="px-4 py-3 text-center">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(q.id)}
+                                onChange={() => toggleSelectQuestion(q.id)}
+                                aria-label={`Chọn câu hỏi ${idx + 1}`}
+                                className="w-4 h-4 rounded border-outline-variant accent-primary cursor-pointer"
+                              />
+                            </td>
                             <td className="px-5 py-3">
                               <p className="text-on-surface font-medium leading-snug">{truncate(q.content, 100)}</p>
                               <p className="text-xs text-on-surface-variant mt-0.5">
@@ -968,6 +1089,13 @@ export default function QuestionBankPage() {
         question={deleteTarget}
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmBulkDeleteDialog
+        count={bulkDeleteOpen ? selectedCount : 0}
+        deleting={bulkDeleting}
+        onConfirm={confirmBulkDelete}
+        onCancel={() => setBulkDeleteOpen(false)}
       />
 
       {/* Excel Import Modal */}

@@ -20,6 +20,7 @@ import * as XLSX from 'xlsx';
 import { notify } from '../../lib/toast';
 import * as questionService from '../../api/questionService';
 import type { CreateQuestionRequest } from '../../api/questionService';
+import { isApiError } from '../../api/client';
 import { listCategories } from '../../api/courseService';
 import { listMyCourses, getCourseDetail } from '../../api/teacherCourseService';
 import type { TeacherCourseResponse, TeacherChapterResponse } from '../../api/teacherCourseService';
@@ -46,6 +47,57 @@ interface ParsedRow {
 
 // ─── Excel parser ─────────────────────────────────────────────────────────────
 
+function plain(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function token(value: unknown): string {
+  return plain(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toUpperCase();
+}
+
+function parseQuestionType(value: unknown): 'multiple_choice' | 'true_false' {
+  const t = token(value);
+  return ['DS', 'DUNG/SAI', 'TRUE_FALSE', 'TRUEFALSE', 'TF'].includes(t)
+    ? 'true_false'
+    : 'multiple_choice';
+}
+
+function parseDifficulty(value: unknown): Difficulty {
+  const d = token(value);
+  if (['D', 'DE', 'EASY'].includes(d)) return 'easy';
+  if (['K', 'KHO', 'HARD'].includes(d)) return 'hard';
+  return 'medium';
+}
+
+function correctChoiceIndex(value: unknown): number {
+  const c = token(value);
+  if (['A', '1'].includes(c)) return 0;
+  if (['B', '2'].includes(c)) return 1;
+  if (['C', '3'].includes(c)) return 2;
+  if (['D', '4'].includes(c)) return 3;
+  return -1;
+}
+
+function trueFalseCorrectIndex(value: unknown): number {
+  const c = token(value);
+  return ['B', 'S', 'SAI', 'FALSE', 'F', '0'].includes(c) ? 1 : 0;
+}
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (isApiError(err)) return err.message;
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
+function wasNetworkErrorAlreadyToasted(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : '';
+  return message.startsWith('Không thể kết nối') || message.startsWith('Mất kết nối');
+}
+
 function parseExcel(file: File): Promise<ParsedRow[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -63,28 +115,21 @@ function parseExcel(file: File): Promise<ParsedRow[]> {
           // Bỏ qua hàng trống hoàn toàn
           if (!r.some(cell => String(cell).trim())) continue;
 
-          const content     = String(r[0] ?? '').trim();
-          const typeRaw     = String(r[1] ?? 'TN').trim().toUpperCase();
-          const diffRaw     = String(r[2] ?? 'TB').trim().toUpperCase();
-          const ansA        = String(r[3] ?? '').trim();
-          const ansB        = String(r[4] ?? '').trim();
-          const ansC        = String(r[5] ?? '').trim();
-          const ansD        = String(r[6] ?? '').trim();
-          const correctRaw  = String(r[7] ?? 'A').trim().toUpperCase();
-          const explanation = String(r[8] ?? '').trim();
-
-          const type: 'multiple_choice' | 'true_false' =
-            typeRaw === 'DS' ? 'true_false' : 'multiple_choice';
-
-          const difficulty: Difficulty =
-            diffRaw === 'D' ? 'easy' : diffRaw === 'K' ? 'hard' : 'medium';
+          const content     = plain(r[0]);
+          const type        = parseQuestionType(r[1] || 'TN');
+          const difficulty  = parseDifficulty(r[2] || 'TB');
+          const ansA        = plain(r[3]);
+          const ansB        = plain(r[4]);
+          const ansC        = plain(r[5]);
+          const ansD        = plain(r[6]);
+          const explanation = plain(r[8]);
 
           // Build choices
           let choices: Array<{ content: string; isCorrect: boolean }>;
           let error: string | undefined;
 
           if (type === 'true_false') {
-            const correctIdx = correctRaw === 'B' ? 1 : 0;
+            const correctIdx = trueFalseCorrectIndex(r[7] || 'A');
             choices = [
               { content: 'Đúng', isCorrect: correctIdx === 0 },
               { content: 'Sai',  isCorrect: correctIdx === 1 },
@@ -94,13 +139,13 @@ function parseExcel(file: File): Promise<ParsedRow[]> {
             if (raw.length < 2) {
               error = 'Cần ít nhất 2 đáp án';
             }
-            const correctIdx = ['A', 'B', 'C', 'D'].indexOf(correctRaw);
+            const correctIdx = correctChoiceIndex(r[7] || 'A');
             choices = raw.map((c, idx) => ({
               content: c,
               isCorrect: idx === correctIdx,
             }));
             if (correctIdx < 0 || correctIdx >= raw.length) {
-              error = `Đáp án đúng "${correctRaw}" không hợp lệ`;
+              error = `Đáp án đúng "${plain(r[7])}" không hợp lệ`;
             }
           }
 
@@ -191,7 +236,7 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
   const [rows,      setRows]      = useState<ParsedRow[]>([]);
   const [fileName,  setFileName]  = useState('');
   const [importing, setImporting] = useState(false);
-  const [result,    setResult]    = useState<{ created: number; failed: number } | null>(null);
+  const [result,    setResult]    = useState<questionService.BulkImportResult | null>(null);
 
   // Load categories + courses on open
   useEffect(() => {
@@ -284,9 +329,13 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
       if (res.created > 0) {
         notify.success(`Nhập thành công ${res.created} câu hỏi`);
         onImported();
+      } else if (res.failed > 0) {
+        notify.error(res.errors?.[0]?.message ?? 'Không nhập được câu hỏi nào');
       }
-    } catch {
-      notify.error('Nhập thất bại — kiểm tra lại kết nối');
+    } catch (err) {
+      if (!wasNetworkErrorAlreadyToasted(err)) {
+        notify.error(getErrorMessage(err, 'Nhập thất bại — kiểm tra lại kết nối'));
+      }
     } finally {
       setImporting(false);
     }
@@ -546,6 +595,15 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
                       {result.created} câu hỏi đã được thêm vào ngân hàng.
                       {result.failed > 0 && ` ${result.failed} câu bị bỏ qua do lỗi.`}
                     </p>
+                    {result.errors && result.errors.length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-amber-800">
+                        {result.errors.slice(0, 3).map(err => (
+                          <li key={`${err.row}-${err.message}`}>
+                            Dòng {err.row}: {err.message}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 </motion.div>
               )}
