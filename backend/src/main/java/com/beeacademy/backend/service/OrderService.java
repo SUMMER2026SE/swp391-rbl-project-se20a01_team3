@@ -69,9 +69,12 @@ public class OrderService {
             .sum();
 
         Order order = Order.create(userId, total);
-        orderRepository.save(order);
 
         try {
+            // Save order trước khi gọi PayOS — nếu DB lỗi (schema thiếu cột, constraint)
+            // exception sẽ bị bắt ở đây và trả về BusinessException thay vì 500.
+            orderRepository.save(order);
+
             String cancelUrl = frontendUrl + "/payment-result?status=cancelled&orderId=" + order.getId();
             String returnUrl = frontendUrl + "/payment-result?status=success&orderId=" + order.getId();
 
