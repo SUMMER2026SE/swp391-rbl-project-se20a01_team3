@@ -42,29 +42,18 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
     /** Tất cả khóa học đã enroll của một học sinh. */
     List<Enrollment> findByStudentId(UUID studentId);
 
+    /** Tất cả enrollment thuộc một nhóm khóa học. */
+    List<Enrollment> findByCourseIdIn(List<UUID> courseIds);
+
     /** Đếm số khóa học đã enroll của học sinh. */
     int countByStudentId(UUID studentId);
 
-    /**
-     * Đếm enrollment theo từng courseId trong danh sách.
-     *
-     * <p>Dùng cho dashboard giáo viên: vẽ bar chart "X đơn" mỗi khóa.
-     * Trả Object[] [courseId, count] để tránh load entity không cần thiết.
-     *
-     * @param courseIds danh sách courseId của giáo viên
-     * @return list [courseId (UUID), count (Long)]
-     */
     @Query("SELECT e.courseId, COUNT(e) FROM Enrollment e WHERE e.courseId IN :courseIds GROUP BY e.courseId")
     List<Object[]> countGroupedByCourseId(@Param("courseIds") List<UUID> courseIds);
 
-    /**
-     * Đếm học viên duy nhất đã mua ít nhất 1 khóa trong danh sách.
-     *
-     * <p>Dùng cho stat card "Học viên đã mua" — không đếm trùng nếu 1 HS mua nhiều khóa.
-     *
-     * @param courseIds danh sách courseId của giáo viên
-     * @return số học viên unique
-     */
     @Query("SELECT COUNT(DISTINCT e.studentId) FROM Enrollment e WHERE e.courseId IN :courseIds")
     long countUniqueStudentsByCourseIds(@Param("courseIds") List<UUID> courseIds);
+
+    /** Đếm số học sinh đã mua/ghi danh một khóa học. */
+    int countByCourseId(UUID courseId);
 }

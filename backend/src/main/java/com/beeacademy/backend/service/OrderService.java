@@ -268,7 +268,7 @@ public class OrderService {
                 } else {
                     teacherRevenueService.createRevenueSplit(
                             course.getTeacher().getId(), order.getUserId(), item.getCourseId(),
-                            order.getId(), item.getPriceAtPurchase());
+                            order.getId(), item.getId(), item.getPriceAtPurchase());
                 }
             } catch (Exception e) {
                 log.error("Revenue split thất bại cho order={} course={}: {}",

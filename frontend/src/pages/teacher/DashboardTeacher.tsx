@@ -28,14 +28,18 @@ function fmtDate(iso: string) {
   });
 }
 
-/**
- * Tính % thay đổi so với tháng trước.
- * Nếu tháng trước = 0 và tháng này > 0 → +100% (mới có doanh thu).
- * Nếu cả hai = 0 → 0% (không thay đổi).
- */
 function pctChange(cur: number, prev: number) {
   if (prev === 0) return cur > 0 ? 100 : 0;
   return Math.round(((cur - prev) / prev) * 100);
+}
+
+function withTimeout<T>(promise: Promise<T>, ms = 10000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('timeout')), ms);
+    promise
+      .then(resolve, reject)
+      .finally(() => window.clearTimeout(timer));
+  });
 }
 
 function courseStatusMeta(status: TeacherCourseResponse['status']) {
@@ -186,8 +190,8 @@ export default function DashboardTeacher() {
 
     setLoading(true);
     Promise.allSettled([
-      getTeacherStats(),
-      listMyCourses(0, 50).then(p => p.items),
+      withTimeout(getTeacherStats()),
+      withTimeout(listMyCourses(0, 50).then(p => p.items)),
     ])
       .then(([statsResult, coursesResult]) => {
         const failed: string[] = [];
@@ -226,7 +230,6 @@ export default function DashboardTeacher() {
     const counts = stats?.courseEnrollmentCounts ?? {};
     return courses.slice(0, 5).map(c => ({
       course: c,
-      // Dùng enrollment count từ server thay vì đếm splits client-side
       salesCount: counts[c.id] ?? 0,
     }));
   }, [courses, stats]);
