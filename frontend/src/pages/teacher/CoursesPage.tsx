@@ -222,12 +222,12 @@ function CourseFormPanel({ open, editing, categories, onClose, onSaved }: Course
   function handleThumbnailChange(file: File | undefined) {
     if (!file) return;
     if (!ALLOWED_THUMBNAIL_TYPES.includes(file.type)) {
-      notify.error('Chi chap nhan anh JPEG, PNG hoac WEBP');
+      notify.error('Chỉ chấp nhận ảnh JPEG, PNG hoặc WEBP');
       setThumbnailInputKey(k => k + 1);
       return;
     }
     if (file.size > MAX_THUMBNAIL_SIZE_BYTES) {
-      notify.error('Anh bia khong duoc vuot qua 5MB');
+      notify.error('Ảnh bìa không được vượt quá 5MB');
       setThumbnailInputKey(k => k + 1);
       return;
     }
@@ -262,7 +262,7 @@ function CourseFormPanel({ open, editing, categories, onClose, onSaved }: Course
       if (thumbnailFile) {
         const uploaded = await teacherCourseService.uploadCourseThumbnail(thumbnailFile);
         if (!uploaded.publicUrl) {
-          throw new Error('Upload anh bia khong tra ve URL');
+          throw new Error('Upload ảnh bìa không trả về URL');
         }
         thumbnailUrl = uploaded.publicUrl;
       }
@@ -357,7 +357,7 @@ function CourseFormPanel({ open, editing, categories, onClose, onSaved }: Course
                 <label className="block text-sm font-bold text-on-surface mb-1.5">Ảnh bìa khóa học</label>
                 <label className="flex items-center justify-center gap-2 w-full px-3 py-3 text-sm font-bold bg-surface-container border border-dashed border-outline-variant rounded-xl text-on-surface-variant hover:border-primary hover:text-primary cursor-pointer transition-colors">
                   <Upload className="w-4 h-4" />
-                  {thumbnailFile ? thumbnailFile.name : 'Chon anh tu may'}
+                  {thumbnailFile ? thumbnailFile.name : 'Chọn ảnh từ máy'}
                   <input
                     key={thumbnailInputKey}
                     type="file"
@@ -367,7 +367,7 @@ function CourseFormPanel({ open, editing, categories, onClose, onSaved }: Course
                   />
                 </label>
                 <p className="mt-1.5 text-xs text-on-surface-variant">
-                  JPEG, PNG hoac WEBP - toi da 5MB.
+                  JPEG, PNG hoặc WEBP — tối đa 5MB.
                 </p>
                 {thumbnailFile && (
                   <button
@@ -375,7 +375,7 @@ function CourseFormPanel({ open, editing, categories, onClose, onSaved }: Course
                     onClick={cancelThumbnailSelection}
                     className="mt-2 text-xs font-bold text-primary hover:underline"
                   >
-                    Huy chon anh
+                    Hủy chọn ảnh
                   </button>
                 )}
                 <input

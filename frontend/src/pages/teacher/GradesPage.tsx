@@ -38,7 +38,8 @@ import {
 //   - re_submit: HS đã nộp lại sau khi GV đã chấm (cần chấm lại)
 type SubmissionStatus = 'pending' | 'graded' | 'resubmit';
 
-// File đính kèm — mock chỉ lưu metadata, không có URL thật
+// File đính kèm bài nộp — hiện chỉ có metadata; URL tải thật sẽ do
+// backend trả về (signed URL) khi API submissions sẵn sàng
 interface SubmissionFile {
   name: string;        // Tên file gốc, vd "baitap-toan-an.pdf"
   size: string;        // Kích thước đọc được, vd "1.2 MB"
@@ -71,107 +72,6 @@ interface Submission {
   feedback?: string;
   gradedAt?: string;
 }
-
-// ═══════════════════════════════════════════════════════════════════
-//  PHẦN 2 — MOCK DATA
-// ═══════════════════════════════════════════════════════════════════
-// 6 bài nộp với 3 trạng thái khác nhau để demo đủ các case
-const INITIAL_SUBMISSIONS: Submission[] = [
-  {
-    id: 's1',
-    studentName: 'Nguyễn Văn An',
-    studentEmail: 'an.nguyen@beeacademy.vn',
-    courseId: 'c1', courseTitle: 'Toán Đại Số - Lớp 8',
-    assignmentId: 'a1', assignmentTitle: 'Bài tập Chương 1: Hằng đẳng thức',
-    maxScore: 10,
-    submittedAt: '2026-05-20T14:30:00',
-    attemptNumber: 1,
-    files: [
-      { name: 'baitap-an.pdf', size: '1.2 MB', type: 'pdf' },
-    ],
-    status: 'pending',
-  },
-  {
-    id: 's2',
-    studentName: 'Trần Thị Bích',
-    studentEmail: 'bich.tran@beeacademy.vn',
-    courseId: 'c1', courseTitle: 'Toán Đại Số - Lớp 8',
-    assignmentId: 'a1', assignmentTitle: 'Bài tập Chương 1: Hằng đẳng thức',
-    maxScore: 10,
-    submittedAt: '2026-05-20T09:15:00',
-    attemptNumber: 1,
-    files: [
-      { name: 'baitap-bich.pdf', size: '850 KB', type: 'pdf' },
-      { name: 'phan-c.jpg',      size: '2.1 MB', type: 'image' },
-    ],
-    status: 'graded',
-    score: 8.5,
-    feedback: 'Trình bày rõ ràng. Phần c chưa rút gọn hết. Em xem lại cách phân tích đa thức.',
-    gradedAt: '2026-05-20T16:00:00',
-  },
-  {
-    id: 's3',
-    studentName: 'Lê Minh Cường',
-    studentEmail: 'cuong.le@beeacademy.vn',
-    courseId: 'c1', courseTitle: 'Toán Đại Số - Lớp 8',
-    assignmentId: 'a2', assignmentTitle: 'Bài tập Chương 2: Phân tích đa thức',
-    maxScore: 10,
-    submittedAt: '2026-05-19T20:45:00',
-    attemptNumber: 2,
-    files: [
-      { name: 'lan2-cuong.docx', size: '320 KB', type: 'doc' },
-    ],
-    status: 'resubmit',
-    score: 5,           // Điểm cũ từ lần chấm trước
-    feedback: 'Cần làm lại phần b và c.',
-    gradedAt: '2026-05-18T10:00:00',
-  },
-  {
-    id: 's4',
-    studentName: 'Phạm Thị Dung',
-    studentEmail: 'dung.pham@beeacademy.vn',
-    courseId: 'c2', courseTitle: 'Vật Lý - Lớp 9',
-    assignmentId: 'a3', assignmentTitle: 'Bài tập về Định luật Ohm',
-    maxScore: 10,
-    submittedAt: '2026-05-21T07:30:00',
-    attemptNumber: 1,
-    files: [
-      { name: 'ohm-dung.pdf', size: '2.5 MB', type: 'pdf' },
-    ],
-    status: 'pending',
-  },
-  {
-    id: 's5',
-    studentName: 'Hoàng Quốc Đạt',
-    studentEmail: 'dat.hoang@beeacademy.vn',
-    courseId: 'c1', courseTitle: 'Toán Đại Số - Lớp 8',
-    assignmentId: 'a1', assignmentTitle: 'Bài tập Chương 1: Hằng đẳng thức',
-    maxScore: 10,
-    submittedAt: '2026-05-20T22:10:00',
-    attemptNumber: 1,
-    files: [
-      { name: 'dat-bai1.pdf', size: '980 KB', type: 'pdf' },
-    ],
-    status: 'graded',
-    score: 9.5,
-    feedback: 'Xuất sắc! Trình bày rất sạch.',
-    gradedAt: '2026-05-21T08:00:00',
-  },
-  {
-    id: 's6',
-    studentName: 'Vũ Minh Hùng',
-    studentEmail: 'hung.vu@beeacademy.vn',
-    courseId: 'c2', courseTitle: 'Vật Lý - Lớp 9',
-    assignmentId: 'a3', assignmentTitle: 'Bài tập về Định luật Ohm',
-    maxScore: 10,
-    submittedAt: '2026-05-21T11:00:00',
-    attemptNumber: 1,
-    files: [
-      { name: 'hung-ohm.pdf',  size: '1.1 MB', type: 'pdf' },
-    ],
-    status: 'pending',
-  },
-];
 
 // ═══════════════════════════════════════════════════════════════════
 //  PHẦN 3 — MẪU NHẬN XÉT NHANH
@@ -255,9 +155,10 @@ function StatusBadge({ status }: { status: SubmissionStatus }) {
 // Hiển thị 1 file đính kèm dưới dạng chip có icon + tên + size + nút tải.
 // Tách component vì 1 bài có thể nhiều file → tránh duplicate.
 function FileChip({ file }: { file: SubmissionFile }) {
-  // Click tải file: mock — backend thật sẽ trả Cloudinary URL với signed token
+  // Backend chưa có endpoint tải file bài nộp — thông báo cho GV biết
+  // thay vì để nút bấm không phản hồi gì
   function handleDownload() {
-    notify.info(`Tải file ${file.name} (mock — chưa kết nối backend)`);
+    notify.info(`Chức năng tải file ${file.name} sẽ khả dụng khi kết nối backend`);
   }
 
   return (
@@ -281,7 +182,9 @@ function FileChip({ file }: { file: SubmissionFile }) {
 
 export default function TeacherGradesPage() {
   // ── State chính ─────────────────────────────────────────────────
-  const [submissions, setSubmissions] = useState<Submission[]>(INITIAL_SUBMISSIONS);
+  // Khởi tạo rỗng — dữ liệu bài nộp sẽ load từ backend khi API
+  // submissions/grading sẵn sàng (backend hiện chưa có endpoint này)
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
 
   // Bộ lọc — 'all' = không lọc
   const [courseFilter, setCourseFilter] = useState<string>('all');
@@ -401,7 +304,8 @@ export default function TeacherGradesPage() {
     }));
 
     notify.success('Đã lưu điểm');
-    // Mock: nếu toggle bật thì hiển thị thêm toast info
+    // Gửi thông báo cho HS hiện chỉ là toast — sẽ gọi API notification
+    // khi backend hỗ trợ
     if (notifyStudent) {
       notify.info(`Đã thông báo ${selectedSubmission.studentName} qua tin nhắn`);
     }
@@ -602,7 +506,10 @@ export default function TeacherGradesPage() {
 
               {filteredSubmissions.length === 0 ? (
                 <p className="text-sm text-on-surface-variant text-center py-8">
-                  Không có bài nộp nào khớp bộ lọc
+                  {/* Phân biệt 2 trường hợp: chưa có dữ liệu vs lọc không ra kết quả */}
+                  {submissions.length === 0
+                    ? 'Chưa có bài nộp nào từ học sinh'
+                    : 'Không có bài nộp nào khớp bộ lọc'}
                 </p>
               ) : (
                 <div className="space-y-2 max-h-[600px] overflow-y-auto">
