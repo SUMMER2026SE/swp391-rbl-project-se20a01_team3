@@ -53,4 +53,20 @@ public class PayoutPeriod {
         p.status = PayoutStatus.PENDING;
         return p;
     }
+
+    /**
+     * Admin xác nhận đã chuyển khoản thủ công cho GV (UC40).
+     * Ghi lại biên lai (mã giao dịch + nội dung) và đánh dấu PAID.
+     */
+    public void markPaid(UUID adminId, String transferRef, String transferContent) {
+        this.status = PayoutStatus.PAID;
+        this.paidByAdmin = adminId;
+        this.transferRef = transferRef;
+        this.transferContent = transferContent;
+        this.paidAt = Instant.now();
+    }
+
+    public boolean isPaid() {
+        return this.status == PayoutStatus.PAID;
+    }
 }
