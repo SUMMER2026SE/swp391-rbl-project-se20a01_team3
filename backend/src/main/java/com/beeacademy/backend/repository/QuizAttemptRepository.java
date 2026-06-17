@@ -23,6 +23,8 @@ public interface QuizAttemptRepository extends JpaRepository<QuizAttempt, UUID> 
     /** Đếm số lần một student đã làm một quiz config. */
     int countByStudentIdAndQuizConfigId(UUID studentId, UUID quizConfigId);
 
+    boolean existsByStudentIdAndQuizConfigIdAndPassedTrue(UUID studentId, UUID quizConfigId);
+
     /** Lịch sử làm bài của student cho một config, mới nhất lên đầu. */
     List<QuizAttempt> findByStudentIdAndQuizConfigIdOrderByAttemptNumberDesc(
             UUID studentId, UUID quizConfigId);

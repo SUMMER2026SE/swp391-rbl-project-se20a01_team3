@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 
 import org.springframework.data.jpa.repository.Modifying;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -60,6 +61,10 @@ public interface CourseRepository extends JpaRepository<Course, UUID>,
      */
     @EntityGraph(attributePaths = {"category", "teacher"})
     Optional<Course> findWithCategoryAndTeacherById(UUID id);
+
+    /** Load nhanh metadata khoá học cho order history / checkout result. */
+    @EntityGraph(attributePaths = {"category", "teacher"})
+    List<Course> findByIdIn(Collection<UUID> ids);
 
     /** Cùng logic nhưng theo slug. */
     @EntityGraph(attributePaths = {"category", "teacher"})

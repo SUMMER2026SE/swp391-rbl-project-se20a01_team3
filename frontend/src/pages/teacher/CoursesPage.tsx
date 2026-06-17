@@ -25,7 +25,7 @@ import {
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, CheckCircle2, Clock, AlertTriangle,
   Megaphone, Database, Send, RefreshCcw, Eye, Save, Loader2, ChevronDown,
-  Upload, Image as ImageIcon,
+  Upload, Image as ImageIcon, MessageSquare,
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -570,6 +570,10 @@ export default function TeacherCoursesPage() {
     setFormOpen(true);
   }
 
+  function handleOpenDiscussion(courseId: string) {
+    navigate(`/teacher/qa?tab=common&courseId=${encodeURIComponent(courseId)}`);
+  }
+
   function handleFormSaved(saved: TeacherCourseResponse) {
     setCourses(prev => {
       const exists = prev.find(c => c.id === saved.id);
@@ -945,6 +949,14 @@ export default function TeacherCoursesPage() {
                                     className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors"
                                   >
                                     <Pencil className="w-4 h-4" />
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleOpenDiscussion(course.id)}
+                                    title="Q&A chung"
+                                    className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                                  >
+                                    <MessageSquare className="w-4 h-4" />
                                   </button>
 
                                   {/* Xóa — chỉ khi draft */}

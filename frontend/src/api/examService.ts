@@ -53,6 +53,74 @@ export interface ExamQuestionRandomRequest {
   }>;
 }
 
+export interface StudentExamRequiredChapter {
+  chapterId: string;
+  title: string;
+  hasQuiz: boolean;
+  quizPassed: boolean;
+}
+
+export interface StudentExamSummaryResponse {
+  examId: string | null;
+  slotIndex: number;
+  name: string;
+  description: string | null;
+  durationMinutes: number | null;
+  passScorePercent: number | null;
+  maxAttempts: number | null;
+  configured: boolean;
+  unlocked: boolean;
+  passed: boolean;
+  latestScorePercent: number | null;
+  attemptsUsed: number;
+  requiredQuizCount: number;
+  passedQuizCount: number;
+  lockedReason: string | null;
+  requiredChapters: StudentExamRequiredChapter[];
+}
+
+export interface StudentExamQuestion {
+  id: string;
+  text: string;
+  type: ExamQuestionType;
+  options: string[];
+  points: number;
+}
+
+export interface StudentExamStartResponse {
+  attemptId: string;
+  examId: string;
+  slotIndex: number;
+  name: string;
+  description: string | null;
+  durationMinutes: number;
+  totalQuestions: number;
+  attemptNumber: number;
+  questions: StudentExamQuestion[];
+}
+
+export interface StudentExamResultDetail {
+  questionId: string;
+  text: string;
+  studentAnswers: number[];
+  correctAnswers: number[];
+  isCorrect: boolean;
+  explanation: string | null;
+  points: number;
+}
+
+export interface StudentExamResultResponse {
+  attemptId: string;
+  examId: string;
+  slotIndex: number;
+  scorePercent: number;
+  passed: boolean;
+  earnedPoints: number;
+  totalPoints: number;
+  attemptNumber: number;
+  details: StudentExamResultDetail[];
+}
+
 export async function listCourseExams(courseId: string): Promise<ExamConfigResponse[]> {
   const res = await apiClient.get<ApiResponse<ExamConfigResponse[]>>(
     `/api/teacher/courses/${courseId}/exams`,
@@ -102,4 +170,32 @@ export async function saveCourseExam(
 
 export async function deleteCourseExam(courseId: string, slotIndex: number): Promise<void> {
   await apiClient.delete(`/api/teacher/courses/${courseId}/exams/${slotIndex}`);
+}
+
+export async function listStudentCourseExams(courseId: string): Promise<StudentExamSummaryResponse[]> {
+  const res = await apiClient.get<ApiResponse<StudentExamSummaryResponse[]>>(
+    `/api/student/courses/${courseId}/exams`,
+  );
+  return unwrap(res.data);
+}
+
+export async function startStudentExam(
+    courseId: string,
+    slotIndex: number,
+): Promise<StudentExamStartResponse> {
+  const res = await apiClient.post<ApiResponse<StudentExamStartResponse>>(
+    `/api/student/courses/${courseId}/exams/${slotIndex}/start`,
+  );
+  return unwrap(res.data);
+}
+
+export async function submitStudentExam(
+    attemptId: string,
+    answers: Record<string, number[]>,
+): Promise<StudentExamResultResponse> {
+  const res = await apiClient.post<ApiResponse<StudentExamResultResponse>>(
+    `/api/student/exam-attempts/${attemptId}/submit`,
+    { answers },
+  );
+  return unwrap(res.data);
 }
