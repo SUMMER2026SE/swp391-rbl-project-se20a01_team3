@@ -23,12 +23,17 @@
  *   - Admin đánh dấu resolved/rejected → đóng thread (HS không gửi thêm được)
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { notify } from '../../lib/toast';
 import DashboardHeader from '../../components/DashboardHeader';
 import PageBanner from '../../components/PageBanner';
+import {
+  addStudentComplaintMessage,
+  createStudentComplaint,
+  listStudentComplaints,
+} from '../../api/complaintService';
 import {
   Send, Plus, CheckCircle2, Clock, XCircle,
   Megaphone, MessageSquare, AlertCircle,
@@ -278,7 +283,9 @@ function MessageBubble({ message }: { message: ComplaintMessage }) {
 
 export default function ComplaintsPage() {
   // ── State chính ─────────────────────────────────────────────────
-  const [complaints, setComplaints] = useState<Complaint[]>(INITIAL_COMPLAINTS);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [categoryFilter, setCategoryFilter] = useState<'all' | ComplaintCategory>('all');
   const [statusFilter,   setStatusFilter]   = useState<'all' | ComplaintStatus>('all');
@@ -297,6 +304,33 @@ export default function ComplaintsPage() {
 
   const user = useAuthStore(state => state.user);
   const displayName = user?.name ?? STUDENT_DISPLAY_NAME;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadComplaints() {
+      setIsLoading(true);
+      try {
+        const data = await listStudentComplaints();
+        if (!cancelled) {
+          setComplaints(data as Complaint[]);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          notify.error(error instanceof Error ? error.message : 'Khong the tai danh sach khieu nai');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadComplaints();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ── DERIVED: stats cho 3 cards ──────────────────────────────────
   const stats = useMemo(() => ({
@@ -331,7 +365,7 @@ export default function ComplaintsPage() {
     setRightMode(null);
   }
 
-  function submitCreate() {
+  async function submitCreate() {
     if (!formTitle.trim()) {
       notify.error('Vui lòng nhập tiêu đề');
       return;
@@ -339,6 +373,29 @@ export default function ComplaintsPage() {
     if (!formContent.trim()) {
       notify.error('Vui lòng nhập nội dung khiếu nại');
       return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const newComplaint = await createStudentComplaint({
+        title: formTitle.trim(),
+        category: formCategory,
+        priority: formPriority,
+        content: formContent.trim(),
+      });
+
+      setComplaints(prev => [newComplaint as Complaint, ...prev.filter(c => c.id !== newComplaint.id)]);
+      setSelectedId(newComplaint.id);
+      setRightMode('view');
+      setFormTitle('');
+      setFormContent('');
+      notify.success('Da gui khieu nai den Admin');
+      return;
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Khong the gui khieu nai');
+      return;
+    } finally {
+      setIsSubmitting(false);
     }
 
     const now = new Date().toISOString();
@@ -374,12 +431,28 @@ export default function ComplaintsPage() {
   }
 
   // HS gửi reply (follow up). Chỉ cho phép khi pending/in_progress.
-  function sendReply() {
+  async function sendReply() {
     if (!selectedComplaint) return;
     const content = replyInput.trim();
     if (!content) {
       notify.error('Vui lòng nhập nội dung trả lời');
       return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const updatedComplaint = await addStudentComplaintMessage(selectedComplaint.id, content);
+      setComplaints(prev => prev.map(c =>
+        c.id === updatedComplaint.id ? updatedComplaint as Complaint : c
+      ));
+      setReplyInput('');
+      notify.success('Da gui tin nhan');
+      return;
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Khong the gui tin nhan');
+      return;
+    } finally {
+      setIsSubmitting(false);
     }
 
     const now = new Date().toISOString();
@@ -533,7 +606,11 @@ export default function ComplaintsPage() {
               </span>
             </h3>
 
-            {filteredComplaints.length === 0 ? (
+            {isLoading ? (
+              <p className="text-sm text-on-surface-variant text-center py-8">
+                Dang tai danh sach khieu nai...
+              </p>
+            ) : filteredComplaints.length === 0 ? (
               <p className="text-sm text-on-surface-variant text-center py-8">
                 Không có khiếu nại nào khớp bộ lọc
               </p>
@@ -678,7 +755,8 @@ export default function ComplaintsPage() {
                     </button>
                     <button
                       onClick={submitCreate}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-md shadow-primary/20"
+                      disabled={isSubmitting}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-md shadow-primary/20 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <Send className="w-4 h-4" />
                       Gửi khiếu nại
@@ -743,8 +821,9 @@ export default function ComplaintsPage() {
                       />
                       <div className="flex items-center justify-end">
                         <button
-                          onClick={sendReply}
-                          className="flex items-center gap-2 px-5 py-2 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-md shadow-primary/20"
+                        onClick={sendReply}
+                        disabled={isSubmitting}
+                        className="flex items-center gap-2 px-5 py-2 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-md shadow-primary/20 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           <Send className="w-4 h-4" />
                           Gửi
