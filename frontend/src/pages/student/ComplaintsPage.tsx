@@ -38,6 +38,7 @@ import {
   type ComplaintPriority,
   type ComplaintStatus,
   type ComplaintDetail,
+  type ComplaintMessage,
 } from '../../api/complaintService';
 import {
   Send, Plus, CheckCircle2, Clock, XCircle,

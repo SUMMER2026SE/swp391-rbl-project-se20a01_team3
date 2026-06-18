@@ -18,6 +18,7 @@ import AccountPage from './pages/student/AccountPage';
 import AvatarPage from './pages/student/AvatarPage';
 import ComplaintsPage from './pages/student/ComplaintsPage';
 import StudentQuizPage from './pages/student/StudentQuizPage';
+import StudentExamPage from './pages/student/StudentExamPage';
 import DashboardAdmin from './pages/admin/DashboardAdmin';
 import DashboardTeacher from './pages/teacher/DashboardTeacher';
 import TeacherCoursesPage from './pages/teacher/CoursesPage';
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="/courses" element={<CoursesPage />} />
         <Route path="/courses/:id" element={<CourseDetailPage />} />
         <Route path="/courses/:courseId/chapters/:chapterId/quiz" element={<ProtectedRoute><StudentQuizPage /></ProtectedRoute>} />
+        <Route path="/courses/:courseId/exams/:slotIndex" element={<ProtectedRoute><StudentExamPage /></ProtectedRoute>} />
         <Route path="/checkout"      element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
         <Route path="/payment-result" element={<ProtectedRoute><PaymentResultPage /></ProtectedRoute>} />
         <Route path="/orders"        element={<ProtectedRoute><OrdersPage /></ProtectedRoute>} />

@@ -193,3 +193,24 @@ export const addTeacherComplaintMessage = (id: string, content: string) => reply
 export const listStudentComplaints  = getMyComplaints;
 export const createStudentComplaint = createComplaint;
 export const addStudentComplaintMessage = (id: string, content: string) => replyToMyComplaint(id, content);
+
+// Backward-compatible aliases for the all-in-one admin dashboard.
+export type ComplaintThread = ComplaintDetail;
+
+export async function listAdminComplaints(query: AdminComplaintQuery = {}): Promise<ComplaintThread[]> {
+  const page = await getAdminComplaints(query);
+  // Dùng summary với messages rỗng để tránh N+1 request. Detail fetch khi admin mở modal.
+  return page.items.map(summary => ({ ...summary, messages: [] }));
+}
+
+export async function updateAdminComplaintStatus(
+  id: string,
+  status: Exclude<ComplaintStatus, 'pending'>,
+  responseNote?: string,
+): Promise<ComplaintThread> {
+  const note = responseNote?.trim();
+  if (note) {
+    await adminReplyComplaint(id, note);
+  }
+  return adminUpdateComplaintStatus(id, status);
+}
