@@ -27,3 +27,8 @@ ON public.exam_attempts (student_id, exam_config_id);
 
 CREATE INDEX IF NOT EXISTS idx_exam_attempts_submitted_at
 ON public.exam_attempts (submitted_at);
+
+-- Chặn race condition: học sinh không thể tạo 2 attempt cùng số thứ tự
+-- cho cùng 1 bài kiểm tra ngay cả khi mở 2 tab đồng thời.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_exam_attempt_number
+ON public.exam_attempts (student_id, exam_config_id, attempt_number);

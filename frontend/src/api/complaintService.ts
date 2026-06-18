@@ -199,7 +199,8 @@ export type ComplaintThread = ComplaintDetail;
 
 export async function listAdminComplaints(query: AdminComplaintQuery = {}): Promise<ComplaintThread[]> {
   const page = await getAdminComplaints(query);
-  return Promise.all(page.items.map(item => getAdminComplaint(item.id)));
+  // Dùng summary với messages rỗng để tránh N+1 request. Detail fetch khi admin mở modal.
+  return page.items.map(summary => ({ ...summary, messages: [] }));
 }
 
 export async function updateAdminComplaintStatus(
