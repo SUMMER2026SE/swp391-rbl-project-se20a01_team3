@@ -59,8 +59,11 @@ type DragState =
   | { type: 'lesson'; chapterId: string; id: string }
   | null;
 
+type CourseStatus = TeacherCourseResponse['status'];
+
 const MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_DOCUMENT_BYTES = 100 * 1024 * 1024;
+const EDITABLE_STATUSES: CourseStatus[] = ['draft', 'rejected', 'needs_revision'];
 
 // ═══════════════════════════════════════════════════════════════════
 //  HELPERS
@@ -107,6 +110,23 @@ function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
   const [moved] = next.splice(fromIndex, 1);
   next.splice(toIndex, 0, moved);
   return next;
+}
+
+function isCourseEditable(status: CourseStatus): boolean {
+  return EDITABLE_STATUSES.includes(status);
+}
+
+function courseEditLockMessage(status: CourseStatus): string {
+  switch (status) {
+    case 'pending_review':
+      return 'Dang cho Admin duyet, khong the chinh sua cau truc khoa hoc.';
+    case 'approved':
+      return 'Khoa hoc da duyet, khong the chinh sua luc nay.';
+    case 'published':
+      return 'Khoa hoc da xuat ban, khong the chinh sua truc tiep.';
+    default:
+      return 'Trang thai hien tai khong cho phep chinh sua.';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -388,6 +408,17 @@ export default function TeacherContentPage() {
   const location = useLocation();
   const logout = useAuthStore(s => s.logout);
   const user = useAuthStore(s => s.user);
+  const selectedCourse = courses.find(course => course.id === selectedCourseId) ?? null;
+  const selectedCourseEditable = selectedCourse ? isCourseEditable(selectedCourse.status) : false;
+  const selectedCourseLockMessage = selectedCourse && !selectedCourseEditable
+    ? courseEditLockMessage(selectedCourse.status)
+    : '';
+
+  function notifyCourseLocked() {
+    if (selectedCourseLockMessage) {
+      notify.error(selectedCourseLockMessage);
+    }
+  }
 
   // Load course list
   useEffect(() => {
@@ -417,6 +448,14 @@ export default function TeacherContentPage() {
       .finally(() => setLoadingDetail(false));
   }, [selectedCourseId]);
 
+  useEffect(() => {
+    if (selectedCourse && !selectedCourseEditable) {
+      setLessonEditing({ mode: 'closed' });
+      setChapterEditing({ mode: 'closed' });
+      setDragging(null);
+    }
+  }, [selectedCourse?.id, selectedCourse?.status, selectedCourseEditable]);
+
   function toggleChapter(id: string) {
     setExpandedChapters(prev => {
       const next = new Set(prev);
@@ -436,6 +475,10 @@ export default function TeacherContentPage() {
 
   async function reorderChapter(draggedId: string, targetId: string) {
     if (!selectedCourseId || draggedId === targetId || reorderSaving) return;
+    if (!selectedCourseEditable) {
+      notifyCourseLocked();
+      return;
+    }
     const fromIndex = chapters.findIndex(ch => ch.id === draggedId);
     const toIndex = chapters.findIndex(ch => ch.id === targetId);
     if (fromIndex < 0 || toIndex < 0) return;
@@ -458,6 +501,10 @@ export default function TeacherContentPage() {
 
   async function reorderLesson(chapterId: string, draggedId: string, targetId: string) {
     if (!selectedCourseId || draggedId === targetId || reorderSaving) return;
+    if (!selectedCourseEditable) {
+      notifyCourseLocked();
+      return;
+    }
     const chapter = chapters.find(ch => ch.id === chapterId);
     if (!chapter) return;
     const fromIndex = chapter.lessons.findIndex(lesson => lesson.id === draggedId);
@@ -485,6 +532,10 @@ export default function TeacherContentPage() {
   // ── Lesson handlers ──────────────────────────────────────────────
 
   function startAddLesson(chapterId: string) {
+    if (!selectedCourseEditable) {
+      notifyCourseLocked();
+      return;
+    }
     const chapter = chapters.find(c => c.id === chapterId);
     setLessonForm(emptyLessonForm((chapter?.lessons.length ?? 0) + 1));
     clearFiles();
@@ -493,6 +544,10 @@ export default function TeacherContentPage() {
   }
 
   function startEditLesson(chapterId: string, lesson: TeacherLessonResponse) {
+    if (!selectedCourseEditable) {
+      notifyCourseLocked();
+      return;
+    }
     setLessonForm(lessonToForm(lesson));
     clearFiles();
     setLessonEditing({ mode: 'edit', chapterId, lessonId: lesson.id });
@@ -509,6 +564,10 @@ export default function TeacherContentPage() {
   async function saveLesson() {
     if (!lessonForm.title.trim()) { notify.error('Vui lòng nhập tên bài giảng'); return; }
     if (lessonEditing.mode === 'closed') return;
+    if (!selectedCourseEditable) {
+      notifyCourseLocked();
+      return;
+    }
 
     // FIX: validate embed URL phải là YouTube hoặc Vimeo hợp lệ
     if (lessonForm.videoSource === 'embed' && lessonForm.videoEmbedUrl.trim()) {
@@ -592,10 +651,19 @@ export default function TeacherContentPage() {
 
   // FIX: thay window.confirm bằng confirm inline — không blocking, có loading state
   function deleteLessonHandler(chapterId: string, lessonId: string, title: string) {
+    if (!selectedCourseEditable) {
+      notifyCourseLocked();
+      return;
+    }
     setDeleteConfirm({ type: 'lesson', id: lessonId, chapterId, title });
   }
 
   async function confirmDeleteLesson(lessonId: string, chapterId: string) {
+    if (!selectedCourseEditable) {
+      setDeleteConfirm(null);
+      notifyCourseLocked();
+      return;
+    }
     setDeleteConfirm(null);
     try {
       await svc.deleteLesson(selectedCourseId, chapterId, lessonId);
@@ -615,12 +683,20 @@ export default function TeacherContentPage() {
   // ── Chapter handlers ─────────────────────────────────────────────
 
   function startAddChapter() {
+    if (!selectedCourseEditable) {
+      notifyCourseLocked();
+      return;
+    }
     setChapterForm(emptyChapterForm(chapters.length + 1));
     setChapterEditing({ mode: 'new' });
     setLessonEditing({ mode: 'closed' });
   }
 
   function startEditChapter(ch: TeacherChapterResponse) {
+    if (!selectedCourseEditable) {
+      notifyCourseLocked();
+      return;
+    }
     setChapterForm({ title: ch.title, description: ch.description ?? '', position: ch.position });
     setChapterEditing({ mode: 'edit', chapterId: ch.id });
     setLessonEditing({ mode: 'closed' });
@@ -629,6 +705,10 @@ export default function TeacherContentPage() {
   async function saveChapter() {
     if (!chapterForm.title.trim()) { notify.error('Vui lòng nhập tên chương'); return; }
     if (chapterEditing.mode === 'closed') return;
+    if (!selectedCourseEditable) {
+      notifyCourseLocked();
+      return;
+    }
     setSaving(true);
     try {
       const req: svc.CreateChapterRequest = {
@@ -660,10 +740,19 @@ export default function TeacherContentPage() {
   }
 
   function deleteChapterHandler(chapterId: string, title: string) {
+    if (!selectedCourseEditable) {
+      notifyCourseLocked();
+      return;
+    }
     setDeleteConfirm({ type: 'chapter', id: chapterId, title });
   }
 
   async function confirmDeleteChapter(chapterId: string) {
+    if (!selectedCourseEditable) {
+      setDeleteConfirm(null);
+      notifyCourseLocked();
+      return;
+    }
     setDeleteConfirm(null);
     try {
       await svc.deleteChapter(selectedCourseId, chapterId);
@@ -682,6 +771,20 @@ export default function TeacherContentPage() {
   // ─────────────────────────────────────────────────────────────────
 
   const rightPanel = () => {
+    if (selectedCourseLockMessage) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10 text-amber-600">
+            <Lock className="h-6 w-6" />
+          </div>
+          <h3 className="text-lg font-extrabold text-on-surface">Khong the chinh sua noi dung</h3>
+          <p className="mt-2 max-w-md text-sm text-on-surface-variant">
+            {selectedCourseLockMessage}
+          </p>
+        </div>
+      );
+    }
+
     // Chapter form
     if (chapterEditing.mode !== 'closed') {
       return (
@@ -1049,6 +1152,16 @@ export default function TeacherContentPage() {
                 </select>
               </label>
             )}
+
+            {selectedCourseLockMessage && (
+              <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700">
+                <Lock className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <div>
+                  <p className="font-bold">Khoa hoc dang bi khoa chinh sua</p>
+                  <p>{selectedCourseLockMessage}</p>
+                </div>
+              </div>
+            )}
           </motion.div>
 
           {/* Content grid */}
@@ -1091,7 +1204,7 @@ export default function TeacherContentPage() {
                       return (
                         <div
                           key={chapter.id}
-                          draggable={!reorderSaving}
+                          draggable={selectedCourseEditable && !reorderSaving}
                           onDragStart={e => {
                             e.dataTransfer.effectAllowed = 'move';
                             setDragging({ type: 'chapter', id: chapter.id });
@@ -1109,8 +1222,12 @@ export default function TeacherContentPage() {
                           {/* Chapter header */}
                           <div className="flex items-center bg-surface-container/50 hover:bg-surface-container transition-colors">
                             <span
-                              title="Kéo để đổi thứ tự chương"
-                              className="pl-2 text-on-surface-variant/60 cursor-grab active:cursor-grabbing"
+                              title={selectedCourseEditable ? 'Keo de doi thu tu chuong' : selectedCourseLockMessage}
+                              className={`pl-2 ${
+                                selectedCourseEditable
+                                  ? 'text-on-surface-variant/60 cursor-grab active:cursor-grabbing'
+                                  : 'text-on-surface-variant/25 cursor-not-allowed'
+                              }`}
                             >
                               <GripVertical className="w-4 h-4" />
                             </span>
@@ -1132,15 +1249,25 @@ export default function TeacherContentPage() {
                             <div className="flex items-center gap-0.5 pr-2">
                               <button
                                 onClick={() => startEditChapter(chapter)}
-                                title="Sửa chương"
-                                className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded transition-colors"
+                                disabled={!selectedCourseEditable}
+                                title={selectedCourseEditable ? 'Sua chuong' : selectedCourseLockMessage}
+                                className={`p-1.5 rounded transition-colors ${
+                                  selectedCourseEditable
+                                    ? 'text-blue-500 hover:bg-blue-500/10'
+                                    : 'text-on-surface-variant/40 cursor-not-allowed'
+                                }`}
                               >
                                 <Pencil className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 onClick={() => deleteChapterHandler(chapter.id, chapter.title)}
-                                title="Xóa chương"
-                                className="p-1.5 text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                                disabled={!selectedCourseEditable}
+                                title={selectedCourseEditable ? 'Xoa chuong' : selectedCourseLockMessage}
+                                className={`p-1.5 rounded transition-colors ${
+                                  selectedCourseEditable
+                                    ? 'text-red-500 hover:bg-red-500/10'
+                                    : 'text-on-surface-variant/40 cursor-not-allowed'
+                                }`}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -1164,7 +1291,7 @@ export default function TeacherContentPage() {
                                     return (
                                       <div
                                         key={lesson.id}
-                                        draggable={!reorderSaving}
+                                        draggable={selectedCourseEditable && !reorderSaving}
                                         onDragStart={e => {
                                           e.stopPropagation();
                                           e.dataTransfer.effectAllowed = 'move';
@@ -1188,10 +1315,15 @@ export default function TeacherContentPage() {
                                           isEditing ? 'bg-primary/10' : 'hover:bg-surface-container/50'
                                         } ${dragging?.type === 'lesson' && dragging.id === lesson.id ? 'opacity-60' : ''}`}
                                       >
-                                        <GripVertical
-                                          title="Kéo để đổi thứ tự bài giảng"
-                                          className="w-3.5 h-3.5 text-on-surface-variant/50 cursor-grab active:cursor-grabbing flex-shrink-0"
-                                        />
+                                        <span title={selectedCourseEditable ? 'Keo de doi thu tu bai giang' : selectedCourseLockMessage}>
+                                          <GripVertical
+                                            className={`w-3.5 h-3.5 flex-shrink-0 ${
+                                              selectedCourseEditable
+                                                ? 'text-on-surface-variant/50 cursor-grab active:cursor-grabbing'
+                                                : 'text-on-surface-variant/25 cursor-not-allowed'
+                                            }`}
+                                          />
+                                        </span>
                                         <span className="text-xs font-mono text-on-surface-variant flex-shrink-0 w-5 text-right">
                                           {lesson.position}.
                                         </span>
@@ -1203,15 +1335,25 @@ export default function TeacherContentPage() {
                                         )}
                                         <button
                                           onClick={() => startEditLesson(chapter.id, lesson)}
-                                          title="Sửa"
-                                          className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                          disabled={!selectedCourseEditable}
+                                          title={selectedCourseEditable ? 'Sua' : selectedCourseLockMessage}
+                                          className={`p-1.5 rounded opacity-0 transition-opacity group-hover:opacity-100 ${
+                                            selectedCourseEditable
+                                              ? 'text-blue-500 hover:bg-blue-500/10'
+                                              : 'text-on-surface-variant/40 cursor-not-allowed'
+                                          }`}
                                         >
                                           <Pencil className="w-3.5 h-3.5" />
                                         </button>
                                         <button
                                           onClick={() => deleteLessonHandler(chapter.id, lesson.id, lesson.title)}
-                                          title="Xóa"
-                                          className="p-1.5 text-red-500 hover:bg-red-500/10 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                          disabled={!selectedCourseEditable}
+                                          title={selectedCourseEditable ? 'Xoa' : selectedCourseLockMessage}
+                                          className={`p-1.5 rounded opacity-0 transition-opacity group-hover:opacity-100 ${
+                                            selectedCourseEditable
+                                              ? 'text-red-500 hover:bg-red-500/10'
+                                              : 'text-on-surface-variant/40 cursor-not-allowed'
+                                          }`}
                                         >
                                           <Trash2 className="w-3.5 h-3.5" />
                                         </button>
@@ -1220,7 +1362,13 @@ export default function TeacherContentPage() {
                                   })}
                                   <button
                                     onClick={() => startAddLesson(chapter.id)}
-                                    className="w-full flex items-center justify-center gap-2 mt-1 px-2 py-2 text-sm font-bold text-primary hover:bg-primary/5 rounded-lg transition-colors"
+                                    disabled={!selectedCourseEditable}
+                                    title={selectedCourseEditable ? 'Them bai giang' : selectedCourseLockMessage}
+                                    className={`w-full flex items-center justify-center gap-2 mt-1 px-2 py-2 text-sm font-bold rounded-lg transition-colors ${
+                                      selectedCourseEditable
+                                        ? 'text-primary hover:bg-primary/5'
+                                        : 'text-on-surface-variant/40 cursor-not-allowed'
+                                    }`}
                                   >
                                     <Plus className="w-4 h-4" />
                                     Thêm bài giảng
@@ -1239,7 +1387,13 @@ export default function TeacherContentPage() {
                 {!loadingDetail && (
                   <button
                     onClick={startAddChapter}
-                    className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 text-sm font-bold text-on-surface-variant border-2 border-dashed border-outline-variant hover:border-primary hover:text-primary rounded-xl transition-colors"
+                    disabled={!selectedCourseEditable}
+                    title={selectedCourseEditable ? 'Them chuong' : selectedCourseLockMessage}
+                    className={`w-full mt-3 flex items-center justify-center gap-2 py-2.5 text-sm font-bold border-2 border-dashed rounded-xl transition-colors ${
+                      selectedCourseEditable
+                        ? 'text-on-surface-variant border-outline-variant hover:border-primary hover:text-primary'
+                        : 'text-on-surface-variant/40 border-outline-variant/40 cursor-not-allowed'
+                    }`}
                   >
                     <Plus className="w-4 h-4" />
                     Thêm chương

@@ -120,6 +120,20 @@ function formatDate(iso: string): string {
 
 // Các status cho phép nộp duyệt lại
 const SUBMITTABLE: CourseStatus[] = ['draft', 'rejected', 'needs_revision'];
+const EDITABLE_STATUSES: CourseStatus[] = ['draft', 'rejected', 'needs_revision'];
+
+function courseEditLockMessage(status: CourseStatus): string {
+  switch (status) {
+    case 'pending_review':
+      return 'Dang cho Admin duyet, khong the chinh sua.';
+    case 'approved':
+      return 'Khoa hoc da duyet, khong the chinh sua luc nay.';
+    case 'published':
+      return 'Khoa hoc da xuat ban, khong the chinh sua truc tiep.';
+    default:
+      return 'Trang thai hien tai khong cho phep chinh sua.';
+  }
+}
 
 // Spinner nhỏ dùng cho loading row
 function Spinner() {
@@ -922,6 +936,7 @@ export default function TeacherCoursesPage() {
                         {courses.map((course, idx) => {
                           // Chỉ draft | rejected | needs_revision mới cho nộp duyệt
                           const canSubmit = SUBMITTABLE.includes(course.status);
+                          const canEdit = EDITABLE_STATUSES.includes(course.status);
                           // Chỉ draft | needs_revision mới cho xóa (không xóa khi đang pending hoặc published)
                           const canDelete = course.status === 'draft';
                           const isSubmitting = submittingId === course.id;
@@ -1018,11 +1033,19 @@ export default function TeacherCoursesPage() {
 
                                   {/* Chỉnh sửa */}
                                   <button
-                                    onClick={() => handleEdit(course)}
-                                    title="Chỉnh sửa"
-                                    className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors"
+                                    onClick={() => {
+                                      if (canEdit) handleEdit(course);
+                                    }}
+                                    disabled={!canEdit}
+                                    title={canEdit ? 'Chinh sua' : courseEditLockMessage(course.status)}
+                                    aria-label={canEdit ? 'Chinh sua khoa hoc' : courseEditLockMessage(course.status)}
+                                    className={`p-2 rounded-lg transition-colors ${
+                                      canEdit
+                                        ? 'text-blue-500 hover:bg-blue-500/10'
+                                        : 'text-on-surface-variant/40 bg-surface-container cursor-not-allowed'
+                                    }`}
                                   >
-                                    <Pencil className="w-4 h-4" />
+                                    {canEdit ? <Pencil className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
                                   </button>
 
                                   <button
