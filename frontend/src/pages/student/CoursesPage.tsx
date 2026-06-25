@@ -25,7 +25,7 @@ import {
 } from '../../api/courseService';
 import { adaptCourseSummary } from '../../api/adapter';
 import { isApiError } from '../../api/client';
-import type { Category } from '../../types/api';
+import type { Category, CourseSummary } from '../../types/api';
 
 const GRADE_OPTIONS = [
   { value: null, label: 'Tất cả' },
@@ -88,6 +88,7 @@ export default function CoursesPage() {
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [courses, setCourses] = useState<UiCourse[]>([]);
+  const [enrolledCourseSummaries, setEnrolledCourseSummaries] = useState<CourseSummary[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -97,25 +98,28 @@ export default function CoursesPage() {
   const toggleFavorite = useCourseStore((state) => state.toggleFavorite);
   const completedLessons = useCourseStore((state) => state.completedLessons);
 
-  const [enrolledCourses, setEnrolledCourses] = useState<UiCourse[]>([]);
+  const enrolledCourses = useMemo(
+    () => enrolledCourseSummaries.map((summary) => {
+      const course = adaptCourseSummary(summary, true);
+      const completedList = completedLessons[course.id] ?? [];
+      const totalLessons = Math.max(summary.totalLessons ?? 0, 0);
+      const normalizedCompleted = totalLessons > 0
+        ? Math.min(completedList.length, totalLessons)
+        : 0;
+      const progress = totalLessons > 0
+        ? Math.round((normalizedCompleted / totalLessons) * 100)
+        : 0;
+      return { ...course, progress };
+    }),
+    [completedLessons, enrolledCourseSummaries],
+  );
 
   useEffect(() => {
     getEnrolledCourses()
-      .then((items) => setEnrolledCourses(
-        items.map((summary) => {
-          const course = adaptCourseSummary(summary, true);
-          const completedList = completedLessons[course.id] ?? [];
-          const totalLessons = course.lessons?.length ?? 0;
-          const progress = totalLessons > 0
-            ? Math.round((completedList.length / totalLessons) * 100)
-            : 0;
-          return { ...course, progress };
-        }),
-      ))
+      .then(setEnrolledCourseSummaries)
       .catch(() => {
         // Không cần chặn UX nếu user chưa có khóa học đã mua.
       });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
