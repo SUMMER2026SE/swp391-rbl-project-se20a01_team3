@@ -220,17 +220,27 @@ export interface UploadResponse {
   fileSizeBytes: number;
 }
 
+export interface UploadVideoOptions {
+  durationSec?: number;
+  onProgress?: (pct: number) => void;
+}
+
 export async function uploadVideo(
     courseId: string, chapterId: string, lessonId: string,
     file: File,
-    onProgress?: (pct: number) => void): Promise<UploadResponse> {
+    options?: UploadVideoOptions): Promise<UploadResponse> {
   const form = new FormData();
   form.append('file', file);
+  if (options?.durationSec && options.durationSec > 0) {
+    form.append('durationSec', Math.floor(options.durationSec).toString());
+  }
   const res = await apiClient.post<ApiResponse<UploadResponse>>(
     `/api/upload/video/${courseId}/${chapterId}/${lessonId}`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (e) => {
-        if (onProgress && e.total) onProgress(Math.round(e.loaded / e.total * 100));
+        if (options?.onProgress && e.total) {
+          options.onProgress(Math.round(e.loaded / e.total * 100));
+        }
       },
     });
   return unwrap(res.data);

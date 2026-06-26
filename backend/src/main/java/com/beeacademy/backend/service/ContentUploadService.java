@@ -78,7 +78,8 @@ public class ContentUploadService {
      */
     @Transactional
     public UploadResponse uploadVideo(UUID courseId, UUID chapterId, UUID lessonId,
-                                       UUID teacherId, MultipartFile file) {
+                                       UUID teacherId, MultipartFile file,
+                                       Integer durationSec) {
         validateFile(file, ALLOWED_VIDEO_MIME, MAX_VIDEO_BYTES,
                      "video MP4, WebM hoặc QuickTime", "2GB");
 
@@ -101,8 +102,9 @@ public class ContentUploadService {
                              file.getContentType(), file.getResource(), file.getSize());
         deleteUploadedObjectOnRollback(VIDEO_BUCKET, path);
 
-        // Ghi nhận path vào lesson (durationSec=0, GV cập nhật sau nếu cần)
-        lesson.setVideoStoragePath(path, 0);
+        // Lưu kèm duration do trình duyệt đọc từ metadata video trước khi upload.
+        int normalizedDuration = durationSec != null && durationSec > 0 ? durationSec : 0;
+        lesson.setVideoStoragePath(path, normalizedDuration);
         // BUG FIX: save lesson trực tiếp thay vì save cả Course aggregate
         // — tránh dirty-check toàn bộ chapters/lessons không liên quan
         lessonRepository.save(lesson);

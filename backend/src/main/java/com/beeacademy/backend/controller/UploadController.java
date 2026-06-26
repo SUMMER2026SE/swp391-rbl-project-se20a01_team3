@@ -44,10 +44,11 @@ public class UploadController {
             @PathVariable UUID courseId,
             @PathVariable UUID chapterId,
             @PathVariable UUID lessonId,
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "durationSec", required = false) Integer durationSec) {
         UploadResponse result = uploadService.uploadVideo(
                 courseId, chapterId, lessonId,
-                CurrentUser.required().userId(), file);
+                CurrentUser.required().userId(), file, durationSec);
         return ApiResponse.ok(result, "Upload video thành công");
     }
 
