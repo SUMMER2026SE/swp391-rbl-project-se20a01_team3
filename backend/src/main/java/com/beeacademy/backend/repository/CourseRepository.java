@@ -125,8 +125,8 @@ public interface CourseRepository extends JpaRepository<Course, UUID>,
      * Thống kê đánh giá theo nhóm khóa học. Mỗi row: [UUID courseId, Double avg, Long count].
      * Native query vì bảng {@code reviews} chưa có JPA entity tương ứng.
      */
-    @Query(value = "SELECT course_id, AVG(rating)::float8, COUNT(*) "
-                 + "FROM reviews WHERE course_id IN :courseIds GROUP BY course_id",
+    @Query(value = "SELECT course_id, CAST(AVG(rating) AS double precision), COUNT(*) "
+                 + "FROM reviews WHERE course_id IN (:courseIds) GROUP BY course_id",
            nativeQuery = true)
     List<Object[]> findRatingStatsByCourseIds(@Param("courseIds") Collection<UUID> courseIds);
 }
