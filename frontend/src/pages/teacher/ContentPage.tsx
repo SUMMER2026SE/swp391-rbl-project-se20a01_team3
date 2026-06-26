@@ -130,6 +130,36 @@ function courseEditLockMessage(status: CourseStatus): string {
   }
 }
 
+async function getVideoDurationSec(file: File): Promise<number | null> {
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    return await new Promise<number | null>((resolve) => {
+      const video = document.createElement('video');
+      const cleanup = () => {
+        video.removeAttribute('src');
+        video.load();
+      };
+
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => {
+        const durationSec = Number.isFinite(video.duration) && video.duration > 0
+          ? Math.round(video.duration)
+          : null;
+        cleanup();
+        resolve(durationSec);
+      };
+      video.onerror = () => {
+        cleanup();
+        resolve(null);
+      };
+      video.src = objectUrl;
+    });
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  NAV
 // ═══════════════════════════════════════════════════════════════════
@@ -612,8 +642,11 @@ export default function TeacherContentPage() {
       let uploadError = false;
       try {
         if (videoFile) {
-          await svc.uploadVideo(selectedCourseId, chapterId, lesson.id, videoFile,
-            pct => setUploadProgress(pct));
+          const durationSec = await getVideoDurationSec(videoFile);
+          await svc.uploadVideo(selectedCourseId, chapterId, lesson.id, videoFile, {
+            durationSec: durationSec ?? undefined,
+            onProgress: (pct) => setUploadProgress(pct),
+          });
         }
         if (pdfFile) {
           await svc.uploadDocument(lesson.id, pdfFile);
