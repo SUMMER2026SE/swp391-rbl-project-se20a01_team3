@@ -52,6 +52,8 @@ public record CourseSummaryResponse(
         boolean isOnSale,
         Boolean isFeatured,
         boolean hasFreePreview,
+        double averageRating,
+        long reviewCount,
         Integer totalChapters,
         Integer totalLessons,
         Integer totalDurationSec
@@ -65,10 +67,19 @@ public record CourseSummaryResponse(
      * khi map page (nếu list 20 courses thì N=20 → 40 query extra).
      */
     public static CourseSummaryResponse fromEntity(Course course) {
-        return fromEntity(course, false);
+        return fromEntity(course, false, 0.0, 0);
     }
 
     public static CourseSummaryResponse fromEntity(Course course, boolean hasFreePreview) {
+        return fromEntity(course, hasFreePreview, 0.0, 0);
+    }
+
+    public static CourseSummaryResponse fromEntity(
+            Course course,
+            boolean hasFreePreview,
+            double averageRating,
+            long reviewCount
+    ) {
         // Boxing int[] → List<Integer> để JSON ra mảng JSON chuẩn
         List<Integer> grades = Arrays.stream(course.getGrades()).boxed().collect(Collectors.toList());
 
@@ -95,6 +106,8 @@ public record CourseSummaryResponse(
                 course.isOnSale(),
                 course.getIsFeatured(),
                 hasFreePreview,
+                averageRating,
+                reviewCount,
                 course.getTotalChapters(),
                 course.getTotalLessons(),
                 course.getTotalDurationSec()

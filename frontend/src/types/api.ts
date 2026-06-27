@@ -112,6 +112,8 @@ export interface CourseSummary {
   isOnSale: boolean;
   isFeatured: boolean;
   hasFreePreview: boolean;
+  averageRating: number;
+  reviewCount: number;
   totalChapters: number;
   totalLessons: number;
   totalDurationSec: number;
@@ -152,6 +154,25 @@ export interface CourseDetail extends Omit<CourseSummary, 'isFeatured'> {
   publishedAt: string | null;
   chapters: ChapterDetail[];
   enrolled: boolean; // true nếu đã mua / là GV sở hữu / là Admin
+}
+
+export interface CourseReview {
+  id: string;
+  courseId: string;
+  studentId: string;
+  studentName: string | null;
+  studentAvatarUrl: string | null;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CourseReviewSummary {
+  averageRating: number;
+  reviewCount: number;
+  myReview: CourseReview | null;
+  reviews: CourseReview[];
 }
 
 // ============================================================================

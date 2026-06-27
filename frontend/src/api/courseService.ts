@@ -11,6 +11,8 @@ import type {
   ApiResponse,
   Category,
   CourseDetail,
+  CourseReview,
+  CourseReviewSummary,
   CourseSummary,
   PageResponse,
   SearchCoursesParams,
@@ -74,6 +76,24 @@ export async function getCourseDetail(id: string): Promise<CourseDetail> {
 export async function getCourseDetailBySlug(slug: string): Promise<CourseDetail> {
   const res = await apiClient.get<ApiResponse<CourseDetail>>(
     `/api/courses/by-slug/${encodeURIComponent(slug)}`,
+  );
+  return unwrap(res.data);
+}
+
+export async function getCourseReviews(courseId: string): Promise<CourseReviewSummary> {
+  const res = await apiClient.get<ApiResponse<CourseReviewSummary>>(
+    `/api/courses/${encodeURIComponent(courseId)}/reviews`,
+  );
+  return unwrap(res.data);
+}
+
+export async function upsertCourseReview(
+  courseId: string,
+  payload: { rating: number; comment: string },
+): Promise<CourseReview> {
+  const res = await apiClient.post<ApiResponse<CourseReview>>(
+    `/api/courses/${encodeURIComponent(courseId)}/reviews`,
+    payload,
   );
   return unwrap(res.data);
 }

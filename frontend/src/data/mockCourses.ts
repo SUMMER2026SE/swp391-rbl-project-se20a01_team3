@@ -41,6 +41,7 @@ export interface Course {
   image: string;
   introVideoUrl?: string;
   rating: number;
+  reviewCount?: number;
   students: number;
   instructor: string;
   isEnrolled: boolean;
