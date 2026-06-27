@@ -141,11 +141,12 @@ export function adaptCourseSummary(summary: ApiCourseSummary, isEnrolled = false
     grade: gradesToLabel(summary.grades),
     image: summary.thumbnailUrl ?? '',
     introVideoUrl: summary.introVideoUrl ?? undefined,
-    rating: 4.7,
+    rating: summary.averageRating,
     students: 1000,
     instructor: summary.teacherName ?? 'Bee Academy',
     isEnrolled,
     hasFreePreview: summary.hasFreePreview,
+    reviewCount: summary.reviewCount,
   };
 }
 
@@ -169,11 +170,12 @@ export function adaptCourseDetail(detail: ApiCourseDetail): UiCourse {
     grade: gradesToLabel(detail.grades),
     image: detail.thumbnailUrl ?? '',
     introVideoUrl: detail.introVideoUrl ?? undefined,
-    rating: 4.7,
+    rating: detail.averageRating,
     students: 1000,
     instructor: detail.teacherName ?? 'Bee Academy',
     isEnrolled: detail.enrolled,  // ✅ từ backend: true nếu đã mua / GV sở hữu / Admin
     hasFreePreview: detail.hasFreePreview,
+    reviewCount: detail.reviewCount,
     lessons: flattenChaptersToLessons(detail.chapters),
   };
 }

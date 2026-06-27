@@ -37,7 +37,11 @@ import { useCartStore } from '../../store/useCartStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useCourseStore } from '../../store/useCourseStore';
 // API integration (Giai đoạn 1C) - thay MOCK_COURSES bằng call BE thật
-import { getCourseDetail as courseServiceGetDetail } from '../../api/courseService';
+import {
+  getCourseDetail as courseServiceGetDetail,
+  getCourseReviews,
+  upsertCourseReview,
+} from '../../api/courseService';
 import { adaptCourseDetail, formatDurationSec } from '../../api/adapter';
 import { isApiError } from '../../api/client';
 import { listOrders, verifyPayment } from '../../api/orderService';
@@ -49,7 +53,7 @@ import {
 import { listStudentCourseExams } from '../../api/examService';
 import type { CourseDiscussionThread } from '../../api/courseDiscussionService';
 import type { StudentExamSummaryResponse } from '../../api/examService';
-import type { ChapterDetail, LessonDetail } from '../../types/api';
+import type { ChapterDetail, CourseReviewSummary, LessonDetail } from '../../types/api';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPONENT: ScoreCircle
@@ -544,16 +548,22 @@ function MarketingView({
   onStartPreview?: (lessonId?: string) => void;
   onOpenLearning?: (lessonId?: string) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'syllabus' | 'instructor'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'syllabus' | 'instructor' | 'reviews'>('overview');
 
   const addToCart = useCartStore(state => state.addToCart);
   const isLoggedIn = useAuthStore(state => state.isLoggedIn);
+  const user = useAuthStore(state => state.user);
   const purchasedIds = useCourseStore(state => state.purchasedIds);
   const enrollCourses = useCourseStore(state => state.enrollCourses);
   const completedLessons = useCourseStore(state => state.completedLessons);
   const lessonDurations = useCourseStore(state => state.lessonDurations);
   const navigate = useNavigate();
   const [activating, setActivating] = useState(false);
+  const [reviewSummary, setReviewSummary] = useState<CourseReviewSummary | null>(null);
+  const [loadingReviews, setLoadingReviews] = useState(true);
+  const [savingReview, setSavingReview] = useState(false);
+  const [draftRating, setDraftRating] = useState(0);
+  const [draftComment, setDraftComment] = useState('');
   const syllabusSections = useMemo<MarketingSyllabusSection[]>(() => (
     rawChapters.length > 0
       ? [...rawChapters]
@@ -586,10 +596,17 @@ function MarketingView({
     ? Math.round((completedList.length / totalLessons) * 100)
     : 0;
   const isOwnedCourse = course.isEnrolled || purchasedIds.includes(course.id);
+  const canSubmitReview = isOwnedCourse && user?.role === 'student';
   const primaryPreviewLesson = previewLessons.find(lesson => lesson.type === 'video') ?? previewLessons[0] ?? null;
   const previewCtaLabel = primaryPreviewLesson?.type === 'video'
     ? 'Xem video học thử'
     : 'Xem nội dung học thử';
+  const displayRating = reviewSummary?.averageRating ?? course.rating;
+  const displayReviewCount = reviewSummary?.reviewCount ?? course.reviewCount ?? 0;
+  const visibleReviews = useMemo(() => {
+    const myReviewId = reviewSummary?.myReview?.id;
+    return (reviewSummary?.reviews ?? []).filter(review => review.id !== myReviewId);
+  }, [reviewSummary]);
 
   const introVideoUrl = course.introVideoUrl?.trim();
   const introEmbedUrl = introVideoUrl ? toEmbeddableVideoUrl(introVideoUrl) : null;
@@ -598,6 +615,34 @@ function MarketingView({
   useEffect(() => {
     setExpandedChapterIds(new Set(syllabusSections.slice(0, 2).map(chapter => chapter.id)));
   }, [syllabusSections]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadReviews() {
+      setLoadingReviews(true);
+      try {
+        const data = await getCourseReviews(course.id);
+        if (cancelled) return;
+        setReviewSummary(data);
+        setDraftRating(data.myReview?.rating ?? 0);
+        setDraftComment(data.myReview?.comment ?? '');
+      } catch (error) {
+        if (!cancelled) {
+          notify.error(isApiError(error) ? error.message : 'Không tải được đánh giá khóa học.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingReviews(false);
+        }
+      }
+    }
+
+    loadReviews();
+    return () => {
+      cancelled = true;
+    };
+  }, [course.id]);
 
   function toggleSyllabusChapter(chapterId: string) {
     setExpandedChapterIds(prev => {
@@ -665,6 +710,54 @@ function MarketingView({
     }
   }
 
+  async function handleSubmitReview() {
+    if (!canSubmitReview) {
+      notify.error('Chỉ học sinh đã mua khóa học mới có thể đánh giá.');
+      return;
+    }
+    if (draftRating < 1 || draftRating > 5) {
+      notify.error('Vui lòng chọn số sao đánh giá từ 1 đến 5.');
+      return;
+    }
+
+    setSavingReview(true);
+    try {
+      await upsertCourseReview(course.id, {
+        rating: draftRating,
+        comment: draftComment,
+      });
+      const refreshed = await getCourseReviews(course.id);
+      setReviewSummary(refreshed);
+      setDraftRating(refreshed.myReview?.rating ?? draftRating);
+      setDraftComment(refreshed.myReview?.comment ?? draftComment);
+      notify.success(refreshed.myReview ? 'Đã lưu đánh giá khóa học.' : 'Đã gửi đánh giá khóa học.');
+    } catch (error) {
+      notify.error(isApiError(error) ? error.message : 'Không thể lưu đánh giá lúc này.');
+    } finally {
+      setSavingReview(false);
+    }
+  }
+
+  function renderReviewStars(value: number, clickable = false, onSelect?: (next: number) => void) {
+    return (
+      <div className="flex items-center gap-1">
+        {[1, 2, 3, 4, 5].map(star => (
+          <button
+            key={star}
+            type="button"
+            disabled={!clickable}
+            onClick={() => onSelect?.(star)}
+            className={clickable ? 'transition-transform hover:scale-110' : 'cursor-default'}
+          >
+            <Star
+              className={`h-5 w-5 ${star <= value ? 'fill-amber-500 text-amber-500' : 'text-outline-variant'}`}
+            />
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-surface flex flex-col font-sans">
       <DashboardHeader />
@@ -684,11 +777,14 @@ function MarketingView({
             {course.title}
           </h1>
           <p className="text-xl text-on-surface-variant mb-8 max-w-3xl leading-relaxed">{course.description}</p>
-          <div className="flex flex-wrap items-center gap-8 text-on-surface-variant font-medium">
-            <div className="flex items-center gap-2 text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-lg">
-              <Star className="w-5 h-5 fill-amber-500" />
-              <span className="text-lg font-bold">{course.rating}</span>
-            </div>
+            <div className="flex flex-wrap items-center gap-8 text-on-surface-variant font-medium">
+              <div className="flex items-center gap-2 text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-lg">
+                <Star className="w-5 h-5 fill-amber-500" />
+                <span className="text-lg font-bold">{displayRating > 0 ? displayRating.toFixed(1) : 'Mới'}</span>
+                <span className="text-sm text-amber-700/80">
+                  ({displayReviewCount.toLocaleString('vi-VN')} đánh giá)
+                </span>
+              </div>
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5" />
               <span>{course.students.toLocaleString('vi-VN')} học viên</span>
@@ -711,6 +807,7 @@ function MarketingView({
                 { id: 'overview', label: 'Tổng quan' },
                 { id: 'syllabus', label: 'Nội dung học' },
                 { id: 'instructor', label: 'Giảng viên' },
+                { id: 'reviews', label: 'Đánh giá' },
               ] as const).map(tab => (
                 <button
                   key={tab.id}
@@ -799,6 +896,179 @@ function MarketingView({
                           Với hơn 10 năm kinh nghiệm giảng dạy, luôn truyền cảm hứng và đem đến phương pháp học tập hiệu quả, dễ hiểu nhất. Hàng ngàn học sinh đã đạt điểm giỏi nhờ khóa học này.
                         </p>
                       </div>
+                    </div>
+                  </motion.div>
+                )}
+                {activeTab === 'reviews' && (
+                  <motion.div key="reviews" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                    <div className="flex flex-col gap-6">
+                      <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+                        <div className="rounded-3xl border border-outline-variant/30 bg-surface-container p-6 text-center">
+                          <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-on-surface-variant">Điểm đánh giá</p>
+                          <p className="mt-3 text-5xl font-extrabold text-on-surface">
+                            {displayRating > 0 ? displayRating.toFixed(1) : '0.0'}
+                          </p>
+                          <div className="mt-3 flex justify-center">
+                            {renderReviewStars(Math.round(displayRating))}
+                          </div>
+                          <p className="mt-2 text-sm text-on-surface-variant">
+                            {displayReviewCount.toLocaleString('vi-VN')} học viên đã đánh giá
+                          </p>
+                        </div>
+
+                        <div className="rounded-3xl border border-outline-variant/30 bg-surface-container-low p-6">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <h2 className="text-2xl font-bold text-on-surface">Cảm nhận từ học viên</h2>
+                              <p className="mt-2 text-sm leading-relaxed text-on-surface-variant">
+                                Đánh giá công khai giúp học viên khác hiểu rõ hơn về chất lượng nội dung, cách giảng dạy và mức độ phù hợp của khóa học.
+                              </p>
+                            </div>
+                            <div className="rounded-2xl bg-primary/10 px-4 py-2 text-sm font-bold text-primary">
+                              UC19
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {canSubmitReview && (
+                        <section className="rounded-3xl border border-primary/15 bg-primary/5 p-6">
+                          <div className="flex flex-col gap-4">
+                            <div>
+                              <h3 className="text-lg font-extrabold text-on-surface">
+                                {reviewSummary?.myReview ? 'Cập nhật đánh giá của bạn' : 'Viết đánh giá khóa học'}
+                              </h3>
+                              <p className="mt-1 text-sm text-on-surface-variant">
+                                Chia sẻ cảm nhận thực tế sau khi học để giúp Bee Academy cải thiện nội dung tốt hơn.
+                              </p>
+                            </div>
+
+                            <div>
+                              <p className="mb-2 text-sm font-bold text-on-surface">Số sao đánh giá</p>
+                              {renderReviewStars(draftRating, true, setDraftRating)}
+                            </div>
+
+                            <label className="block">
+                              <span className="mb-2 block text-sm font-bold text-on-surface">Nhận xét</span>
+                              <textarea
+                                value={draftComment}
+                                onChange={event => setDraftComment(event.target.value)}
+                                rows={4}
+                                maxLength={2000}
+                                placeholder="Điều bạn thích nhất ở khóa học là gì? Nội dung, cách giảng dạy hoặc phần nào cần cải thiện?"
+                                className="w-full rounded-2xl border border-outline-variant/40 bg-surface px-4 py-3 text-sm text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary"
+                              />
+                              <span className="mt-1 block text-right text-xs text-on-surface-variant">
+                                {draftComment.length}/2000
+                              </span>
+                            </label>
+
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={handleSubmitReview}
+                                disabled={savingReview}
+                                className="inline-flex items-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-extrabold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-60"
+                              >
+                                {savingReview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                {reviewSummary?.myReview ? 'Cập nhật đánh giá' : 'Gửi đánh giá'}
+                              </button>
+                            </div>
+                          </div>
+                        </section>
+                      )}
+
+                      {!canSubmitReview && isOwnedCourse && (
+                        <section className="rounded-3xl border border-outline-variant/30 bg-surface-container p-5">
+                          <p className="text-sm text-on-surface-variant">
+                            Tài khoản hiện tại không phải học sinh, nên không thể gửi đánh giá cho khóa học này.
+                          </p>
+                        </section>
+                      )}
+
+                      <section className="rounded-3xl border border-outline-variant/30 bg-surface-container-lowest p-6">
+                        <div className="mb-5 flex items-center justify-between gap-4">
+                          <div>
+                            <h3 className="text-xl font-extrabold text-on-surface">Đánh giá gần đây</h3>
+                            <p className="mt-1 text-sm text-on-surface-variant">
+                              Hiển thị những nhận xét mới nhất từ học viên đã tham gia khóa học.
+                            </p>
+                          </div>
+                        </div>
+
+                        {loadingReviews ? (
+                          <div className="flex justify-center py-12 text-on-surface-variant">
+                            <Loader2 className="h-7 w-7 animate-spin" />
+                          </div>
+                        ) : visibleReviews.length === 0 && !reviewSummary?.myReview ? (
+                          <div className="rounded-3xl border border-dashed border-outline-variant/40 bg-surface-container p-8 text-center">
+                            <MessageSquare className="mx-auto mb-3 h-10 w-10 text-on-surface-variant/40" />
+                            <p className="font-bold text-on-surface">Chưa có đánh giá nào</p>
+                            <p className="mt-1 text-sm text-on-surface-variant">
+                              Hãy trở thành người đầu tiên chia sẻ trải nghiệm của bạn về khóa học này.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {reviewSummary?.myReview && (
+                              <article className="rounded-3xl border border-primary/20 bg-primary/5 p-5">
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="flex items-center gap-3">
+                                    <img
+                                      src={reviewSummary.myReview.studentAvatarUrl ?? `https://ui-avatars.com/api/?name=${encodeURIComponent(reviewSummary.myReview.studentName ?? 'Bạn')}&background=feb700&color=1f2937&bold=true`}
+                                      alt={reviewSummary.myReview.studentName ?? 'Bạn'}
+                                      className="h-12 w-12 rounded-full object-cover"
+                                    />
+                                    <div>
+                                      <p className="font-extrabold text-on-surface">
+                                        {reviewSummary.myReview.studentName ?? 'Bạn'}
+                                      </p>
+                                      <p className="text-xs font-semibold text-primary">Đánh giá của bạn</p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    {renderReviewStars(reviewSummary.myReview.rating)}
+                                    <p className="mt-1 text-xs text-on-surface-variant">
+                                      {new Date(reviewSummary.myReview.updatedAt).toLocaleDateString('vi-VN')}
+                                    </p>
+                                  </div>
+                                </div>
+                                {reviewSummary.myReview.comment && (
+                                  <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-on-surface-variant">
+                                    {reviewSummary.myReview.comment}
+                                  </p>
+                                )}
+                              </article>
+                            )}
+
+                            {visibleReviews.map(review => (
+                              <article key={review.id} className="rounded-3xl border border-outline-variant/25 bg-surface p-5">
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="flex items-center gap-3">
+                                    <img
+                                      src={review.studentAvatarUrl ?? `https://ui-avatars.com/api/?name=${encodeURIComponent(review.studentName ?? 'Học viên')}&background=e5e7eb&color=111827&bold=true`}
+                                      alt={review.studentName ?? 'Học viên'}
+                                      className="h-11 w-11 rounded-full object-cover"
+                                    />
+                                    <div>
+                                      <p className="font-bold text-on-surface">{review.studentName ?? 'Học viên Bee Academy'}</p>
+                                      <p className="text-xs text-on-surface-variant">
+                                        {new Date(review.updatedAt).toLocaleDateString('vi-VN')}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {renderReviewStars(review.rating)}
+                                </div>
+                                {review.comment && (
+                                  <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-on-surface-variant">
+                                    {review.comment}
+                                  </p>
+                                )}
+                              </article>
+                            ))}
+                          </div>
+                        )}
+                      </section>
                     </div>
                   </motion.div>
                 )}

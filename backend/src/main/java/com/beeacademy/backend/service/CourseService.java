@@ -13,6 +13,7 @@ import com.beeacademy.backend.repository.CategoryRepository;
 import com.beeacademy.backend.repository.CourseContentCount;
 import com.beeacademy.backend.repository.CourseDocumentRepository;
 import com.beeacademy.backend.repository.CourseRepository;
+import com.beeacademy.backend.repository.CourseReviewRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
 import com.beeacademy.backend.repository.LessonRepository;
 import com.beeacademy.backend.repository.QuizConfigRepository;
@@ -54,6 +55,7 @@ public class CourseService {
     private final EnrollmentRepository     enrollmentRepository;
     private final LessonRepository         lessonRepository;
     private final CourseDocumentRepository documentRepository;
+    private final CourseReviewRepository   courseReviewRepository;
     private final QuizConfigRepository     quizConfigRepository;
     private final SupabaseStorageClient    storageClient;
 
@@ -95,13 +97,25 @@ public class CourseService {
                 subjectSlug, grade, keyword, coursePage.getTotalElements());
 
         Set<UUID> previewCourseIds = findCoursesWithFreePreview(coursePage.getContent());
+        Map<UUID, CourseReviewService.RatingSummary> ratingByCourseId = summarizeRatings(coursePage.getContent());
 
         // Map qua DTO. Lưu ý: page query mặc định không JOIN FETCH category/teacher
         // → nếu truy cập course.getCategory().getName() sẽ trigger N+1.
         // GIẢI PHÁP: ở GĐ này dữ liệu nhỏ (9 mock courses) chấp nhận N+1.
         // Khi scale, thêm @EntityGraph trên một method findAll Specification tuỳ chỉnh.
         return PageResponse.of(coursePage,
-                course -> CourseSummaryResponse.fromEntity(course, previewCourseIds.contains(course.getId())));
+                course -> {
+                    CourseReviewService.RatingSummary rating = ratingByCourseId.getOrDefault(
+                            course.getId(),
+                            new CourseReviewService.RatingSummary(0.0, 0)
+                    );
+                    return CourseSummaryResponse.fromEntity(
+                            course,
+                            previewCourseIds.contains(course.getId()),
+                            rating.averageRating(),
+                            rating.reviewCount()
+                    );
+                });
     }
 
     // ========================================================================
@@ -124,9 +138,11 @@ public class CourseService {
                 .orElseThrow(() -> new ResourceNotFoundException("Course", id));
 
         boolean canSeeAllVideos = canUserAccessAllVideos(course, me);
-        return CourseDetailResponse.fromEntity(course, canSeeAllVideos,
+        CourseDetailResponse response = CourseDetailResponse.fromEntity(course, canSeeAllVideos,
                 buildUrlResolver(canSeeAllVideos), buildDocMap(course),
                 buildChaptersWithQuiz(course));
+        Object[] rawRating = courseReviewRepository.summarizeByCourseId(course.getId());
+        return response.withRating(extractAverageRating(rawRating), extractReviewCount(rawRating));
     }
 
     @Transactional(readOnly = true)
@@ -135,9 +151,11 @@ public class CourseService {
                 .orElseThrow(() -> new ResourceNotFoundException("Course", slug));
 
         boolean canSeeAllVideos = canUserAccessAllVideos(course, me);
-        return CourseDetailResponse.fromEntity(course, canSeeAllVideos,
+        CourseDetailResponse response = CourseDetailResponse.fromEntity(course, canSeeAllVideos,
                 buildUrlResolver(canSeeAllVideos), buildDocMap(course),
                 buildChaptersWithQuiz(course));
+        Object[] rawRating = courseReviewRepository.summarizeByCourseId(course.getId());
+        return response.withRating(extractAverageRating(rawRating), extractReviewCount(rawRating));
     }
 
     /**
@@ -246,10 +264,21 @@ public class CourseService {
         if (me == null) return Collections.emptyList();
         List<Course> courses = courseRepository.findEnrolledByStudentId(me.userId());
         Set<UUID> previewCourseIds = findCoursesWithFreePreview(courses);
+        Map<UUID, CourseReviewService.RatingSummary> ratingByCourseId = summarizeRatings(courses);
         return courses
                 .stream()
-                .map(course -> CourseSummaryResponse.fromEntity(course,
-                        previewCourseIds.contains(course.getId())))
+                .map(course -> {
+                    CourseReviewService.RatingSummary rating = ratingByCourseId.getOrDefault(
+                            course.getId(),
+                            new CourseReviewService.RatingSummary(0.0, 0)
+                    );
+                    return CourseSummaryResponse.fromEntity(
+                            course,
+                            previewCourseIds.contains(course.getId()),
+                            rating.averageRating(),
+                            rating.reviewCount()
+                    );
+                })
                 .toList();
     }
 
@@ -282,5 +311,34 @@ public class CourseService {
                 .filter(count -> count.getItemCount() > 0)
                 .map(CourseContentCount::getCourseId)
                 .collect(Collectors.toCollection(HashSet::new));
+    }
+
+    private Map<UUID, CourseReviewService.RatingSummary> summarizeRatings(List<Course> courses) {
+        if (courses == null || courses.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<UUID> courseIds = courses.stream().map(Course::getId).toList();
+        return courseReviewRepository.summarizeByCourseIds(courseIds).stream()
+                .collect(Collectors.toMap(
+                        row -> (UUID) row[0],
+                        row -> new CourseReviewService.RatingSummary(
+                                round1(((Number) row[1]).doubleValue()),
+                                ((Number) row[2]).longValue()
+                        )
+                ));
+    }
+
+    private double extractAverageRating(Object[] rawRating) {
+        if (rawRating == null || rawRating.length < 2 || rawRating[0] == null) return 0.0;
+        return round1(((Number) rawRating[0]).doubleValue());
+    }
+
+    private long extractReviewCount(Object[] rawRating) {
+        if (rawRating == null || rawRating.length < 2 || rawRating[1] == null) return 0;
+        return ((Number) rawRating[1]).longValue();
+    }
+
+    private double round1(double value) {
+        return Math.round(value * 10.0) / 10.0;
     }
 }

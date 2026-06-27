@@ -44,6 +44,8 @@ public record CourseDetailResponse(
         Integer effectivePriceVnd,
         boolean isOnSale,
         boolean hasFreePreview,
+        double averageRating,
+        long reviewCount,
         Integer totalChapters,
         Integer totalLessons,
         Integer totalDurationSec,
@@ -113,6 +115,8 @@ public record CourseDetailResponse(
                 course.getEffectivePriceVnd(),
                 course.isOnSale(),
                 chapters.stream().anyMatch(ch -> ch.lessons().stream().anyMatch(lesson -> Boolean.TRUE.equals(lesson.isFree()))),
+                0.0,
+                0,
                 course.getTotalChapters(),
                 course.getTotalLessons(),
                 course.getTotalDurationSec(),
@@ -121,6 +125,38 @@ public record CourseDetailResponse(
                 course.getPublishedAt(),
                 chapters,
                 canSeeAllVideos   // enrolled = có quyền xem toàn bộ video
+        );
+    }
+
+    public CourseDetailResponse withRating(double averageRating, long reviewCount) {
+        return new CourseDetailResponse(
+                id,
+                slug,
+                title,
+                description,
+                objective,
+                audience,
+                thumbnailUrl,
+                introVideoUrl,
+                categoryName,
+                categorySlug,
+                teacherName,
+                grades,
+                priceVnd,
+                salePriceVnd,
+                effectivePriceVnd,
+                isOnSale,
+                hasFreePreview,
+                averageRating,
+                reviewCount,
+                totalChapters,
+                totalLessons,
+                totalDurationSec,
+                versionNo,
+                submittedVersionNo,
+                publishedAt,
+                chapters,
+                enrolled
         );
     }
 }
