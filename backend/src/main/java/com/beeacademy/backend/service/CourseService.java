@@ -28,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -84,20 +85,24 @@ public class CourseService {
     public PageResponse<CourseSummaryResponse> searchCourses(String subjectSlug,
                                                               Integer grade,
                                                               String keyword,
+                                                              Boolean featured,
                                                               Pageable pageable) {
         // Build spec composable. Specification.where() có thể nhận null spec -
         // trả về spec "always true" → khởi đầu sạch.
         Specification<Course> spec = Specification.where(CourseSpecifications.onlyPublished())
                 .and(CourseSpecifications.matchCategorySlug(subjectSlug))
                 .and(CourseSpecifications.matchGrade(grade))
-                .and(CourseSpecifications.matchKeyword(keyword));
+                .and(CourseSpecifications.matchKeyword(keyword))
+                .and(CourseSpecifications.onlyFeatured(featured));
 
         Page<Course> coursePage = courseRepository.findAll(spec, pageable);
-        log.debug("Search courses: subject={}, grade={}, q={}, found={}",
-                subjectSlug, grade, keyword, coursePage.getTotalElements());
+        log.debug("Search courses: subject={}, grade={}, q={}, featured={}, found={}",
+                subjectSlug, grade, keyword, featured, coursePage.getTotalElements());
 
         Set<UUID> previewCourseIds = findCoursesWithFreePreview(coursePage.getContent());
         Map<UUID, CourseReviewService.RatingSummary> ratingByCourseId = summarizeRatings(coursePage.getContent());
+        // studentCount: feature riêng của local (team3 đã bỏ) — đếm enrollments 1 lần/batch.
+        Map<UUID, Integer> studentCounts = buildStudentCounts(coursePage.getContent());
 
         // Map qua DTO. Lưu ý: page query mặc định không JOIN FETCH category/teacher
         // → nếu truy cập course.getCategory().getName() sẽ trigger N+1.
@@ -113,7 +118,8 @@ public class CourseService {
                             course,
                             previewCourseIds.contains(course.getId()),
                             rating.averageRating(),
-                            rating.reviewCount()
+                            rating.reviewCount(),
+                            studentCounts.getOrDefault(course.getId(), 0)
                     );
                 });
     }
@@ -142,7 +148,9 @@ public class CourseService {
                 buildUrlResolver(canSeeAllVideos), buildDocMap(course),
                 buildChaptersWithQuiz(course));
         Object[] rawRating = courseReviewRepository.summarizeByCourseId(course.getId());
-        return response.withRating(extractAverageRating(rawRating), extractReviewCount(rawRating));
+        return response
+                .withRating(extractAverageRating(rawRating), extractReviewCount(rawRating))
+                .withStudentCount(enrollmentRepository.countByCourseId(course.getId()));
     }
 
     @Transactional(readOnly = true)
@@ -155,7 +163,9 @@ public class CourseService {
                 buildUrlResolver(canSeeAllVideos), buildDocMap(course),
                 buildChaptersWithQuiz(course));
         Object[] rawRating = courseReviewRepository.summarizeByCourseId(course.getId());
-        return response.withRating(extractAverageRating(rawRating), extractReviewCount(rawRating));
+        return response
+                .withRating(extractAverageRating(rawRating), extractReviewCount(rawRating))
+                .withStudentCount(enrollmentRepository.countByCourseId(course.getId()));
     }
 
     /**
@@ -265,6 +275,7 @@ public class CourseService {
         List<Course> courses = courseRepository.findEnrolledByStudentId(me.userId());
         Set<UUID> previewCourseIds = findCoursesWithFreePreview(courses);
         Map<UUID, CourseReviewService.RatingSummary> ratingByCourseId = summarizeRatings(courses);
+        Map<UUID, Integer> studentCounts = buildStudentCounts(courses);
         return courses
                 .stream()
                 .map(course -> {
@@ -276,7 +287,8 @@ public class CourseService {
                             course,
                             previewCourseIds.contains(course.getId()),
                             rating.averageRating(),
-                            rating.reviewCount()
+                            rating.reviewCount(),
+                            studentCounts.getOrDefault(course.getId(), 0)
                     );
                 })
                 .toList();
@@ -311,6 +323,23 @@ public class CourseService {
                 .filter(count -> count.getItemCount() > 0)
                 .map(CourseContentCount::getCourseId)
                 .collect(Collectors.toCollection(HashSet::new));
+    }
+
+    /**
+     * courseId → số học viên đã ghi danh (1 query batch trên enrollments).
+     * Feature riêng của local; team3 đã bỏ studentCount khỏi response.
+     */
+    private Map<UUID, Integer> buildStudentCounts(List<Course> courses) {
+        if (courses == null || courses.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<UUID> courseIds = courses.stream().map(Course::getId).toList();
+        Map<UUID, Integer> result = new HashMap<>();
+        for (Object[] row : enrollmentRepository.countGroupedByCourseId(courseIds)) {
+            UUID courseId = row[0] instanceof UUID uuid ? uuid : UUID.fromString(row[0].toString());
+            result.put(courseId, ((Number) row[1]).intValue());
+        }
+        return result;
     }
 
     private Map<UUID, CourseReviewService.RatingSummary> summarizeRatings(List<Course> courses) {
