@@ -21,7 +21,7 @@
 //   - ScoreCircle:   vòng tròn SVG hiển thị điểm số
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useMemo, type SyntheticEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, type SyntheticEvent } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -1725,6 +1725,9 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const [postingQuestion, setPostingQuestion] = useState(false);
   const [postingReplyId, setPostingReplyId] = useState<string | null>(null);
   const [studentExams, setStudentExams] = useState<StudentExamSummaryResponse[]>([]);
+  const watchedUntilRef = useRef(0);
+  const isResettingSeekRef = useRef(false);
+  const lastSeekWarningAtRef = useRef(0);
 
   const chapterSections = useMemo(() => (
     rawChapters.length > 0
@@ -1779,6 +1782,12 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     setVideoUrlExpired(false);
     setExpandedChapterIds(new Set(chapterSections.slice(0, 1).map(chapter => chapter.id)));
   }, [chapterSections, course.id, firstLesson]);
+
+  useEffect(() => {
+    watchedUntilRef.current = 0;
+    isResettingSeekRef.current = false;
+    lastSeekWarningAtRef.current = 0;
+  }, [activeLesson?.id]);
 
   // Cập nhật nội dung ghi chú khi chuyển bài học
   useEffect(() => {
@@ -1893,6 +1902,41 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       return;
     }
     saveLessonDuration(course.id, activeLesson.id, event.currentTarget.duration);
+  }
+
+  function handleVideoTimeUpdate(event: SyntheticEvent<HTMLVideoElement>) {
+    if (isResettingSeekRef.current) {
+      return;
+    }
+
+    watchedUntilRef.current = Math.max(
+      watchedUntilRef.current,
+      event.currentTarget.currentTime,
+    );
+  }
+
+  function handleVideoSeeking(event: SyntheticEvent<HTMLVideoElement>) {
+    const video = event.currentTarget;
+
+    if (isResettingSeekRef.current) {
+      return;
+    }
+
+    if (Math.abs(video.currentTime - watchedUntilRef.current) < 0.75) {
+      return;
+    }
+
+    isResettingSeekRef.current = true;
+    video.currentTime = watchedUntilRef.current;
+    window.setTimeout(() => {
+      isResettingSeekRef.current = false;
+    }, 0);
+
+    const now = Date.now();
+    if (now - lastSeekWarningAtRef.current > 1500) {
+      lastSeekWarningAtRef.current = now;
+      notify.error('Không thể tua video bài giảng.');
+    }
   }
 
   function toggleChapter(chapterId: string) {
@@ -2072,6 +2116,8 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                   controlsList="nodownload"
                   playsInline
                   onLoadedMetadata={handleVideoMetadataLoaded}
+                  onTimeUpdate={handleVideoTimeUpdate}
+                  onSeeking={handleVideoSeeking}
                   onEnded={handleVideoEnded}
                   onError={() => setVideoUrlExpired(true)}
                 />
