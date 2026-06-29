@@ -32,7 +32,7 @@
 
     <properties>
         <!-- Dùng Java 21 -->
-        <java.version>17</java.version>
+        <java.version>21</java.version>
 
         <java-jwt.version>4.4.0</java-jwt.version>
         <spring-dotenv.version>4.0.0</spring-dotenv.version>
@@ -125,7 +125,7 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <release>17</release>
+                    <release>21</release>
                 </configuration>
             </plugin>
 

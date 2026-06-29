@@ -29,6 +29,10 @@ import java.util.stream.Collectors;
  * @param isOnSale        true nếu đang giảm giá
  * @param isFeatured      true nếu được nổi bật
  * @param hasFreePreview  true nếu khóa có ít nhất 1 bài học được mở xem thử
+ * @param averageRating   điểm đánh giá trung bình (0 nếu chưa có)
+ * @param reviewCount     số lượt đánh giá
+ * @param studentCount    số học viên đã ghi danh (đếm từ enrollments) — feature riêng của local,
+ *                        giữ lại khi gộp team3 (team3 đã bỏ field này)
  * @param totalChapters   tổng số chương
  * @param totalLessons    tổng số bài
  * @param totalDurationSec  tổng thời lượng giây
@@ -54,6 +58,7 @@ public record CourseSummaryResponse(
         boolean hasFreePreview,
         double averageRating,
         long reviewCount,
+        int studentCount,
         Integer totalChapters,
         Integer totalLessons,
         Integer totalDurationSec
@@ -67,18 +72,29 @@ public record CourseSummaryResponse(
      * khi map page (nếu list 20 courses thì N=20 → 40 query extra).
      */
     public static CourseSummaryResponse fromEntity(Course course) {
-        return fromEntity(course, false, 0.0, 0);
+        return fromEntity(course, false, 0.0, 0, 0);
     }
 
     public static CourseSummaryResponse fromEntity(Course course, boolean hasFreePreview) {
-        return fromEntity(course, hasFreePreview, 0.0, 0);
+        return fromEntity(course, hasFreePreview, 0.0, 0, 0);
+    }
+
+    // Overload không kèm studentCount: giữ tương thích các caller cũ (default 0 học viên).
+    public static CourseSummaryResponse fromEntity(
+            Course course,
+            boolean hasFreePreview,
+            double averageRating,
+            long reviewCount
+    ) {
+        return fromEntity(course, hasFreePreview, averageRating, reviewCount, 0);
     }
 
     public static CourseSummaryResponse fromEntity(
             Course course,
             boolean hasFreePreview,
             double averageRating,
-            long reviewCount
+            long reviewCount,
+            int studentCount
     ) {
         // Boxing int[] → List<Integer> để JSON ra mảng JSON chuẩn
         List<Integer> grades = Arrays.stream(course.getGrades()).boxed().collect(Collectors.toList());
@@ -108,6 +124,7 @@ public record CourseSummaryResponse(
                 hasFreePreview,
                 averageRating,
                 reviewCount,
+                studentCount,
                 course.getTotalChapters(),
                 course.getTotalLessons(),
                 course.getTotalDurationSec()
