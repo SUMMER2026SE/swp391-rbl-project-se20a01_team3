@@ -16,12 +16,16 @@ import {
   BookOpen, AlertCircle,
 } from 'lucide-react';
 import { notify } from '../../lib/toast';
+import LatexText from '../../components/LatexText';
 import * as quizSvc from '../../api/quizService';
+import { getCourseDetail } from '../../api/courseService';
+import { useCourseStore } from '../../store/useCourseStore';
 import type {
   QuizAttemptStartResponse,
   QuizResultResponse,
   QuizResultDetail,
 } from '../../api/quizService';
+import type { ChapterDetail, LessonDetail } from '../../types/api';
 
 // ═══════════════════════════════════════════════════════════════════
 //  ScoreCircle — SVG vòng tròn điểm số (tái sử dụng từ CourseDetailPage)
@@ -126,7 +130,7 @@ function ResultDetailItem({ detail, index }: { detail: QuizResultDetail; index: 
         }
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-on-surface">
-            Câu {index + 1}: {detail.content}
+            Câu {index + 1}: <LatexText content={detail.content} />
           </p>
           {!open && !detail.isCorrect && (
             <p className="text-xs text-red-500 mt-1">Bạn chọn sai — nhấn để xem đáp án</p>
@@ -148,19 +152,19 @@ function ResultDetailItem({ detail, index }: { detail: QuizResultDetail; index: 
               <div className="flex items-center gap-2 text-sm">
                 <span className="font-semibold text-on-surface-variant w-28 flex-shrink-0">Bạn chọn:</span>
                 <span className={`font-bold ${detail.isCorrect ? 'text-green-600' : 'text-red-500'}`}>
-                  {detail.studentAnswer ?? '(Không trả lời)'}
+                  <LatexText content={detail.studentAnswer ?? '(Không trả lời)'} />
                 </span>
               </div>
               {!detail.isCorrect && (
                 <div className="flex items-center gap-2 text-sm">
                   <span className="font-semibold text-on-surface-variant w-28 flex-shrink-0">Đáp án đúng:</span>
-                  <span className="font-bold text-green-600">{detail.correctAnswer}</span>
+                  <span className="font-bold text-green-600"><LatexText content={detail.correctAnswer} /></span>
                 </div>
               )}
               {detail.explanation && (
                 <div className="mt-2 p-3 bg-surface-container rounded-xl">
                   <p className="text-xs font-bold text-on-surface-variant mb-1">Giải thích:</p>
-                  <p className="text-sm text-on-surface">{detail.explanation}</p>
+                  <p className="text-sm text-on-surface"><LatexText content={detail.explanation} /></p>
                 </div>
               )}
             </div>
@@ -177,9 +181,25 @@ function ResultDetailItem({ detail, index }: { detail: QuizResultDetail; index: 
 
 type PagePhase = 'loading' | 'error' | 'quiz' | 'submitting' | 'results';
 
+function isVideoLesson(lesson: LessonDetail): boolean {
+  return Boolean(lesson.videoUrl || lesson.videoEmbedUrl) || (lesson.documents?.length ?? 0) === 0;
+}
+
+function getChapterVideoProgress(
+  chapter: ChapterDetail,
+  completedLessonIds: string[],
+): { total: number; completed: number } {
+  const videoLessons = chapter.lessons.filter(isVideoLesson);
+  const completed = videoLessons.filter(lesson => completedLessonIds.includes(lesson.id)).length;
+  return { total: videoLessons.length, completed };
+}
+
 export default function StudentQuizPage() {
   const { courseId, chapterId } = useParams<{ courseId: string; chapterId: string }>();
   const navigate = useNavigate();
+  const completedLessons = useCourseStore((state) => state.completedLessons);
+  const markQuizCompleted = useCourseStore((state) => state.markQuizCompleted);
+  const saveQuizScore = useCourseStore((state) => state.saveQuizScore);
 
   const [phase, setPhase] = useState<PagePhase>('loading');
   const [errorMsg, setErrorMsg] = useState('');
@@ -193,22 +213,55 @@ export default function StudentQuizPage() {
 
   // Bắt đầu quiz
   useEffect(() => {
-    if (!chapterId) { setErrorMsg('Không tìm thấy chương.'); setPhase('error'); return; }
+    if (!courseId || !chapterId) {
+      setErrorMsg('Không tìm thấy khóa học hoặc chương.');
+      setPhase('error');
+      return;
+    }
 
-    quizSvc.startQuiz(chapterId)
-      .then(data => {
+    let cancelled = false;
+
+    async function loadQuiz() {
+      setPhase('loading');
+      try {
+        const detail = await getCourseDetail(courseId!);
+        if (cancelled) return;
+
+        const chapter = detail.chapters.find(item => item.id === chapterId);
+        if (!chapter) {
+          setErrorMsg('Không tìm thấy chương.');
+          setPhase('error');
+          return;
+        }
+
+        const progress = getChapterVideoProgress(chapter, completedLessons[courseId!] ?? []);
+        if (progress.total > 0 && progress.completed < progress.total) {
+          setErrorMsg(`Bạn cần hoàn thành ${progress.completed}/${progress.total} video trong chương này trước khi làm quiz.`);
+          setPhase('error');
+          return;
+        }
+
+        const data = await quizSvc.startQuiz(chapterId!);
+        if (cancelled) return;
         setAttempt(data);
         const init: Record<string, null> = {};
         data.questions.forEach(q => { init[q.id] = null; });
         setAnswers(init);
         setPhase('quiz');
-      })
-      .catch(err => {
+      } catch (err) {
+        if (cancelled) return;
         const msg = err instanceof Error ? err.message : 'Không thể bắt đầu quiz.';
         setErrorMsg(msg);
         setPhase('error');
-      });
-  }, [chapterId]);
+      }
+    }
+
+    loadQuiz();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chapterId, completedLessons, courseId]);
 
   // Nộp bài — được gọi cả khi user tự nộp lẫn khi hết giờ
   const handleSubmit = useCallback(async () => {
@@ -216,6 +269,10 @@ export default function StudentQuizPage() {
     setPhase('submitting');
     try {
       const res = await quizSvc.submitQuiz(attempt.attemptId, answers);
+      if (courseId && chapterId) {
+        markQuizCompleted(courseId, chapterId);
+        saveQuizScore(courseId, chapterId, res.score);
+      }
       setResult(res);
       setPhase('results');
     } catch (err: unknown) {
@@ -223,7 +280,7 @@ export default function StudentQuizPage() {
       notify.error(msg);
       setPhase('quiz');
     }
-  }, [attempt, answers]);
+  }, [attempt, answers, chapterId, courseId, markQuizCompleted, saveQuizScore]);
 
   // Hết giờ → tự động nộp
   const handleTimeExpire = useCallback(() => {
@@ -233,11 +290,26 @@ export default function StudentQuizPage() {
 
   // Làm lại — gọi lại startQuiz
   async function handleRetry() {
-    if (!chapterId) return;
+    if (!courseId || !chapterId) return;
     setPhase('loading');
     setCurrentIdx(0);
     setResult(null);
     try {
+      const detail = await getCourseDetail(courseId);
+      const chapter = detail.chapters.find(item => item.id === chapterId);
+      if (!chapter) {
+        setErrorMsg('Không tìm thấy chương.');
+        setPhase('error');
+        return;
+      }
+
+      const progress = getChapterVideoProgress(chapter, completedLessons[courseId] ?? []);
+      if (progress.total > 0 && progress.completed < progress.total) {
+        setErrorMsg(`Bạn cần hoàn thành ${progress.completed}/${progress.total} video trong chương này trước khi làm quiz.`);
+        setPhase('error');
+        return;
+      }
+
       const data = await quizSvc.startQuiz(chapterId);
       setAttempt(data);
       const init: Record<string, null> = {};
@@ -497,7 +569,7 @@ export default function StudentQuizPage() {
                   Câu {currentIdx + 1} / {questions.length}
                 </p>
                 <h2 className="text-xl font-bold text-on-surface leading-relaxed">
-                  {currentQ.content}
+                  <LatexText content={currentQ.content} />
                 </h2>
               </div>
 
@@ -532,7 +604,7 @@ export default function StudentQuizPage() {
                       <span className={`font-medium text-sm leading-snug flex-1 ${
                         isSelected ? 'text-on-surface' : 'text-on-surface-variant'
                       }`}>
-                        {choice.content}
+                        <LatexText content={choice.content} />
                       </span>
                       {isSelected && (
                         <CheckCircle2 className="w-5 h-5 text-primary ml-auto flex-shrink-0" />

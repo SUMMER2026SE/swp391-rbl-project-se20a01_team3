@@ -10,9 +10,12 @@ import com.beeacademy.backend.model.Course;
 import com.beeacademy.backend.model.CourseDocument;
 import com.beeacademy.backend.model.Lesson;
 import com.beeacademy.backend.repository.CategoryRepository;
+import com.beeacademy.backend.repository.CourseContentCount;
 import com.beeacademy.backend.repository.CourseDocumentRepository;
 import com.beeacademy.backend.repository.CourseRepository;
+import com.beeacademy.backend.repository.CourseReviewRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
+import com.beeacademy.backend.repository.LessonRepository;
 import com.beeacademy.backend.repository.QuizConfigRepository;
 import com.beeacademy.backend.repository.spec.CourseSpecifications;
 import com.beeacademy.backend.security.AuthenticatedUser;
@@ -25,9 +28,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Nghiệp vụ duyệt khoá học công khai (UC06-UC08).
@@ -46,7 +54,9 @@ public class CourseService {
     private final CourseRepository         courseRepository;
     private final CategoryRepository       categoryRepository;
     private final EnrollmentRepository     enrollmentRepository;
+    private final LessonRepository         lessonRepository;
     private final CourseDocumentRepository documentRepository;
+    private final CourseReviewRepository   courseReviewRepository;
     private final QuizConfigRepository     quizConfigRepository;
     private final SupabaseStorageClient    storageClient;
 
@@ -75,23 +85,43 @@ public class CourseService {
     public PageResponse<CourseSummaryResponse> searchCourses(String subjectSlug,
                                                               Integer grade,
                                                               String keyword,
+                                                              Boolean featured,
                                                               Pageable pageable) {
         // Build spec composable. Specification.where() có thể nhận null spec -
         // trả về spec "always true" → khởi đầu sạch.
         Specification<Course> spec = Specification.where(CourseSpecifications.onlyPublished())
                 .and(CourseSpecifications.matchCategorySlug(subjectSlug))
                 .and(CourseSpecifications.matchGrade(grade))
-                .and(CourseSpecifications.matchKeyword(keyword));
+                .and(CourseSpecifications.matchKeyword(keyword))
+                .and(CourseSpecifications.onlyFeatured(featured));
 
         Page<Course> coursePage = courseRepository.findAll(spec, pageable);
-        log.debug("Search courses: subject={}, grade={}, q={}, found={}",
-                subjectSlug, grade, keyword, coursePage.getTotalElements());
+        log.debug("Search courses: subject={}, grade={}, q={}, featured={}, found={}",
+                subjectSlug, grade, keyword, featured, coursePage.getTotalElements());
+
+        Set<UUID> previewCourseIds = findCoursesWithFreePreview(coursePage.getContent());
+        Map<UUID, CourseReviewService.RatingSummary> ratingByCourseId = summarizeRatings(coursePage.getContent());
+        // studentCount: feature riêng của local (team3 đã bỏ) — đếm enrollments 1 lần/batch.
+        Map<UUID, Integer> studentCounts = buildStudentCounts(coursePage.getContent());
 
         // Map qua DTO. Lưu ý: page query mặc định không JOIN FETCH category/teacher
         // → nếu truy cập course.getCategory().getName() sẽ trigger N+1.
         // GIẢI PHÁP: ở GĐ này dữ liệu nhỏ (9 mock courses) chấp nhận N+1.
         // Khi scale, thêm @EntityGraph trên một method findAll Specification tuỳ chỉnh.
-        return PageResponse.of(coursePage, CourseSummaryResponse::fromEntity);
+        return PageResponse.of(coursePage,
+                course -> {
+                    CourseReviewService.RatingSummary rating = ratingByCourseId.getOrDefault(
+                            course.getId(),
+                            new CourseReviewService.RatingSummary(0.0, 0)
+                    );
+                    return CourseSummaryResponse.fromEntity(
+                            course,
+                            previewCourseIds.contains(course.getId()),
+                            rating.averageRating(),
+                            rating.reviewCount(),
+                            studentCounts.getOrDefault(course.getId(), 0)
+                    );
+                });
     }
 
     // ========================================================================
@@ -114,9 +144,13 @@ public class CourseService {
                 .orElseThrow(() -> new ResourceNotFoundException("Course", id));
 
         boolean canSeeAllVideos = canUserAccessAllVideos(course, me);
-        return CourseDetailResponse.fromEntity(course, canSeeAllVideos,
+        CourseDetailResponse response = CourseDetailResponse.fromEntity(course, canSeeAllVideos,
                 buildUrlResolver(canSeeAllVideos), buildDocMap(course),
                 buildChaptersWithQuiz(course));
+        Object[] rawRating = courseReviewRepository.summarizeByCourseId(course.getId());
+        return response
+                .withRating(extractAverageRating(rawRating), extractReviewCount(rawRating))
+                .withStudentCount(enrollmentRepository.countByCourseId(course.getId()));
     }
 
     @Transactional(readOnly = true)
@@ -125,9 +159,13 @@ public class CourseService {
                 .orElseThrow(() -> new ResourceNotFoundException("Course", slug));
 
         boolean canSeeAllVideos = canUserAccessAllVideos(course, me);
-        return CourseDetailResponse.fromEntity(course, canSeeAllVideos,
+        CourseDetailResponse response = CourseDetailResponse.fromEntity(course, canSeeAllVideos,
                 buildUrlResolver(canSeeAllVideos), buildDocMap(course),
                 buildChaptersWithQuiz(course));
+        Object[] rawRating = courseReviewRepository.summarizeByCourseId(course.getId());
+        return response
+                .withRating(extractAverageRating(rawRating), extractReviewCount(rawRating))
+                .withStudentCount(enrollmentRepository.countByCourseId(course.getId()));
     }
 
     /**
@@ -164,8 +202,10 @@ public class CourseService {
 
     /** Resolver: nếu lesson có videoStoragePath và user có quyền → generate signed URL. */
     private java.util.function.Function<Lesson, String> buildUrlResolver(boolean canSeeAll) {
-        if (!canSeeAll) return null;
         return lesson -> {
+            if (!canSeeAll && !Boolean.TRUE.equals(lesson.getIsFree())) {
+                return null;
+            }
             if (lesson.getVideoStoragePath() != null) {
                 try {
                     return storageClient.generateSignedUrl(VIDEO_BUCKET,
@@ -232,9 +272,25 @@ public class CourseService {
     @Transactional(readOnly = true)
     public List<CourseSummaryResponse> getMyCourses(AuthenticatedUser me) {
         if (me == null) return Collections.emptyList();
-        return courseRepository.findEnrolledByStudentId(me.userId())
+        List<Course> courses = courseRepository.findEnrolledByStudentId(me.userId());
+        Set<UUID> previewCourseIds = findCoursesWithFreePreview(courses);
+        Map<UUID, CourseReviewService.RatingSummary> ratingByCourseId = summarizeRatings(courses);
+        Map<UUID, Integer> studentCounts = buildStudentCounts(courses);
+        return courses
                 .stream()
-                .map(CourseSummaryResponse::fromEntity)
+                .map(course -> {
+                    CourseReviewService.RatingSummary rating = ratingByCourseId.getOrDefault(
+                            course.getId(),
+                            new CourseReviewService.RatingSummary(0.0, 0)
+                    );
+                    return CourseSummaryResponse.fromEntity(
+                            course,
+                            previewCourseIds.contains(course.getId()),
+                            rating.averageRating(),
+                            rating.reviewCount(),
+                            studentCounts.getOrDefault(course.getId(), 0)
+                    );
+                })
                 .toList();
     }
 
@@ -252,5 +308,66 @@ public class CourseService {
                 .stream()
                 .map(CategoryResponse::fromEntity)
                 .toList();
+    }
+
+    private Set<UUID> findCoursesWithFreePreview(List<Course> courses) {
+        if (courses == null || courses.isEmpty()) {
+            return Collections.emptySet();
+        }
+
+        List<UUID> courseIds = courses.stream()
+                .map(Course::getId)
+                .toList();
+
+        return lessonRepository.countFreePreviewByCourseIds(courseIds).stream()
+                .filter(count -> count.getItemCount() > 0)
+                .map(CourseContentCount::getCourseId)
+                .collect(Collectors.toCollection(HashSet::new));
+    }
+
+    /**
+     * courseId → số học viên đã ghi danh (1 query batch trên enrollments).
+     * Feature riêng của local; team3 đã bỏ studentCount khỏi response.
+     */
+    private Map<UUID, Integer> buildStudentCounts(List<Course> courses) {
+        if (courses == null || courses.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<UUID> courseIds = courses.stream().map(Course::getId).toList();
+        Map<UUID, Integer> result = new HashMap<>();
+        for (Object[] row : enrollmentRepository.countGroupedByCourseId(courseIds)) {
+            UUID courseId = row[0] instanceof UUID uuid ? uuid : UUID.fromString(row[0].toString());
+            result.put(courseId, ((Number) row[1]).intValue());
+        }
+        return result;
+    }
+
+    private Map<UUID, CourseReviewService.RatingSummary> summarizeRatings(List<Course> courses) {
+        if (courses == null || courses.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<UUID> courseIds = courses.stream().map(Course::getId).toList();
+        return courseReviewRepository.summarizeByCourseIds(courseIds).stream()
+                .collect(Collectors.toMap(
+                        row -> (UUID) row[0],
+                        row -> new CourseReviewService.RatingSummary(
+                                round1(((Number) row[1]).doubleValue()),
+                                ((Number) row[2]).longValue()
+                        )
+                ));
+    }
+
+    private double extractAverageRating(Object[] rawRating) {
+        if (rawRating == null || rawRating.length < 2 || rawRating[0] == null) return 0.0;
+        return round1(((Number) rawRating[0]).doubleValue());
+    }
+
+    private long extractReviewCount(Object[] rawRating) {
+        if (rawRating == null || rawRating.length < 2 || rawRating[1] == null) return 0;
+        return ((Number) rawRating[1]).longValue();
+    }
+
+    private double round1(double value) {
+        return Math.round(value * 10.0) / 10.0;
     }
 }

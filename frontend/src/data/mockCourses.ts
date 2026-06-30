@@ -22,6 +22,7 @@ export interface Lesson {
   duration: string;
   type: 'video' | 'pdf' | 'quiz';
   url: string;
+  isFree?: boolean;
   isCompleted?: boolean;
   questions?: QuizQuestion[];
   documents?: LessonDocument[];
@@ -32,14 +33,19 @@ export interface Course {
   title: string;
   description: string;
   detailedDescription?: string;
+  objective?: string;
+  audience?: string;
   price?: string;
   subject: Subject;
   grade: Grade;
   image: string;
+  introVideoUrl?: string;
   rating: number;
+  reviewCount?: number;
   students: number;
   instructor: string;
   isEnrolled: boolean;
+  hasFreePreview?: boolean;
   progress?: number;
   lessons?: Lesson[];
 }

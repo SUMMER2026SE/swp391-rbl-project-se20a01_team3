@@ -109,6 +109,7 @@ function adaptLesson(lesson: ApiLesson): UiLesson {
     duration: formatDurationSec(lesson.durationSec),
     type,
     url,
+    isFree: lesson.isFree,
     isCompleted: false,
     questions: undefined, // luôn undefined — câu hỏi thật load qua StudentQuizPage
     documents: lesson.documents ?? [],
@@ -133,14 +134,19 @@ export function adaptCourseSummary(summary: ApiCourseSummary, isEnrolled = false
     id: summary.id,
     title: summary.title,
     description: summary.description ?? '',
+    objective: summary.objective ?? undefined,
+    audience: summary.audience ?? undefined,
     price: formatPriceVnd(summary.effectivePriceVnd),
     subject: SLUG_TO_SUBJECT[summary.categorySlug ?? ''] ?? 'Tất cả',
     grade: gradesToLabel(summary.grades),
     image: summary.thumbnailUrl ?? '',
-    rating: 4.7,
-    students: 1000,
+    introVideoUrl: summary.introVideoUrl ?? undefined,
+    rating: summary.averageRating,
+    students: summary.studentCount,
     instructor: summary.teacherName ?? 'Bee Academy',
     isEnrolled,
+    hasFreePreview: summary.hasFreePreview,
+    reviewCount: summary.reviewCount,
   };
 }
 
@@ -157,14 +163,19 @@ export function adaptCourseDetail(detail: ApiCourseDetail): UiCourse {
     title: detail.title,
     description: detail.description ?? '',
     detailedDescription: detail.description ?? '',
+    objective: detail.objective ?? undefined,
+    audience: detail.audience ?? undefined,
     price: formatPriceVnd(detail.effectivePriceVnd),
     subject: SLUG_TO_SUBJECT[detail.categorySlug ?? ''] ?? 'Tất cả',
     grade: gradesToLabel(detail.grades),
     image: detail.thumbnailUrl ?? '',
-    rating: 4.7,
-    students: 1000,
+    introVideoUrl: detail.introVideoUrl ?? undefined,
+    rating: detail.averageRating,
+    students: detail.studentCount,
     instructor: detail.teacherName ?? 'Bee Academy',
     isEnrolled: detail.enrolled,  // ✅ từ backend: true nếu đã mua / GV sở hữu / Admin
+    hasFreePreview: detail.hasFreePreview,
+    reviewCount: detail.reviewCount,
     lessons: flattenChaptersToLessons(detail.chapters),
   };
 }
