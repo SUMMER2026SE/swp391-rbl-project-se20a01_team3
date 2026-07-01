@@ -28,9 +28,10 @@ import {
   ArrowLeft, Star, Users, PlayCircle, FileText, CheckCircle2,
   Lock, ShoppingCart, Video, Menu, X, MessageSquare, BookOpen,
   ClipboardList, XCircle, Award, RotateCcw, ChevronLeft, ChevronRight,
-  Trophy, Loader2, Send, AlertCircle, Plus, Minus,
+  Trophy, Loader2, Send, AlertCircle, Plus, Minus, Clock, Trash2, Pencil,
 } from 'lucide-react';
 import DashboardHeader from '../../components/DashboardHeader';
+import QaImagePicker from '../../components/QaImagePicker';
 import type { Course, Lesson, QuizQuestion } from '../../data/mockCourses';
 import { notify } from '../../lib/toast';
 import { useCartStore } from '../../store/useCartStore';
@@ -48,9 +49,14 @@ import { listOrders, verifyPayment } from '../../api/orderService';
 import {
   addCourseDiscussionReply,
   createCourseDiscussionThread,
+  deleteCourseDiscussionReply,
+  deleteCourseDiscussionThread,
   listCourseDiscussionThreads,
+  updateCourseDiscussionReply,
+  updateCourseDiscussionThread,
 } from '../../api/courseDiscussionService';
 import { listStudentCourseExams } from '../../api/examService';
+import { uploadQaImage } from '../../api/qaService';
 import type { CourseDiscussionThread } from '../../api/courseDiscussionService';
 import type { StudentExamSummaryResponse } from '../../api/examService';
 import type { ChapterDetail, CourseReviewSummary, LessonDetail } from '../../types/api';
@@ -1038,6 +1044,19 @@ function roleLabel(role: string): string {
   return 'Học viên';
 }
 
+function jwtSubject(token: string | null): string | null {
+  if (!token) return null;
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = JSON.parse(atob(normalized));
+    return typeof decoded.sub === 'string' ? decoded.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 function toEmbeddableVideoUrl(url: string): string | null {
   try {
     const parsed = new URL(url);
@@ -1752,6 +1771,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const addToCart = useCartStore(state => state.addToCart);
   const isLoggedIn = useAuthStore(state => state.isLoggedIn);
   const user = useAuthStore(state => state.user);
+  const accessToken = useAuthStore(state => state.accessToken);
   const navigate = useNavigate();
 
   // BUG FIX: state báo hiệu signed video URL đã hết hạn (sau 1 giờ)
@@ -1772,21 +1792,34 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const saveQuizScore = useCourseStore((state) => state.saveQuizScore);
   const lessonNotes = useCourseStore((state) => state.lessonNotes);
   const saveLessonNote = useCourseStore((state) => state.saveLessonNote);
+  // Dữ liệu persist từ phiên bản cũ có thể chưa có field này.
+  const timedLessonNotes = useCourseStore((state) => state.timedLessonNotes ?? {});
+  const addTimedLessonNote = useCourseStore((state) => state.addTimedLessonNote);
+  const deleteTimedLessonNote = useCourseStore((state) => state.deleteTimedLessonNote);
   const completedList = completedLessons[course.id] ?? [];
   const completedQuizList = completedQuizzes[course.id] ?? [];
 
   // State cục bộ cho ghi chú
   const [noteText, setNoteText] = useState('');
+  const [timedNoteInput, setTimedNoteInput] = useState('');
+  const [currentVideoTime, setCurrentVideoTime] = useState(0);
 
   // State cục bộ cho Q&A
   const [qaInput, setQaInput] = useState('');
+  const [qaImageFile, setQaImageFile] = useState<File | null>(null);
   const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
   const [discussionThreads, setDiscussionThreads] = useState<CourseDiscussionThread[]>([]);
   const [loadingDiscussion, setLoadingDiscussion] = useState(false);
   const [postingQuestion, setPostingQuestion] = useState(false);
   const [postingReplyId, setPostingReplyId] = useState<string | null>(null);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [editingQuestionText, setEditingQuestionText] = useState('');
+  const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
+  const [editingReplyText, setEditingReplyText] = useState('');
+  const [savingDiscussionId, setSavingDiscussionId] = useState<string | null>(null);
   const [studentExams, setStudentExams] = useState<StudentExamSummaryResponse[]>([]);
   const watchedUntilRef = useRef(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const isResettingSeekRef = useRef(false);
   const lastSeekWarningAtRef = useRef(0);
 
@@ -1835,6 +1868,18 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   );
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(firstLesson);
   const [activeTab, setActiveTab] = useState<'overview' | 'qa' | 'notes' | 'reviews'>('overview');
+  const activeTimedNotes = activeLesson
+    ? timedLessonNotes[course.id]?.[activeLesson.id] ?? []
+    : [];
+  const isDirectVideo = Boolean(
+    activeLesson?.type === 'video' &&
+    activeLesson.url &&
+    activeLesson.url !== '#' &&
+    !activeLesson.url.includes('youtube.com') &&
+    !activeLesson.url.includes('youtu.be') &&
+    !activeLesson.url.includes('vimeo.com') &&
+    !activeLesson.url.includes('/embed/')
+  );
   const canSubmitReview = course.isEnrolled && user?.role === 'student';
 
   useEffect(() => {
@@ -1849,6 +1894,8 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     watchedUntilRef.current = 0;
     isResettingSeekRef.current = false;
     lastSeekWarningAtRef.current = 0;
+    setCurrentVideoTime(0);
+    setTimedNoteInput('');
   }, [activeLesson?.id]);
 
   // Cập nhật nội dung ghi chú khi chuyển bài học
@@ -1967,6 +2014,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   }
 
   function handleVideoTimeUpdate(event: SyntheticEvent<HTMLVideoElement>) {
+    setCurrentVideoTime(event.currentTarget.currentTime);
     if (isResettingSeekRef.current) {
       return;
     }
@@ -1984,7 +2032,8 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       return;
     }
 
-    if (Math.abs(video.currentTime - watchedUntilRef.current) < 0.75) {
+    // Cho phép tua ngược (ví dụ bấm vào mốc ghi chú), chỉ chặn tua tới phần chưa xem.
+    if (video.currentTime <= watchedUntilRef.current + 0.75) {
       return;
     }
 
@@ -2023,6 +2072,34 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     notify.success('Đã lưu ghi chú thành công!');
   };
 
+  function handleAddTimedNote() {
+    if (!activeLesson || !isDirectVideo || !videoRef.current) {
+      notify.error('Ghi chú theo mốc thời gian hiện hỗ trợ video tải trực tiếp.');
+      return;
+    }
+    if (!timedNoteInput.trim()) {
+      notify.error('Vui lòng nhập nội dung ghi chú.');
+      return;
+    }
+    addTimedLessonNote(course.id, activeLesson.id, videoRef.current.currentTime, timedNoteInput);
+    setTimedNoteInput('');
+    notify.success(`Đã lưu ghi chú tại ${formatDurationSec(Math.floor(videoRef.current.currentTime))}`);
+  }
+
+  function handleSeekToNote(timeSec: number) {
+    const video = videoRef.current;
+    if (!video) {
+      notify.error('Không thể tua video nhúng YouTube/Vimeo từ ghi chú.');
+      return;
+    }
+    isResettingSeekRef.current = true;
+    video.currentTime = Math.min(timeSec, watchedUntilRef.current);
+    setCurrentVideoTime(video.currentTime);
+    window.setTimeout(() => {
+      isResettingSeekRef.current = false;
+    }, 0);
+  }
+
   function upsertDiscussionThread(thread: CourseDiscussionThread) {
     setDiscussionThreads(prev => {
       const exists = prev.some(item => item.id === thread.id);
@@ -2040,12 +2117,15 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     if (!content) return;
     try {
       setPostingQuestion(true);
+      const attachment = qaImageFile ? await uploadQaImage(qaImageFile) : undefined;
       const thread = await createCourseDiscussionThread(course.id, {
         lessonId: activeLesson?.id ?? null,
         content,
+        attachment,
       });
       upsertDiscussionThread(thread);
       setQaInput('');
+      setQaImageFile(null);
       notify.success('Đã đăng câu hỏi thảo luận thành công!');
     } catch (error) {
       notify.error(error instanceof Error ? error.message : 'Không đăng được câu hỏi');
@@ -2069,6 +2149,94 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       setPostingReplyId(null);
     }
   };
+
+  const currentUserId = user?.id ?? jwtSubject(accessToken);
+
+  function canEditDiscussionItem(authorId: string) {
+    return Boolean(currentUserId && authorId === currentUserId);
+  }
+
+  function startEditQuestion(qa: CourseDiscussionThread) {
+    setEditingReplyId(null);
+    setEditingReplyText('');
+    setEditingQuestionId(qa.id);
+    setEditingQuestionText(qa.content);
+  }
+
+  async function handleUpdateQuestion(questionId: string) {
+    const content = editingQuestionText.trim();
+    if (!content) {
+      notify.error('Vui lòng nhập nội dung câu hỏi');
+      return;
+    }
+    try {
+      setSavingDiscussionId(questionId);
+      const updated = await updateCourseDiscussionThread(course.id, questionId, content);
+      upsertDiscussionThread(updated);
+      setEditingQuestionId(null);
+      setEditingQuestionText('');
+      notify.success('Đã cập nhật câu hỏi');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không cập nhật được câu hỏi');
+    } finally {
+      setSavingDiscussionId(null);
+    }
+  }
+
+  async function handleDeleteQuestion(questionId: string) {
+    if (!window.confirm('Xóa câu hỏi này và toàn bộ phản hồi bên dưới?')) return;
+    try {
+      setSavingDiscussionId(questionId);
+      await deleteCourseDiscussionThread(course.id, questionId);
+      setDiscussionThreads(prev => prev.filter(item => item.id !== questionId));
+      notify.success('Đã xóa câu hỏi');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không xóa được câu hỏi');
+    } finally {
+      setSavingDiscussionId(null);
+    }
+  }
+
+  function startEditReply(replyId: string, content: string) {
+    setEditingQuestionId(null);
+    setEditingQuestionText('');
+    setEditingReplyId(replyId);
+    setEditingReplyText(content);
+  }
+
+  async function handleUpdateReply(questionId: string, replyId: string) {
+    const content = editingReplyText.trim();
+    if (!content) {
+      notify.error('Vui lòng nhập nội dung phản hồi');
+      return;
+    }
+    try {
+      setSavingDiscussionId(replyId);
+      const updated = await updateCourseDiscussionReply(course.id, questionId, replyId, content);
+      upsertDiscussionThread(updated);
+      setEditingReplyId(null);
+      setEditingReplyText('');
+      notify.success('Đã cập nhật phản hồi');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không cập nhật được phản hồi');
+    } finally {
+      setSavingDiscussionId(null);
+    }
+  }
+
+  async function handleDeleteReply(questionId: string, replyId: string) {
+    if (!window.confirm('Xóa phản hồi này?')) return;
+    try {
+      setSavingDiscussionId(replyId);
+      const updated = await deleteCourseDiscussionReply(course.id, questionId, replyId);
+      upsertDiscussionThread(updated);
+      notify.success('Đã xóa phản hồi');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không xóa được phản hồi');
+    } finally {
+      setSavingDiscussionId(null);
+    }
+  }
 
   const questionsList = discussionThreads;
 
@@ -2171,6 +2339,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
               ) : (
                 // <video> cho file upload (signed URL từ Supabase Storage, TTL 1 giờ)
                 <video
+                  ref={videoRef}
                   key={activeLesson.id}
                   src={activeLesson.url}
                   className="absolute inset-0 w-full h-full"
@@ -2327,6 +2496,11 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                           className="flex-grow min-h-[90px] p-4 text-sm rounded-2xl bg-surface border border-outline-variant/40 focus:border-primary outline-none resize-none text-on-surface transition-all placeholder:text-on-surface-variant/40"
                         />
                       </div>
+                      <QaImagePicker
+                        file={qaImageFile}
+                        onChange={setQaImageFile}
+                        disabled={postingQuestion}
+                      />
                       <div className="flex justify-end">
                         <button
                           onClick={handleAddQuestion}
@@ -2372,9 +2546,69 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                                   )}
                                   <span className="text-[10px] text-on-surface-variant/60">{formatDiscussionDate(qa.createdAt)}</span>
                                 </div>
-                                <p className="text-on-surface text-sm mt-2 leading-relaxed font-semibold">
-                                  {qa.content}
-                                </p>
+                                {editingQuestionId === qa.id ? (
+                                  <div className="mt-2 space-y-2">
+                                    <textarea
+                                      value={editingQuestionText}
+                                      onChange={(event) => setEditingQuestionText(event.target.value)}
+                                      className="w-full min-h-[86px] rounded-xl border border-outline-variant/40 bg-surface-container/40 px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
+                                    />
+                                    <div className="flex justify-end gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingQuestionId(null);
+                                          setEditingQuestionText('');
+                                        }}
+                                        className="rounded-lg px-3 py-1.5 text-xs font-bold text-on-surface-variant hover:bg-surface-container"
+                                      >
+                                        Hủy
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateQuestion(qa.id)}
+                                        disabled={savingDiscussionId === qa.id}
+                                        className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-on-primary disabled:opacity-60"
+                                      >
+                                        {savingDiscussionId === qa.id ? 'Đang lưu...' : 'Lưu'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="text-on-surface text-sm mt-2 leading-relaxed font-semibold">
+                                    {qa.content}
+                                  </p>
+                                )}
+                                {qa.attachmentUrl && qa.attachmentType?.startsWith('image/') && (
+                                  <a href={qa.attachmentUrl} target="_blank" rel="noreferrer" className="block mt-3">
+                                    <img
+                                      src={qa.attachmentUrl}
+                                      alt={qa.attachmentName ?? 'Ảnh câu hỏi'}
+                                      className="max-h-80 max-w-full rounded-xl border border-outline-variant/30 object-contain bg-black/5"
+                                    />
+                                  </a>
+                                )}
+                                {canEditDiscussionItem(qa.authorId) && editingQuestionId !== qa.id && (
+                                  <div className="mt-3 flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => startEditQuestion(qa)}
+                                      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold text-on-surface-variant hover:bg-surface-container"
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                      Sửa
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteQuestion(qa.id)}
+                                      disabled={savingDiscussionId === qa.id}
+                                      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-60"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                      Xóa
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -2396,9 +2630,69 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                                         </span>
                                         <span className="text-[9px] text-on-surface-variant/50">{formatDiscussionDate(reply.createdAt)}</span>
                                       </div>
-                                      <p className="text-xs text-on-surface-variant mt-1 leading-relaxed font-medium">
-                                        {reply.content}
-                                      </p>
+                                      {editingReplyId === reply.id ? (
+                                        <div className="mt-2 space-y-2">
+                                          <textarea
+                                            value={editingReplyText}
+                                            onChange={(event) => setEditingReplyText(event.target.value)}
+                                            className="w-full min-h-[70px] rounded-lg border border-outline-variant/40 bg-surface px-3 py-2 text-xs text-on-surface outline-none focus:border-primary"
+                                          />
+                                          <div className="flex justify-end gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setEditingReplyId(null);
+                                                setEditingReplyText('');
+                                              }}
+                                              className="rounded-lg px-2.5 py-1 text-[11px] font-bold text-on-surface-variant hover:bg-surface-container"
+                                            >
+                                              Hủy
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleUpdateReply(qa.id, reply.id)}
+                                              disabled={savingDiscussionId === reply.id}
+                                              className="rounded-lg bg-primary px-2.5 py-1 text-[11px] font-bold text-on-primary disabled:opacity-60"
+                                            >
+                                              {savingDiscussionId === reply.id ? 'Đang lưu...' : 'Lưu'}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <p className="text-xs text-on-surface-variant mt-1 leading-relaxed font-medium">
+                                          {reply.content}
+                                        </p>
+                                      )}
+                                      {reply.attachmentUrl && reply.attachmentType?.startsWith('image/') && (
+                                        <a href={reply.attachmentUrl} target="_blank" rel="noreferrer" className="block mt-2">
+                                          <img
+                                            src={reply.attachmentUrl}
+                                            alt={reply.attachmentName ?? 'Ảnh phản hồi'}
+                                            className="max-h-64 max-w-full rounded-lg object-contain bg-black/5"
+                                          />
+                                        </a>
+                                      )}
+                                      {canEditDiscussionItem(reply.authorId) && editingReplyId !== reply.id && (
+                                        <div className="mt-2 flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => startEditReply(reply.id, reply.content)}
+                                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold text-on-surface-variant hover:bg-surface"
+                                          >
+                                            <Pencil className="h-3 w-3" />
+                                            Sửa
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteReply(qa.id, reply.id)}
+                                            disabled={savingDiscussionId === reply.id}
+                                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold text-red-600 hover:bg-red-50 disabled:opacity-60"
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                            Xóa
+                                          </button>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 ))}
@@ -2435,6 +2729,74 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                 )}
                 {activeTab === 'notes' && (
                   <motion.div key="notes" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
+                    <div className="rounded-2xl border border-outline-variant/40 bg-surface-container/40 p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="font-extrabold text-on-surface">Ghi chú theo thời gian video</h3>
+                          <p className="text-xs text-on-surface-variant mt-1">
+                            Ghi lại nội dung tại đúng thời điểm video đang phát.
+                          </p>
+                        </div>
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-bold text-primary">
+                          <Clock className="h-4 w-4" />
+                          {formatDurationSec(Math.floor(currentVideoTime))}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={timedNoteInput}
+                          onChange={event => setTimedNoteInput(event.target.value)}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter') handleAddTimedNote();
+                          }}
+                          disabled={!isDirectVideo}
+                          placeholder={isDirectVideo ? 'Nhập ghi chú cho mốc thời gian hiện tại...' : 'Chỉ hỗ trợ video tải trực tiếp'}
+                          className="flex-1 rounded-xl border border-outline-variant/40 bg-surface px-3 py-2.5 text-sm text-on-surface outline-none focus:border-primary disabled:opacity-60"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddTimedNote}
+                          disabled={!isDirectVideo || !timedNoteInput.trim()}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Thêm tại {formatDurationSec(Math.floor(currentVideoTime))}
+                        </button>
+                      </div>
+
+                      {activeTimedNotes.length > 0 ? (
+                        <div className="space-y-2 pt-1">
+                          {activeTimedNotes.map(note => (
+                            <div key={note.id} className="flex items-start gap-3 rounded-xl bg-surface px-3 py-2.5 border border-outline-variant/30">
+                              <button
+                                type="button"
+                                onClick={() => handleSeekToNote(note.timeSec)}
+                                className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-extrabold text-primary hover:bg-primary/20"
+                                title="Tua video đến mốc này"
+                              >
+                                {formatDurationSec(note.timeSec)}
+                              </button>
+                              <p className="flex-1 text-sm text-on-surface whitespace-pre-wrap">{note.content}</p>
+                              <button
+                                type="button"
+                                onClick={() => deleteTimedLessonNote(course.id, activeLesson.id, note.id)}
+                                className="shrink-0 rounded-lg p-1.5 text-red-500 hover:bg-red-500/10"
+                                title="Xóa ghi chú"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-on-surface-variant">Chưa có ghi chú theo mốc thời gian cho video này.</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="font-extrabold text-on-surface mb-2">Ghi chú chung</h3>
                     <textarea
                       value={noteText}
                       onChange={(e) => setNoteText(e.target.value)}
@@ -2449,6 +2811,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                       >
                         Lưu ghi chú
                       </button>
+                    </div>
                     </div>
                   </motion.div>
                 )}
@@ -2732,30 +3095,42 @@ export default function CourseDetailPage() {
   const [rawChapters, setRawChapters] = useState<ChapterDetail[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [notFound, setNotFound] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   // ── Fetch course detail mỗi khi id thay đổi ─────────────────────────────
   useEffect(() => {
     if (!id) return;
+    let active = true;
     setLoading(true);
     setNotFound(false);
+    setLoadError(null);
 
     courseServiceGetDetail(id)
       .then(async (detail) => {
+        if (!active) return;
         setCourse(adaptCourseDetail(detail));
         setRawChapters(detail.chapters);
       })
       .catch((err) => {
-        // 404 từ BE → hiển thị empty state. Lỗi khác → toast.
+        if (!active) return;
+        // Chỉ 404 mới là không tìm thấy. Lỗi mạng/5xx cần cho phép người dùng thử lại.
         if (isApiError(err) && err.status === 404) {
           setNotFound(true);
         } else {
           const message = isApiError(err) ? err.message : 'Không thể tải khóa học';
           notify.error(message);
-          setNotFound(true);
+          setLoadError(message);
         }
       })
-      .finally(() => setLoading(false));
-  }, [id, purchasedIds]);
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [id, purchasedIds, retryKey]);
 
   // ── Loading state ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -2792,6 +3167,29 @@ export default function CourseDetailPage() {
       <div className="min-h-screen bg-surface flex flex-col items-center justify-center">
         <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
         <p className="text-on-surface-variant">Đang tải khóa học...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-surface flex flex-col items-center justify-center px-4 text-center">
+        <AlertCircle className="w-12 h-12 text-error mb-4" />
+        <h1 className="text-2xl font-bold text-on-surface mb-2">Không thể tải khóa học</h1>
+        <p className="text-on-surface-variant mb-5 max-w-md">{loadError}</p>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setRetryKey((value) => value + 1)}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 font-bold text-on-primary hover:bg-primary/90"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Thử lại
+          </button>
+          <Link to="/courses" className="text-primary hover:underline font-bold">
+            Quay lại danh sách
+          </Link>
+        </div>
       </div>
     );
   }
