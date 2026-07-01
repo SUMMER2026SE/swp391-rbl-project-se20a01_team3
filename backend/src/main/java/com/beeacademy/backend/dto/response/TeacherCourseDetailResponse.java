@@ -3,11 +3,13 @@ package com.beeacademy.backend.dto.response;
 import com.beeacademy.backend.model.ApprovalHistory;
 import com.beeacademy.backend.model.Chapter;
 import com.beeacademy.backend.model.Course;
+import com.beeacademy.backend.model.CourseDocument;
 import com.beeacademy.backend.model.CourseVersion;
 
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -64,8 +66,17 @@ public record TeacherCourseDetailResponse(
                                                           int salesCount,
                                                           List<Chapter> chapterEntities,
                                                           List<CourseVersion> versionEntities) {
+        return fromEntity(c, history, salesCount, chapterEntities, versionEntities, Map.of());
+    }
+
+    public static TeacherCourseDetailResponse fromEntity(Course c,
+                                                          List<ApprovalHistory> history,
+                                                          int salesCount,
+                                                          List<Chapter> chapterEntities,
+                                                          List<CourseVersion> versionEntities,
+                                                          Map<UUID, List<CourseDocument>> documentsByLessonId) {
         List<TeacherChapterResponse> chapters = chapterEntities.stream()
-                .map(TeacherChapterResponse::fromEntity)
+                .map(chapter -> TeacherChapterResponse.fromEntity(chapter, documentsByLessonId))
                 .toList();
         int totalChapters = chapters.size();
         int totalLessons = chapters.stream()
