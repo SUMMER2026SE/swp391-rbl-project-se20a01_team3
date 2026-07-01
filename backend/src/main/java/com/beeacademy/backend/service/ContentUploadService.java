@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Collection;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -133,7 +134,8 @@ public class ContentUploadService {
      */
     @Transactional
     public UploadResponse uploadDocument(UUID lessonId, UUID teacherId,
-                                          String displayName, MultipartFile file) {
+                                          String displayName, String documentSlot,
+                                          MultipartFile file) {
         validateFile(file, ALLOWED_DOC_MIME, MAX_DOC_BYTES,
                      "PDF, PPTX hoặc DOCX", "100MB");
 
@@ -160,8 +162,13 @@ public class ContentUploadService {
         deleteUploadedObjectOnRollback(DOCS_BUCKET, path);
 
         // DATA FIX: lưu CourseDocument vào DB để lesson detail có thể load lại được.
-        // Position = số tài liệu hiện tại + 1 (thêm vào cuối)
-        int position  = documentRepository.countByLessonId(lessonId) + 1;
+        // Hai vị trí cố định giúp frontend phân biệt tài liệu và slide sau khi reload.
+        // Giữ fallback đếm tăng dần để tương thích với client cũ chưa gửi slot.
+        int position = switch (documentSlot == null ? "" : documentSlot.trim().toLowerCase()) {
+            case "pdf" -> 1;
+            case "slide" -> 2;
+            default -> documentRepository.countByLessonId(lessonId) + 1;
+        };
         String name   = (displayName != null && !displayName.isBlank())
                         ? displayName.trim()
                         : file.getOriginalFilename();
@@ -171,6 +178,29 @@ public class ContentUploadService {
 
         log.info("Upload tài liệu thành công: lessonId={} path={} url={}", lessonId, path, publicUrl);
         return new UploadResponse(path, publicUrl, fileType, file.getSize());
+    }
+
+    /** Xóa đúng tài liệu theo id sau khi xác minh giáo viên sở hữu bài giảng. */
+    @Transactional
+    public void deleteDocument(UUID lessonId, UUID documentId, UUID teacherId) {
+        CourseDocument document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("CourseDocument", documentId));
+        Lesson lesson = document.getLesson();
+
+        if (!lesson.getId().equals(lessonId)) {
+            throw new ResourceNotFoundException("CourseDocument", documentId);
+        }
+
+        UUID lessonOwnerId = lesson.getChapter().getCourse().getTeacher().getId();
+        if (!lessonOwnerId.equals(teacherId)) {
+            throw new BusinessException("FORBIDDEN",
+                    "Bạn không có quyền xóa tài liệu của bài giảng này.",
+                    org.springframework.http.HttpStatus.FORBIDDEN);
+        }
+
+        documentRepository.delete(document);
+        deleteLessonFilesAfterCommit(List.of(), List.of(document));
+        log.info("Xóa tài liệu thành công: lessonId={} documentId={}", lessonId, documentId);
     }
 
     // ========================================================================

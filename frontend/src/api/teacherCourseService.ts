@@ -42,6 +42,12 @@ export interface TeacherLessonResponse {
   videoUrl: string | null;
   durationSec: number;
   hasVideo: boolean;
+  documents: Array<{
+    id: string;
+    name: string;
+    fileType: string;
+    position: number;
+  }>;
 }
 
 export interface TeacherChapterResponse {
@@ -258,14 +264,20 @@ export async function uploadVideo(
 }
 
 export async function uploadDocument(lessonId: string, file: File,
+                                      slot: 'pdf' | 'slide',
                                       displayName?: string): Promise<UploadResponse> {
   const form = new FormData();
   form.append('file', file);
+  form.append('slot', slot);
   if (displayName) form.append('name', displayName);
   const res = await apiClient.post<ApiResponse<UploadResponse>>(
     `/api/upload/document/${lessonId}`, form,
     { headers: { 'Content-Type': 'multipart/form-data' } });
   return unwrap(res.data);
+}
+
+export async function deleteDocument(lessonId: string, documentId: string): Promise<void> {
+  await apiClient.delete(`/api/upload/document/${lessonId}/${documentId}`);
 }
 
 export async function uploadCourseThumbnail(file: File): Promise<UploadResponse> {
