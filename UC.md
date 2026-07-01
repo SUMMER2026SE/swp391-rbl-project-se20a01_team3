@@ -476,7 +476,7 @@ Tạo bài kiểm tra
 
 Giáo viên
 
-Gắn sau mỗi 3 chương
+Giáo viên chọn vị trí bài giữa kỳ 1, cuối kỳ 1, giữa kỳ 2 và cuối kỳ 2 trong khóa học
 
 UC35
 

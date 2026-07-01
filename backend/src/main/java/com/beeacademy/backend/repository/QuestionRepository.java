@@ -151,6 +151,14 @@ public interface QuestionRepository extends JpaRepository<Question, UUID>, JpaSp
             @Param("teacherId") UUID teacherId,
             @Param("chapterId") UUID chapterId);
 
+    @Query("SELECT DISTINCT q FROM Question q LEFT JOIN FETCH q.choices " +
+           "WHERE q.teacher.id = :teacherId AND q.chapter.id = :chapterId " +
+           "AND q.type IN :types AND q.status = 'active'")
+    List<Question> findActiveByTeacherAndChapterAndTypeIn(
+            @Param("teacherId") UUID teacherId,
+            @Param("chapterId") UUID chapterId,
+            @Param("types") List<String> types);
+
     // ─── Stats ───────────────────────────────────────────────────────────────
 
     /**

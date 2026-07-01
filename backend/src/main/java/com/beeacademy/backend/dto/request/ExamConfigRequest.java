@@ -11,8 +11,19 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
+import java.util.UUID;
 
 public record ExamConfigRequest(
+        @NotNull
+        @Pattern(regexp = "MIDTERM_1|FINAL_1|MIDTERM_2|FINAL_2")
+        String examType,
+
+        @NotNull
+        UUID startChapterId,
+
+        @NotNull
+        UUID afterChapterId,
+
         @NotBlank
         @Size(max = 255)
         String name,
@@ -25,6 +36,12 @@ public record ExamConfigRequest(
 
         @NotNull @Min(0) @Max(100)
         Integer passScorePercent,
+
+        @NotNull @DecimalMin("0.0") @DecimalMax("10.0")
+        Double multipleChoiceScore,
+
+        @NotNull @DecimalMin("0.0") @DecimalMax("10.0")
+        Double essayScore,
 
         @NotNull @Min(1) @Max(10)
         Integer maxAttempts,
@@ -45,13 +62,13 @@ public record ExamConfigRequest(
             String text,
 
             @NotNull
-            @Pattern(regexp = "single|multiple")
+            @Pattern(regexp = "single|multiple|essay")
             String type,
 
-            @NotNull @Size(min = 2, max = 6)
+            @Size(max = 6)
             List<@NotBlank String> options,
 
-            @NotNull @Size(min = 1, max = 6)
+            @Size(max = 6)
             List<@Min(0) Integer> correctIndices,
 
             @Size(max = 2000)

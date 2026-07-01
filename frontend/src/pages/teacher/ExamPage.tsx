@@ -4,21 +4,19 @@ import TeacherNotificationBell from '../../components/TeacherNotificationBell';
  *
  * Khác biệt cốt lõi so với Quiz chương (UC29):
  *   - Quiz:    gắn vào CUỐI MỖI CHƯƠNG       → mục đích củng cố
- *   - Exam:    gắn SAU MỖI 3 CHƯƠNG          → mục đích đánh giá giai đoạn
- *   - Học sinh: chỉ mở exam khi pass quiz 3 chương liên tiếp (UC17)
+ *   - Exam:    giáo viên chọn vị trí sau chương bất kỳ → đánh giá giai đoạn
+ *   - Học sinh: mở exam khi pass quiz các chương thuộc phạm vi trước vị trí đó
  *
- * Cấu trúc "slot":
- *   - Hệ thống tự chia số chương thành các slot 3 chương liên tiếp:
- *       6 chương → 2 slot  (slot 0 = ch 1-3, slot 1 = ch 4-6)
- *       7 chương → 2 slot  (slot 0 = ch 1-3, slot 1 = ch 4-6; ch 7 chưa đủ trọn 3)
- *   - Mỗi slot có DUY NHẤT 1 exam. GV chọn slot → tạo/sửa exam cho slot đó.
+ * Cấu trúc:
+ *   - Mỗi khóa có 4 loại bài kiểm tra: giữa kỳ 1, cuối kỳ 1, giữa kỳ 2, cuối kỳ 2.
+ *   - GV chọn loại bài + chương đặt sau → tạo/sửa exam cho vị trí đó.
  *
  * Luồng chính:
  *   1. GV chọn khóa học
- *   2. Bên trái: danh sách slot (cố định bởi số chương)
- *   3. Click slot → form mở ở panel phải:
- *      - Slot đã có exam → load vào form
- *      - Slot chưa có → khởi tạo form rỗng
+ *   2. Bên trái: chọn một trong 4 loại bài kiểm tra
+ *   3. Form mở ở panel phải:
+ *      - Đã có exam → load vào form
+ *      - Chưa có → khởi tạo form rỗng
  *   4. Form 3 phần:
  *      a) Cài đặt chung: tên, mô tả, thời gian, điểm đạt
  *      b) Cài đặt làm bài: lần làm lại, xáo trộn, hiện đáp án
@@ -39,6 +37,7 @@ import type {
   ExamConfigRequest,
   ExamConfigResponse,
   ExamQuestionPayload,
+  ExamType,
 } from '../../api/examService';
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle,
@@ -47,15 +46,15 @@ import {
   GraduationCap, Save, CheckCircle2, Circle,
   ChevronDown, ChevronRight, Shuffle, Eye, Repeat,
   Megaphone, Database, Loader2, AlertTriangle,
-  Plus, UserCircle, Lock,
+  UserCircle, Lock,
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════════
 //  PHẦN 1 — TYPES
 // ═══════════════════════════════════════════════════════════════════
 
-// 2 loại câu hỏi (giống Quiz chương)
-type QuestionType = 'single' | 'multiple';
+// Câu hỏi exam: khách quan (trắc nghiệm/đúng-sai) và tự luận
+type QuestionType = 'single' | 'multiple' | 'essay';
 
 // Mức độ khó của câu hỏi — đặc thù của Exam
 // Lý do thêm: bài kiểm tra cần phân bố câu Dễ/TB/Khó hợp lý
@@ -75,10 +74,15 @@ interface ExamQuestion {
 
 // Cài đặt 1 bài kiểm tra
 interface Exam {
+  examType: ExamType;
+  startChapterId: string;
+  afterChapterId: string;
   name: string;
   description?: string;        // Hướng dẫn / mô tả cho HS đọc trước khi làm
   durationMinutes: number;
   passScorePercent: number;
+  multipleChoiceScore: number;
+  essayScore: number;
 
   // ── Cài đặt làm bài (đặc thù Exam) ──
   maxAttempts: number;         // Số lần làm tối đa (vd 1, 2)
@@ -110,27 +114,42 @@ interface CourseInfo {
 // Slot đã được tính từ chapters — không lưu trong state, derive khi render
 interface ExamSlot {
   slotIndex: number;
-  chapters: ChapterRef[];     // 3 chương thuộc slot
+  examType: ExamType;
+  label: string;
+  defaultName: string;
   exam?: Exam;                 // undefined = chưa tạo
 }
 
 interface ChapterRandomConfig {
-  totalCount: number;
+  multipleChoiceCount: number;
+  essayCount: number;
 }
 
 interface ChapterQuestionCount {
   totalActive: number;
+  multipleChoiceActive: number;
+  essayActive: number;
 }
 
-function defaultChapterRandomConfig(totalCount = 10): ChapterRandomConfig {
+function defaultChapterRandomConfig(
+    multipleChoiceCount = 8,
+    essayCount = 2,
+): ChapterRandomConfig {
   return {
-    totalCount,
+    multipleChoiceCount,
+    essayCount,
   };
 }
 
 function formatPoints(points: number): string {
   if (Number.isInteger(points)) return String(points);
   return points.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function questionTypeLabel(type: QuestionType): string {
+  if (type === 'essay') return 'Tự luận';
+  if (type === 'multiple') return 'Nhiều đáp án';
+  return '1 đáp án';
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -153,37 +172,65 @@ const NAV_ITEMS = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════
-//  PHẦN 3 — HELPER: chia chương thành các slot 3 chương
+//  PHẦN 3 — HELPER: bốn loại bài kiểm tra cố định
 // ═══════════════════════════════════════════════════════════════════
-/**
- * computeSlots — Chia mảng chapters thành các slot 3 chương liên tiếp.
- * Quy tắc: chỉ tạo slot khi đủ 3 chương; chương dư cuối không tạo slot.
- *
- * Ví dụ:
- *   - 3 chương → [slot 0: ch 1-3]
- *   - 6 chương → [slot 0: ch 1-3, slot 1: ch 4-6]
- *   - 7 chương → [slot 0: ch 1-3, slot 1: ch 4-6] (ch 7 bị bỏ)
- */
-function computeSlots(chapters: ChapterRef[], exams: Record<number, Exam>): ExamSlot[] {
-  const slots: ExamSlot[] = [];
-  // Chia làm các nhóm 3
-  for (let i = 0; i + 3 <= chapters.length; i += 3) {
-    const slotIndex = i / 3;
-    slots.push({
-      slotIndex,
-      chapters: chapters.slice(i, i + 3),
-      exam: exams[slotIndex],
-    });
-  }
-  return slots;
+const EXAM_SLOT_DEFS: Array<Omit<ExamSlot, 'exam'>> = [
+  {
+    slotIndex: 0,
+    examType: 'MIDTERM_1',
+    label: 'Bài giữa kỳ 1',
+    defaultName: 'Bài kiểm tra giữa kỳ 1',
+  },
+  {
+    slotIndex: 1,
+    examType: 'FINAL_1',
+    label: 'Bài cuối kỳ 1',
+    defaultName: 'Bài kiểm tra cuối kỳ 1',
+  },
+  {
+    slotIndex: 2,
+    examType: 'MIDTERM_2',
+    label: 'Bài giữa kỳ 2',
+    defaultName: 'Bài kiểm tra giữa kỳ 2',
+  },
+  {
+    slotIndex: 3,
+    examType: 'FINAL_2',
+    label: 'Bài cuối kỳ 2',
+    defaultName: 'Bài kiểm tra cuối kỳ 2',
+  },
+];
+
+function examTypeFromSlotIndex(slotIndex: number): ExamType {
+  return EXAM_SLOT_DEFS.find(slot => slot.slotIndex === slotIndex)?.examType ?? 'MIDTERM_1';
+}
+
+function slotIndexForExamType(examType: ExamType): number {
+  return EXAM_SLOT_DEFS.find(slot => slot.examType === examType)?.slotIndex ?? 0;
+}
+
+function examTypeLabel(examType: ExamType): string {
+  return EXAM_SLOT_DEFS.find(slot => slot.examType === examType)?.label ?? 'Bài kiểm tra';
+}
+
+function computeSlots(exams: Record<number, Exam>): ExamSlot[] {
+  return EXAM_SLOT_DEFS.map(slot => ({
+    ...slot,
+    exam: exams[slot.slotIndex],
+  }));
 }
 
 function examFromResponse(response: ExamConfigResponse): Exam {
   return {
+    examType: response.examType ?? examTypeFromSlotIndex(response.slotIndex),
+    startChapterId: response.startChapterId ?? '',
+    afterChapterId: response.afterChapterId ?? '',
     name: response.name,
     description: response.description ?? '',
     durationMinutes: response.durationMinutes,
     passScorePercent: response.passScorePercent,
+    multipleChoiceScore: response.multipleChoiceScore ?? 10,
+    essayScore: response.essayScore ?? 0,
     maxAttempts: response.maxAttempts,
     shuffleQuestions: response.shuffleQuestions,
     shuffleOptions: response.shuffleOptions,
@@ -207,10 +254,15 @@ function questionFromPayload(payload: ExamQuestionPayload): ExamQuestion {
 
 function examToRequest(exam: Exam): ExamConfigRequest {
   return {
+    examType: exam.examType,
+    startChapterId: exam.startChapterId,
+    afterChapterId: exam.afterChapterId,
     name: exam.name.trim(),
     description: exam.description?.trim() || null,
     durationMinutes: exam.durationMinutes,
     passScorePercent: exam.passScorePercent,
+    multipleChoiceScore: exam.multipleChoiceScore,
+    essayScore: exam.essayScore,
     maxAttempts: exam.maxAttempts,
     shuffleQuestions: exam.shuffleQuestions,
     shuffleOptions: exam.shuffleOptions,
@@ -243,10 +295,91 @@ function courseInfoFromDetail(
       }))
       .sort((a, b) => a.order - b.order),
     exams: exams.reduce<Record<number, Exam>>((acc, exam) => {
+      if (!EXAM_SLOT_DEFS.some(slot => slot.slotIndex === exam.slotIndex)) {
+        return acc;
+      }
       acc[exam.slotIndex] = examFromResponse(exam);
       return acc;
     }, {}),
   };
+}
+
+function defaultAfterChapterId(course: CourseInfo, examType: ExamType): string {
+  if (course.chapters.length === 0) return '';
+  const slotIndex = slotIndexForExamType(examType);
+  const targetIndex = Math.min(
+    course.chapters.length - 1,
+    Math.max(0, Math.ceil(((slotIndex + 1) * course.chapters.length) / 4) - 1),
+  );
+  return course.chapters[targetIndex].id;
+}
+
+function chapterIndex(course: CourseInfo, chapterId: string): number {
+  return course.chapters.findIndex(chapter => chapter.id === chapterId);
+}
+
+function defaultStartChapterId(course: CourseInfo, examType: ExamType, afterChapterId: string): string {
+  const anchorIndex = chapterIndex(course, afterChapterId);
+  if (anchorIndex < 0) return course.chapters[0]?.id ?? '';
+
+  let previousAnchorIndex = -1;
+  const currentSlotIndex = slotIndexForExamType(examType);
+  Object.entries(course.exams).forEach(([slotIndex, existingExam]) => {
+    if (Number(slotIndex) >= currentSlotIndex || !existingExam.afterChapterId) return;
+    const existingAnchorIndex = chapterIndex(course, existingExam.afterChapterId);
+    if (existingAnchorIndex >= 0 && existingAnchorIndex < anchorIndex) {
+      previousAnchorIndex = Math.max(previousAnchorIndex, existingAnchorIndex);
+    }
+  });
+
+  return course.chapters[previousAnchorIndex + 1]?.id ?? afterChapterId;
+}
+
+function getRequiredChaptersForExam(
+    course: CourseInfo,
+    examType: ExamType,
+    startChapterId: string,
+    afterChapterId: string,
+): ChapterRef[] {
+  const anchorIndex = chapterIndex(course, afterChapterId);
+  if (anchorIndex < 0) return [];
+
+  const explicitStartIndex = chapterIndex(course, startChapterId);
+  const startIndex = explicitStartIndex >= 0
+    ? explicitStartIndex
+    : chapterIndex(course, defaultStartChapterId(course, examType, afterChapterId));
+  if (startIndex < 0 || startIndex > anchorIndex) return [];
+
+  return course.chapters.slice(startIndex, anchorIndex + 1);
+}
+
+function getPlacementError(course: CourseInfo, exam: Exam): string | null {
+  const startIndex = chapterIndex(course, exam.startChapterId);
+  const currentIndex = chapterIndex(course, exam.afterChapterId);
+  if (startIndex < 0) return 'Vui lòng chọn chương bắt đầu.';
+  if (currentIndex < 0) return 'Vui lòng chọn chương kết thúc.';
+  if (startIndex > currentIndex) {
+    return 'Chương bắt đầu phải nằm trước hoặc bằng chương kết thúc.';
+  }
+  if (currentIndex < 0) return 'Vui lòng chọn chương đặt bài kiểm tra.';
+
+  const currentSlotIndex = slotIndexForExamType(exam.examType);
+  for (const [slotIndexText, existingExam] of Object.entries(course.exams)) {
+    const slotIndex = Number(slotIndexText);
+    if (slotIndex === currentSlotIndex || !existingExam.afterChapterId) continue;
+    const existingIndex = chapterIndex(course, existingExam.afterChapterId);
+    if (existingIndex < 0) continue;
+
+    const currentLabel = examTypeLabel(exam.examType);
+    const existingLabel = examTypeLabel(existingExam.examType);
+    if (slotIndex < currentSlotIndex && existingIndex >= currentIndex) {
+      return `${currentLabel} phải nằm sau ${existingLabel}.`;
+    }
+    if (slotIndex > currentSlotIndex && existingIndex <= currentIndex) {
+      return `${currentLabel} phải nằm trước ${existingLabel}.`;
+    }
+  }
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -260,18 +393,15 @@ function courseInfoFromDetail(
  * Props:
  *   - question: dữ liệu câu hỏi exam
  *   - index: thứ tự câu trong list (để label "Câu 1", "Câu 2"...)
- *   - onChange: callback khi user sửa bất kỳ field nào
  *   - onDelete: callback khi xóa câu hỏi
  */
 interface ExamQuestionCardProps {
   question: ExamQuestion;
   index: number;
-  onChange: (q: ExamQuestion) => void;
   onDelete: () => void;
 }
-function ExamQuestionCard({ question, index, onChange, onDelete }: ExamQuestionCardProps) {
-  // Mặc định mở khi câu hỏi còn rỗng (mới tạo) để GV nhập luôn
-  const [isExpanded, setIsExpanded] = useState(question.text === '');
+function ExamQuestionCard({ question, index, onDelete }: ExamQuestionCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Config màu sắc cho difficulty — gói lại để dễ tra trong JSX
   const difficultyConfig: Record<Difficulty, { label: string; className: string }> = {
@@ -279,61 +409,6 @@ function ExamQuestionCard({ question, index, onChange, onDelete }: ExamQuestionC
     medium: { label: 'Trung bình', className: 'bg-amber-500/10 text-amber-600'   },
     hard:   { label: 'Khó',        className: 'bg-red-500/10 text-red-600'       },
   };
-
-  // ── Thêm 1 lựa chọn rỗng ────────────────────────────────────
-  function addOption() {
-    onChange({ ...question, options: [...question.options, ''] });
-  }
-
-  // ── Sửa nội dung 1 option ───────────────────────────────────
-  function updateOption(optionIdx: number, value: string) {
-    onChange({
-      ...question,
-      options: question.options.map((opt, i) => i === optionIdx ? value : opt),
-    });
-  }
-
-  // ── Xóa 1 option ───────────────────────────────────────────
-  // Ràng buộc: phải còn ≥ 2 lựa chọn
-  // Sau khi xóa, các correctIndices phải được điều chỉnh:
-  //   - bỏ index vừa xóa
-  //   - giảm các index lớn hơn xuống 1 (vì array thu nhỏ)
-  function removeOption(optionIdx: number) {
-    if (question.options.length <= 2) {
-      notify.error('Câu hỏi phải có ít nhất 2 lựa chọn');
-      return;
-    }
-    const newOptions = question.options.filter((_, i) => i !== optionIdx);
-    const newCorrect = question.correctIndices
-      .filter(i => i !== optionIdx)
-      .map(i => i > optionIdx ? i - 1 : i);
-    onChange({ ...question, options: newOptions, correctIndices: newCorrect });
-  }
-
-  // ── Toggle đáp án đúng ─────────────────────────────────────
-  // single: chỉ giữ 1 index → set [optionIdx]
-  // multiple: toggle thêm/bỏ index
-  function toggleCorrect(optionIdx: number) {
-    if (question.type === 'single') {
-      onChange({ ...question, correctIndices: [optionIdx] });
-    } else {
-      const isCorrect = question.correctIndices.includes(optionIdx);
-      const newCorrect = isCorrect
-        ? question.correctIndices.filter(i => i !== optionIdx)
-        : [...question.correctIndices, optionIdx];
-      onChange({ ...question, correctIndices: newCorrect });
-    }
-  }
-
-  // ── Đổi loại câu hỏi ───────────────────────────────────────
-  // Multiple → single: chỉ giữ đáp án đúng đầu tiên
-  function changeType(newType: QuestionType) {
-    let newCorrect = question.correctIndices;
-    if (newType === 'single' && question.correctIndices.length > 1) {
-      newCorrect = [question.correctIndices[0]];
-    }
-    onChange({ ...question, type: newType, correctIndices: newCorrect });
-  }
 
   return (
     <div className="border border-outline-variant/40 rounded-xl bg-surface-container/30 overflow-hidden">
@@ -360,7 +435,7 @@ function ExamQuestionCard({ question, index, onChange, onDelete }: ExamQuestionC
 
         {/* Badge loại */}
         <span className="text-xs font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full whitespace-nowrap">
-          {question.type === 'single' ? '1 đáp án' : 'Nhiều đáp án'}
+          {questionTypeLabel(question.type)}
         </span>
 
         <span className="text-xs font-bold text-on-surface-variant">{formatPoints(question.points)}đ</span>
@@ -387,140 +462,89 @@ function ExamQuestionCard({ question, index, onChange, onDelete }: ExamQuestionC
             <div className="p-4 space-y-4">
 
               {/* Nội dung câu hỏi */}
-              <label className="block">
+              <div>
                 <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
-                  Nội dung câu hỏi <span className="text-red-500">*</span>
+                  Nội dung câu hỏi
                 </span>
-                <textarea
-                  value={question.text}
-                  onChange={e => onChange({ ...question, text: e.target.value })}
-                  placeholder="Nhập nội dung câu hỏi..."
-                  rows={2}
-                  className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant resize-none"
-                />
-              </label>
+                <div className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface whitespace-pre-wrap">
+                  {question.text}
+                </div>
+              </div>
 
               {/* Loại + Mức độ + Điểm (3 cột) */}
               <div className="grid grid-cols-3 gap-3">
-                <label className="block">
+                <div>
                   <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
                     Loại câu hỏi
                   </span>
-                  <select
-                    value={question.type}
-                    onChange={e => changeType(e.target.value as QuestionType)}
-                    className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
-                  >
-                    <option value="single">1 đáp án</option>
-                    <option value="multiple">Nhiều đáp án</option>
-                  </select>
-                </label>
-                <label className="block">
+                  <div className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface">
+                    {questionTypeLabel(question.type)}
+                  </div>
+                </div>
+                <div>
                   <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
                     Mức độ
                   </span>
-                  <select
-                    value={question.difficulty}
-                    onChange={e => onChange({ ...question, difficulty: e.target.value as Difficulty })}
-                    className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
-                  >
-                    <option value="easy">Dễ</option>
-                    <option value="medium">Trung bình</option>
-                    <option value="hard">Khó</option>
-                  </select>
-                </label>
-                <label className="block">
+                  <div className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface">
+                    {difficultyConfig[question.difficulty].label}
+                  </div>
+                </div>
+                <div>
                   <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
                     Điểm
                   </span>
-                  <input
-                    type="number"
-                    min={0.01}
-                    step={0.01}
-                    value={question.points}
-                    onChange={e => onChange({ ...question, points: parseFloat(e.target.value) || 0.01 })}
-                    className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
-                  />
-                </label>
+                  <div className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface">
+                    {formatPoints(question.points)} điểm
+                  </div>
+                </div>
               </div>
 
-              {/* Lựa chọn + Đáp án đúng */}
-              <div>
-                <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
-                  Lựa chọn & đáp án đúng
-                  <span className="text-on-surface-variant/70 font-normal normal-case ml-2">
-                    (click vào ô tròn/vuông để chọn đáp án đúng)
+              {question.type === 'essay' ? (
+                <div className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface-variant">
+                  Câu tự luận không có đáp án đúng tự động. Học sinh sẽ nộp văn bản hoặc ảnh để giáo viên chấm.
+                </div>
+              ) : (
+                <div>
+                  <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
+                    Lựa chọn & đáp án đúng
                   </span>
-                </span>
-                <div className="space-y-2">
-                  {question.options.map((opt, optIdx) => {
-                    const isCorrect = question.correctIndices.includes(optIdx);
-                    return (
-                      <div key={optIdx} className="flex items-center gap-2">
-                        {/* Nút chọn đáp án đúng — radio (single) hoặc checkbox (multiple) */}
-                        <button
-                          onClick={() => toggleCorrect(optIdx)}
-                          title={isCorrect ? 'Đáp án đúng' : 'Click để chọn làm đáp án đúng'}
-                          className={`flex-shrink-0 w-7 h-7 rounded-${question.type === 'single' ? 'full' : 'md'} flex items-center justify-center transition-colors ${
+                  <div className="space-y-2">
+                    {question.options.map((opt, optIdx) => {
+                      const isCorrect = question.correctIndices.includes(optIdx);
+                      return (
+                        <div key={optIdx} className="flex items-center gap-2">
+                          <span className={`flex-shrink-0 w-7 h-7 rounded-${question.type === 'single' ? 'full' : 'md'} flex items-center justify-center ${
                             isCorrect
                               ? 'bg-green-500 text-white'
-                              : 'bg-surface-container-lowest border border-outline-variant hover:border-green-500'
-                          }`}
-                        >
-                          {isCorrect
-                            ? <CheckCircle2 className="w-4 h-4" />
-                            : <Circle className="w-4 h-4 opacity-30" />}
-                        </button>
+                              : 'bg-surface-container-lowest border border-outline-variant text-on-surface-variant'
+                          }`}>
+                            {isCorrect
+                              ? <CheckCircle2 className="w-4 h-4" />
+                              : <Circle className="w-4 h-4 opacity-30" />}
+                          </span>
 
-                        <span className="text-sm font-bold text-on-surface-variant w-5 flex-shrink-0">
-                          {String.fromCharCode(65 + optIdx)}.
-                        </span>
+                          <span className="text-sm font-bold text-on-surface-variant w-5 flex-shrink-0">
+                            {String.fromCharCode(65 + optIdx)}.
+                          </span>
 
-                        <input
-                          type="text"
-                          value={opt}
-                          onChange={e => updateOption(optIdx, e.target.value)}
-                          placeholder={`Lựa chọn ${String.fromCharCode(65 + optIdx)}`}
-                          className="flex-1 px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant"
-                        />
-
-                        {question.options.length > 2 && (
-                          <button
-                            onClick={() => removeOption(optIdx)}
-                            title="Xóa lựa chọn"
-                            className="p-1.5 text-red-500 hover:bg-red-500/10 rounded transition-colors flex-shrink-0"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
+                          <div className="flex-1 px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface">
+                            {opt}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-
-                {question.options.length < 6 && (
-                  <button
-                    onClick={addOption}
-                    className="mt-2 flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Thêm lựa chọn
-                  </button>
-                )}
-              </div>
+              )}
 
               {/* Giải thích (tùy chọn) */}
               <label className="block">
                 <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
                   Lời giải thích <span className="text-on-surface-variant/70 font-normal normal-case">(tùy chọn)</span>
                 </span>
-                <textarea
-                  value={question.explanation ?? ''}
-                  onChange={e => onChange({ ...question, explanation: e.target.value })}
-                  placeholder="VD: Đáp án B vì..."
-                  rows={2}
-                  className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant resize-none"
-                />
+                <div className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface min-h-[40px] whitespace-pre-wrap">
+                  {question.explanation?.trim() || <span className="text-on-surface-variant">Không có giải thích</span>}
+                </div>
               </label>
             </div>
           </motion.div>
@@ -613,31 +637,76 @@ export default function TeacherExamPage() {
 
   // ── Derived ─────────────────────────────────────────────────────
   const currentCourse = data.find(c => c.id === selectedCourseId);
-  // Tính lại slots mỗi lần render — rẻ vì chỉ là chia mảng
-  const slots = currentCourse ? computeSlots(currentCourse.chapters, currentCourse.exams) : [];
+  // Tính lại 4 slot kiểm tra mỗi lần render — rẻ vì chỉ có 4 item
+  const slots = currentCourse ? computeSlots(currentCourse.exams) : [];
   const currentSlot = slots.find(s => s.slotIndex === selectedSlotIndex);
+  const currentRequiredChapters = currentCourse && currentSlot && form?.afterChapterId
+    ? getRequiredChaptersForExam(
+      currentCourse,
+      currentSlot.examType,
+      form.startChapterId,
+      form.afterChapterId,
+    )
+    : [];
 
   // Tổng điểm — hiển thị để GV biết bài kiểm tra đáng bao nhiêu
   const totalPoints = form?.questions.reduce((sum, q) => sum + q.points, 0) ?? 0;
-  const activeChapterConfigs = currentSlot?.chapters.map(chapter => ({
+  const multipleChoicePointTotal = form?.questions
+    .filter(q => q.type !== 'essay')
+    .reduce((sum, q) => sum + q.points, 0) ?? 0;
+  const essayPointTotal = form?.questions
+    .filter(q => q.type === 'essay')
+    .reduce((sum, q) => sum + q.points, 0) ?? 0;
+  const configuredScoreTotal = (form?.multipleChoiceScore ?? 0) + (form?.essayScore ?? 0);
+  const activeChapterConfigs = currentRequiredChapters.map(chapter => ({
     chapter,
     config: chapterRandomConfigs[chapter.id] ?? defaultChapterRandomConfig(),
     stats: chapterStats[chapter.id],
-  })) ?? [];
-  const chapterRandomTotal = activeChapterConfigs.reduce((sum, item) =>
-    sum + item.config.totalCount, 0);
-  const autoPointPerQuestion = chapterRandomTotal > 0 ? 10 / chapterRandomTotal : 0;
+  }));
+  const objectiveRandomTotal = activeChapterConfigs.reduce((sum, item) =>
+    sum + item.config.multipleChoiceCount, 0);
+  const essayRandomTotal = activeChapterConfigs.reduce((sum, item) =>
+    sum + item.config.essayCount, 0);
+  const chapterRandomTotal = objectiveRandomTotal + essayRandomTotal;
+  const objectivePointPerQuestion = objectiveRandomTotal > 0 && form
+    ? form.multipleChoiceScore / objectiveRandomTotal
+    : 0;
+  const essayPointPerQuestion = essayRandomTotal > 0 && form
+    ? form.essayScore / essayRandomTotal
+    : 0;
   const chapterRandomWarnings = activeChapterConfigs
-    .filter(item => item.stats && item.config.totalCount > item.stats.totalActive)
-    .map(item => ({
-      key: item.chapter.id,
-      chapterTitle: item.chapter.title,
-      need: item.config.totalCount,
-      have: item.stats!.totalActive,
-    }));
+    .flatMap(item => {
+      if (!item.stats) return [];
+      const warnings: Array<{
+        key: string;
+        chapterTitle: string;
+        typeLabel: string;
+        need: number;
+        have: number;
+      }> = [];
+      if (item.config.multipleChoiceCount > item.stats.multipleChoiceActive) {
+        warnings.push({
+          key: `${item.chapter.id}-objective`,
+          chapterTitle: item.chapter.title,
+          typeLabel: 'trắc nghiệm',
+          need: item.config.multipleChoiceCount,
+          have: item.stats.multipleChoiceActive,
+        });
+      }
+      if (item.config.essayCount > item.stats.essayActive) {
+        warnings.push({
+          key: `${item.chapter.id}-essay`,
+          chapterTitle: item.chapter.title,
+          typeLabel: 'tự luận',
+          need: item.config.essayCount,
+          have: item.stats.essayActive,
+        });
+      }
+      return warnings;
+    });
 
   useEffect(() => {
-    if (!currentSlot) {
+    if (!currentSlot || currentRequiredChapters.length === 0) {
       setChapterStats({});
       return;
     }
@@ -645,9 +714,17 @@ export default function TeacherExamPage() {
     let cancelled = false;
     setLoadingChapterStats(true);
     Promise.all(
-      currentSlot.chapters.map(async chapter => {
-        const totalActive = await questionService.countActiveQuestionsByChapter(chapter.id);
-        return [chapter.id, { totalActive }] as const;
+      currentRequiredChapters.map(async chapter => {
+        const [multipleChoiceActive, trueFalseActive, essayActive] = await Promise.all([
+          questionService.countActiveQuestionsByChapter(chapter.id, 'multiple_choice'),
+          questionService.countActiveQuestionsByChapter(chapter.id, 'true_false'),
+          questionService.countActiveQuestionsByChapter(chapter.id, 'essay'),
+        ]);
+        return [chapter.id, {
+          totalActive: multipleChoiceActive + trueFalseActive + essayActive,
+          multipleChoiceActive: multipleChoiceActive + trueFalseActive,
+          essayActive,
+        }] as const;
       }),
     )
       .then(entries => {
@@ -669,14 +746,25 @@ export default function TeacherExamPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedCourseId, selectedSlotIndex]);
+  }, [selectedCourseId, selectedSlotIndex, form?.startChapterId, form?.afterChapterId]);
 
   // ── Handler: chọn slot để bắt đầu edit exam ──────────────────────
   function selectSlot(slot: ExamSlot) {
+    if (!currentCourse) return;
     setSelectedSlotIndex(slot.slotIndex);
+    const afterChapterId = slot.exam?.afterChapterId
+      || defaultAfterChapterId(currentCourse, slot.examType);
+    const startChapterId = slot.exam?.startChapterId
+      || defaultStartChapterId(currentCourse, slot.examType, afterChapterId);
+    const requiredChapters = getRequiredChaptersForExam(
+      currentCourse,
+      slot.examType,
+      startChapterId,
+      afterChapterId,
+    );
     setChapterRandomConfigs(prev => {
       const next = { ...prev };
-      slot.chapters.forEach(chapter => {
+      requiredChapters.forEach(chapter => {
         if (!next[chapter.id]) {
           next[chapter.id] = defaultChapterRandomConfig();
         }
@@ -688,14 +776,21 @@ export default function TeacherExamPage() {
     if (slot.exam) {
       setForm({
         ...slot.exam,
+        startChapterId,
+        afterChapterId,
         questions: slot.exam.questions.map(q => ({ ...q })), // deep copy questions
       });
     } else {
       setForm({
-        name: `Bài kiểm tra sau chương ${slot.chapters[slot.chapters.length - 1].order}`,
+        examType: slot.examType,
+        startChapterId,
+        afterChapterId,
+        name: slot.defaultName,
         description: '',
         durationMinutes: 45,    // Exam thường dài hơn quiz (45 vs 15)
         passScorePercent: 60,   // Exam thường khó hơn → ngưỡng pass thấp hơn
+        multipleChoiceScore: 7,
+        essayScore: 3,
         maxAttempts: 1,         // Default 1 lần — exam chỉ làm 1 lần
         shuffleQuestions: true, // Default ON — chống gian lận
         shuffleOptions: true,   // Default ON — chống gian lận
@@ -712,29 +807,56 @@ export default function TeacherExamPage() {
     setForm(null);
   }
 
-  // ── Handler: thêm 1 câu hỏi mới vào form ─────────────────────────
-  // Default difficulty = 'medium' vì là mức cân bằng nhất
-  function addQuestion() {
-    if (!form) return;
-    const newQuestion: ExamQuestion = {
-      id: `eq-${Date.now()}`,
-      text: '',
-      type: 'single',
-      options: ['', ''],
-      correctIndices: [],
-      points: 1,
-      difficulty: 'medium',
-    };
-    setForm({ ...form, questions: [...form.questions, newQuestion] });
+  function changeAfterChapter(afterChapterId: string) {
+    if (!form || !currentCourse) return;
+    const afterIndex = chapterIndex(currentCourse, afterChapterId);
+    const currentStartIndex = chapterIndex(currentCourse, form.startChapterId);
+    const startChapterId = currentStartIndex >= 0 && currentStartIndex <= afterIndex
+      ? form.startChapterId
+      : afterChapterId;
+    const nextForm = { ...form, startChapterId, afterChapterId };
+    const requiredChapters = getRequiredChaptersForExam(
+      currentCourse,
+      form.examType,
+      startChapterId,
+      afterChapterId,
+    );
+    setChapterRandomConfigs(prev => {
+      const next = { ...prev };
+      requiredChapters.forEach(chapter => {
+        if (!next[chapter.id]) {
+          next[chapter.id] = defaultChapterRandomConfig();
+        }
+      });
+      return next;
+    });
+    setForm(nextForm);
   }
 
-  // ── Handler: cập nhật 1 câu hỏi ─────────────────────────────────
-  function updateQuestion(idx: number, updated: ExamQuestion) {
-    if (!form) return;
-    setForm({
-      ...form,
-      questions: form.questions.map((q, i) => i === idx ? updated : q),
+  function changeStartChapter(startChapterId: string) {
+    if (!form || !currentCourse) return;
+    const startIndex = chapterIndex(currentCourse, startChapterId);
+    const currentAfterIndex = chapterIndex(currentCourse, form.afterChapterId);
+    const afterChapterId = currentAfterIndex >= startIndex
+      ? form.afterChapterId
+      : startChapterId;
+    const nextForm = { ...form, startChapterId, afterChapterId };
+    const requiredChapters = getRequiredChaptersForExam(
+      currentCourse,
+      form.examType,
+      startChapterId,
+      afterChapterId,
+    );
+    setChapterRandomConfigs(prev => {
+      const next = { ...prev };
+      requiredChapters.forEach(chapter => {
+        if (!next[chapter.id]) {
+          next[chapter.id] = defaultChapterRandomConfig();
+        }
+      });
+      return next;
     });
+    setForm(nextForm);
   }
 
   // ── Handler: xóa 1 câu hỏi ──────────────────────────────────────
@@ -763,8 +885,28 @@ export default function TeacherExamPage() {
 
   async function randomizeQuestionsFromBank() {
     if (!form || !selectedCourseId || !currentSlot || randomizing) return;
+    if (Math.abs(configuredScoreTotal - 10) > 0.001) {
+      notify.error('Tổng điểm trắc nghiệm và tự luận phải bằng 10');
+      return;
+    }
     if (chapterRandomTotal <= 0) {
       notify.error('Cần chọn ít nhất 1 câu hỏi để random');
+      return;
+    }
+    if (form.multipleChoiceScore > 0 && objectiveRandomTotal <= 0) {
+      notify.error('Phần trắc nghiệm có điểm nên cần chọn ít nhất 1 câu trắc nghiệm');
+      return;
+    }
+    if (form.essayScore > 0 && essayRandomTotal <= 0) {
+      notify.error('Phần tự luận có điểm nên cần chọn ít nhất 1 câu tự luận');
+      return;
+    }
+    if (form.multipleChoiceScore === 0 && objectiveRandomTotal > 0) {
+      notify.error('Phần trắc nghiệm đang 0 điểm, hãy đặt số câu trắc nghiệm về 0 hoặc tăng điểm phần này');
+      return;
+    }
+    if (form.essayScore === 0 && essayRandomTotal > 0) {
+      notify.error('Phần tự luận đang 0 điểm, hãy đặt số câu tự luận về 0 hoặc tăng điểm phần này');
       return;
     }
     if (chapterRandomWarnings.length > 0) {
@@ -780,10 +922,14 @@ export default function TeacherExamPage() {
           easyCount: 0,
           mediumCount: 0,
           hardCount: 0,
-          pointsPerQuestion: autoPointPerQuestion,
+          pointsPerQuestion: objectivePointPerQuestion || essayPointPerQuestion || 1,
+          multipleChoicePointsPerQuestion: objectivePointPerQuestion,
+          essayPointsPerQuestion: essayPointPerQuestion,
           chapterConfigs: activeChapterConfigs.map(item => ({
             chapterId: item.chapter.id,
-            totalCount: item.config.totalCount,
+            totalCount: item.config.multipleChoiceCount + item.config.essayCount,
+            multipleChoiceCount: item.config.multipleChoiceCount,
+            essayCount: item.config.essayCount,
           })),
         },
       );
@@ -810,12 +956,31 @@ export default function TeacherExamPage() {
       notify.error('Vui lòng nhập tên bài kiểm tra');
       return;
     }
+    const currentCourseForSave = data.find(course => course.id === selectedCourseId);
+    if (!form.startChapterId || !form.afterChapterId || !currentCourseForSave) {
+      notify.error('Vui lòng chọn vị trí đặt bài kiểm tra');
+      return;
+    }
+    const placementError = getPlacementError(currentCourseForSave, form);
+    if (placementError) {
+      notify.error(placementError);
+      return;
+    }
     if (form.durationMinutes < 1) {
       notify.error('Thời gian làm bài phải >= 1 phút');
       return;
     }
     if (form.passScorePercent < 0 || form.passScorePercent > 100) {
       notify.error('Điểm đạt phải từ 0% đến 100%');
+      return;
+    }
+    if (form.multipleChoiceScore < 0 || form.multipleChoiceScore > 10
+        || form.essayScore < 0 || form.essayScore > 10) {
+      notify.error('Điểm từng phần phải nằm trong khoảng 0 đến 10');
+      return;
+    }
+    if (Math.abs(configuredScoreTotal - 10) > 0.001) {
+      notify.error('Tổng điểm trắc nghiệm và tự luận phải bằng 10');
       return;
     }
     if (form.maxAttempts < 1) {
@@ -832,6 +997,9 @@ export default function TeacherExamPage() {
         notify.error(`Câu ${i + 1}: chưa nhập nội dung`);
         return;
       }
+      if (q.type === 'essay') {
+        continue;
+      }
       if (q.options.some(opt => !opt.trim())) {
         notify.error(`Câu ${i + 1}: có lựa chọn còn rỗng`);
         return;
@@ -840,6 +1008,14 @@ export default function TeacherExamPage() {
         notify.error(`Câu ${i + 1}: chưa chọn đáp án đúng`);
         return;
       }
+    }
+    if (Math.abs(multipleChoicePointTotal - form.multipleChoiceScore) > 0.05) {
+      notify.error('Tổng điểm câu trắc nghiệm chưa khớp với điểm phần trắc nghiệm');
+      return;
+    }
+    if (Math.abs(essayPointTotal - form.essayScore) > 0.05) {
+      notify.error('Tổng điểm câu tự luận chưa khớp với điểm phần tự luận');
+      return;
     }
 
     setSaving(true);
@@ -970,7 +1146,7 @@ export default function TeacherExamPage() {
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
             <h2 className="text-2xl font-extrabold text-on-surface mb-1">Bài kiểm tra giai đoạn</h2>
             <p className="text-on-surface-variant text-sm mb-4">
-              Mỗi 3 chương có 1 bài kiểm tra. Học sinh chỉ mở được khi đã pass quiz 3 chương liên tiếp.
+              Giáo viên chọn vị trí hiển thị cho bài giữa kỳ 1, cuối kỳ 1, giữa kỳ 2 và cuối kỳ 2.
             </p>
 
             <label className="block">
@@ -993,10 +1169,10 @@ export default function TeacherExamPage() {
             </label>
           </motion.div>
 
-          {/* Grid 2 cột: trái danh sách slot, phải form exam */}
+          {/* Grid 2 cột: trái danh sách loại bài, phải form exam */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
-            {/* PANEL TRÁI — Danh sách slot exam */}
+            {/* PANEL TRÁI — Danh sách loại bài kiểm tra */}
             <motion.div
               initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
               className="lg:col-span-2 bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm h-fit"
@@ -1006,21 +1182,29 @@ export default function TeacherExamPage() {
                 Vị trí bài kiểm tra
               </h3>
 
-              {slots.length === 0 ? (
-                // Khóa < 3 chương → không có slot nào
+              {!currentCourse || currentCourse.chapters.length === 0 ? (
                 <p className="text-sm text-on-surface-variant text-center py-8">
                   {loading
                     ? 'Đang tải dữ liệu bài kiểm tra...'
                     : data.length === 0
                       ? 'Bạn chưa có khóa học nào để tạo bài kiểm tra.'
-                      : 'Khóa học cần ít nhất 3 chương để có bài kiểm tra.'}
+                      : 'Khóa học cần có ít nhất 1 chương để đặt bài kiểm tra.'}
                 </p>
               ) : (
                 <div className="space-y-2">
                   {slots.map(slot => {
                     const hasExam = !!slot.exam;
                     const isSelected = slot.slotIndex === selectedSlotIndex;
-                    const lastChapterOrder = slot.chapters[slot.chapters.length - 1].order;
+                    const afterChapter = slot.exam?.afterChapterId
+                      ? currentCourse.chapters.find(chapter => chapter.id === slot.exam!.afterChapterId)
+                      : null;
+                    const startChapter = slot.exam?.startChapterId
+                      ? currentCourse.chapters.find(chapter => chapter.id === slot.exam!.startChapterId)
+                      : slot.exam && afterChapter
+                        ? currentCourse.chapters.find(chapter =>
+                          chapter.id === defaultStartChapterId(currentCourse, slot.exam!.examType, slot.exam!.afterChapterId),
+                        )
+                        : null;
 
                     return (
                       <button
@@ -1033,11 +1217,18 @@ export default function TeacherExamPage() {
                         }`}
                       >
                         <p className={`font-bold text-sm mb-1 ${isSelected ? 'text-primary' : 'text-on-surface'}`}>
-                          Bài kiểm tra sau chương {lastChapterOrder}
+                          {slot.label}
                         </p>
                         <p className="text-xs text-on-surface-variant mb-1.5 line-clamp-1">
-                          {slot.chapters.map(ch => `Ch.${ch.order}`).join(' · ')}
+                          {afterChapter
+                            ? `Đặt sau chương ${afterChapter.order}: ${afterChapter.title}`
+                            : 'Chưa chọn vị trí hiển thị'}
                         </p>
+                        {startChapter && afterChapter && (
+                          <p className="text-xs text-on-surface-variant mb-1.5 line-clamp-1">
+                            Phạm vi: chương {startChapter.order} - {afterChapter.order}
+                          </p>
+                        )}
                         {hasExam ? (
                           <p className="text-xs text-green-600 flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3" />
@@ -1061,7 +1252,7 @@ export default function TeacherExamPage() {
               initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
               className="lg:col-span-3 bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-5 shadow-sm"
             >
-              {!form || !currentSlot ? (
+              {!form || !currentSlot || !currentCourse ? (
                 <div className="text-center py-16">
                   <GraduationCap className="w-12 h-12 text-on-surface-variant/30 mx-auto mb-4" />
                   <p className="text-on-surface-variant">
@@ -1069,26 +1260,51 @@ export default function TeacherExamPage() {
                       ? 'Đang tải dữ liệu bài kiểm tra...'
                       : data.length === 0
                         ? 'Bạn chưa có khóa học nào để tạo bài kiểm tra.'
-                        : 'Chọn 1 vị trí ở bên trái để bắt đầu tạo/sửa bài kiểm tra'}
+                        : 'Chọn một loại bài kiểm tra ở bên trái để bắt đầu tạo/sửa'}
                   </p>
                 </div>
               ) : (
                 <>
-                  {/* Tiêu đề + phạm vi chương */}
+                  {/* Tiêu đề + vị trí đặt bài kiểm tra */}
                   <div className="mb-5 pb-4 border-b border-outline-variant/30">
                     <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1">
                       Đang chỉnh sửa bài kiểm tra cho
                     </p>
-                    <h3 className="font-extrabold text-on-surface text-lg mb-2">
-                      Sau chương {currentSlot.chapters[currentSlot.chapters.length - 1].order}
+                    <h3 className="font-extrabold text-on-surface text-lg mb-3">
+                      {currentSlot.label}
                     </h3>
-                    <div className="flex flex-wrap gap-1.5">
-                      {currentSlot.chapters.map(ch => (
-                        <span key={ch.id} className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">
-                          {ch.title}
-                        </span>
-                      ))}
-                    </div>
+                    <label className="block mb-3">
+                      <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
+                        Từ chương
+                      </span>
+                      <select
+                        value={form.startChapterId}
+                        onChange={e => changeStartChapter(e.target.value)}
+                        className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
+                      >
+                        {currentCourse.chapters.map(chapter => (
+                          <option key={chapter.id} value={chapter.id}>
+                            Chương {chapter.order}: {chapter.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block mb-3">
+                      <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
+                        Đặt bài kiểm tra sau chương
+                      </span>
+                      <select
+                        value={form.afterChapterId}
+                        onChange={e => changeAfterChapter(e.target.value)}
+                        className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
+                      >
+                        {currentCourse.chapters.map(chapter => (
+                          <option key={chapter.id} value={chapter.id}>
+                            Chương {chapter.order}: {chapter.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
 
                   {/* ── PHẦN 1: Cài đặt chung ─────────────────────── */}
@@ -1122,7 +1338,7 @@ export default function TeacherExamPage() {
                       />
                     </label>
 
-                    {/* Thời gian + Pass score + Tổng điểm (3 cột) */}
+                    {/* Thời gian + Pass score + Tổng điểm */}
                     <div className="grid grid-cols-3 gap-3">
                       <label className="block">
                         <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
@@ -1155,6 +1371,49 @@ export default function TeacherExamPage() {
                         </span>
                         <div className="w-full px-3 py-2 text-sm bg-surface-container/50 border border-outline-variant/50 rounded-lg text-on-surface font-bold">
                           {formatPoints(totalPoints)} điểm
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <label className="block">
+                        <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
+                          Điểm trắc nghiệm
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          step={0.25}
+                          value={form.multipleChoiceScore}
+                          onChange={e => setForm({ ...form, multipleChoiceScore: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
+                          Điểm tự luận
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          step={0.25}
+                          value={form.essayScore}
+                          onChange={e => setForm({ ...form, essayScore: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
+                        />
+                      </label>
+                      <div>
+                        <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
+                          Tổng cấu hình
+                        </span>
+                        <div className={`w-full px-3 py-2 text-sm border rounded-lg font-bold ${
+                          Math.abs(configuredScoreTotal - 10) <= 0.001
+                            ? 'bg-green-500/10 border-green-500/20 text-green-700'
+                            : 'bg-red-500/10 border-red-500/20 text-red-600'
+                        }`}>
+                          {formatPoints(configuredScoreTotal)} / 10 điểm
                         </div>
                       </div>
                     </div>
@@ -1248,7 +1507,7 @@ export default function TeacherExamPage() {
                             key={chapter.id}
                             className="rounded-lg border border-outline-variant/40 bg-surface-container-lowest p-3"
                           >
-                            <div className="grid grid-cols-1 md:grid-cols-[1fr_120px] gap-3 md:items-center">
+                            <div className="grid grid-cols-1 md:grid-cols-[1fr_120px_120px] gap-3 md:items-center">
                               <div>
                                 <p className="text-sm font-bold text-on-surface">
                                   Ch.{chapter.order}: {chapter.title}
@@ -1260,7 +1519,9 @@ export default function TeacherExamPage() {
                                       Đang tải
                                     </span>
                                   ) : stats ? (
-                                    <>Có {stats.totalActive} câu trong ngân hàng</>
+                                    <>
+                                      Có {stats.totalActive} câu: {stats.multipleChoiceActive} trắc nghiệm, {stats.essayActive} tự luận
+                                    </>
                                   ) : (
                                     <>Chưa đọc được thống kê</>
                                   )}
@@ -1269,15 +1530,32 @@ export default function TeacherExamPage() {
 
                               <label className="block">
                                 <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
-                                  Số câu
+                                  Trắc nghiệm
                                 </span>
                                 <input
                                   type="number"
                                   min={0}
-                                  value={config.totalCount}
+                                  value={config.multipleChoiceCount}
                                   onChange={e => updateChapterRandomConfig(
                                     chapter.id,
-                                    'totalCount',
+                                    'multipleChoiceCount',
+                                    parseInt(e.target.value) || 0,
+                                  )}
+                                  className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
+                                />
+                              </label>
+
+                              <label className="block">
+                                <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
+                                  Tự luận
+                                </span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={config.essayCount}
+                                  onChange={e => updateChapterRandomConfig(
+                                    chapter.id,
+                                    'essayCount',
                                     parseInt(e.target.value) || 0,
                                   )}
                                   className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
@@ -1288,20 +1566,35 @@ export default function TeacherExamPage() {
                         ))}
                       </div>
 
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="text-xs">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0 flex-1 text-xs">
                           {chapterRandomWarnings.length > 0 ? (
-                            <div className="text-red-600 font-medium flex items-start gap-1.5">
-                              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                              <span>
-                                Thiếu {chapterRandomWarnings.map(item =>
-                                  `${item.chapterTitle}: cần ${item.need}, có ${item.have}`,
-                                ).join('; ')}
-                              </span>
+                            <div
+                              role="alert"
+                              className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-red-700 shadow-sm"
+                            >
+                              <div className="flex items-start gap-2">
+                                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                                <div className="min-w-0 space-y-1.5">
+                                  <p className="text-sm font-bold leading-5">
+                                    Ngân hàng câu hỏi chưa đủ theo phân bổ đã chọn
+                                  </p>
+                                  <ul className="space-y-1 text-xs font-medium leading-5">
+                                    {chapterRandomWarnings.map(item => (
+                                      <li key={item.key} className="break-words">
+                                        <span className="font-semibold">{item.chapterTitle}</span>
+                                        <span>
+                                          {' '}({item.typeLabel}): cần {item.need}, có {item.have}
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
                             </div>
                           ) : (
                             <span className="text-on-surface-variant">
-                              Sẽ random {chapterRandomTotal} câu từ {activeChapterConfigs.length} chương · {formatPoints(autoPointPerQuestion)} điểm/câu.
+                              Sẽ random {chapterRandomTotal} câu từ {activeChapterConfigs.length} chương · trắc nghiệm {objectiveRandomTotal} câu x {formatPoints(objectivePointPerQuestion)}đ · tự luận {essayRandomTotal} câu x {formatPoints(essayPointPerQuestion)}đ.
                             </span>
                           )}
                         </div>
@@ -1309,7 +1602,7 @@ export default function TeacherExamPage() {
                           type="button"
                           onClick={randomizeQuestionsFromBank}
                           disabled={randomizing || loadingChapterStats || chapterRandomTotal <= 0 || chapterRandomWarnings.length > 0}
-                          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                          className="inline-flex shrink-0 items-center justify-center gap-2 px-4 py-2 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           {randomizing ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -1334,20 +1627,11 @@ export default function TeacherExamPage() {
                             key={q.id}
                             question={q}
                             index={idx}
-                            onChange={updated => updateQuestion(idx, updated)}
                             onDelete={() => deleteQuestion(idx)}
                           />
                         ))}
                       </div>
                     )}
-
-                    <button
-                      onClick={addQuestion}
-                      className="w-full flex items-center justify-center gap-2 py-3 text-sm font-bold text-primary border-2 border-dashed border-primary/30 hover:bg-primary/5 rounded-xl transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Thêm câu hỏi thủ công
-                    </button>
                   </div>
 
                   {/* Nút hành động */}

@@ -4,13 +4,13 @@
  *
  * Định dạng Excel (hàng 1 = header, dữ liệu từ hàng 2):
  *   A: Nội dung câu hỏi   (bắt buộc)
- *   B: Loại               TN = trắc nghiệm | DS = đúng/sai
+ *   B: Loại               TN = trắc nghiệm | DS = đúng/sai | TL = tự luận
  *   C: Độ khó             D = dễ | TB = trung bình | K = khó
- *   D: Đáp án A           (bắt buộc)
- *   E: Đáp án B           (bắt buộc)
+ *   D: Đáp án A           (bắt buộc với TN)
+ *   E: Đáp án B           (bắt buộc với TN)
  *   F: Đáp án C           (tùy chọn)
  *   G: Đáp án D           (tùy chọn)
- *   H: Đáp án đúng        A / B / C / D
+ *   H: Đáp án đúng        A / B / C / D, bỏ trống với TL
  *   I: Giải thích         (tùy chọn)
  */
 
@@ -34,11 +34,12 @@ import { useEffect } from 'react';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Difficulty = 'easy' | 'medium' | 'hard';
+type QuestionType = 'multiple_choice' | 'true_false' | 'essay';
 
 interface ParsedRow {
   rowNum: number;
   content: string;
-  type: 'multiple_choice' | 'true_false';
+  type: QuestionType;
   difficulty: Difficulty;
   choices: Array<{ content: string; isCorrect: boolean }>;
   explanation: string;
@@ -60,11 +61,17 @@ function token(value: unknown): string {
     .toUpperCase();
 }
 
-function parseQuestionType(value: unknown): 'multiple_choice' | 'true_false' {
+function parseQuestionType(value: unknown): QuestionType {
   const t = token(value);
-  return ['DS', 'DUNG/SAI', 'TRUE_FALSE', 'TRUEFALSE', 'TF'].includes(t)
-    ? 'true_false'
-    : 'multiple_choice';
+  if (['DS', 'DUNG/SAI', 'TRUE_FALSE', 'TRUEFALSE', 'TF'].includes(t)) return 'true_false';
+  if (['TL', 'TU_LUAN', 'TULUAN', 'ESSAY', 'TU LUAN'].includes(t)) return 'essay';
+  return 'multiple_choice';
+}
+
+function questionTypeLabel(type: QuestionType): string {
+  if (type === 'multiple_choice') return 'Trắc nghiệm';
+  if (type === 'true_false') return 'Đúng/Sai';
+  return 'Tự luận';
 }
 
 function parseDifficulty(value: unknown): Difficulty {
@@ -128,7 +135,9 @@ function parseExcel(file: File): Promise<ParsedRow[]> {
           let choices: Array<{ content: string; isCorrect: boolean }>;
           let error: string | undefined;
 
-          if (type === 'true_false') {
+          if (type === 'essay') {
+            choices = [];
+          } else if (type === 'true_false') {
             const correctIdx = trueFalseCorrectIndex(r[7] || 'A');
             choices = [
               { content: 'Đúng', isCorrect: correctIdx === 0 },
@@ -168,7 +177,7 @@ function parseExcel(file: File): Promise<ParsedRow[]> {
 function downloadTemplate() {
   const header = [
     'Nội dung câu hỏi',
-    'Loại (TN/DS)',
+    'Loại (TN/DS/TL)',
     'Độ khó (D/TB/K)',
     'Đáp án A',
     'Đáp án B',
@@ -178,9 +187,26 @@ function downloadTemplate() {
     'Giải thích (tùy chọn)',
   ];
   const examples = [
-    ['Phương trình bậc hai ax²+bx+c=0 có tối đa bao nhiêu nghiệm thực?', 'TN', 'D', '1 nghiệm', '2 nghiệm', '3 nghiệm', '0 nghiệm', 'B', 'Theo định lý cơ bản đại số'],
-    ['Trái đất quay quanh Mặt Trời.', 'DS', 'D', '', '', '', '', 'A', ''],
-    ['Nguyên tố nào có số hiệu nguyên tử bằng 1?', 'TN', 'TB', 'Heli', 'Oxy', 'Hydro', 'Carbon', 'C', 'H có Z=1 trong bảng tuần hoàn'],
+    ['Tây Âu từ thế kỉ V đến nửa đầu thế kỉ XVI gắn với sự hình thành của chế độ nào?', 'TN', 'D', 'Phong kiến', 'Tư bản chủ nghĩa', 'Xã hội nguyên thủy', 'Chiếm hữu nô lệ', 'A', 'Tây Âu trung đại gắn với chế độ phong kiến.'],
+    ['Nhà nước phong kiến Trung Quốc đạt nhiều thành tựu văn hóa dưới triều đại nào?', 'TN', 'TB', 'Tần', 'Hán', 'Đường', 'Minh', 'C', 'Triều Đường là thời kì phát triển rực rỡ.'],
+    ['Khu vực Đông Nam Á chịu ảnh hưởng mạnh của văn hóa Ấn Độ và Trung Hoa.', 'DS', 'D', '', '', '', '', 'A', 'Đây là hai nguồn ảnh hưởng văn hóa lớn trong khu vực.'],
+    ['Nước Đại Cồ Việt được thành lập dưới thời vua nào?', 'TN', 'D', 'Ngô Quyền', 'Đinh Tiên Hoàng', 'Lê Hoàn', 'Lý Công Uẩn', 'B', 'Đinh Bộ Lĩnh đặt quốc hiệu Đại Cồ Việt.'],
+    ['Cuộc kháng chiến chống Tống lần thứ nhất gắn với vai trò của nhân vật nào?', 'TN', 'TB', 'Lê Hoàn', 'Trần Hưng Đạo', 'Lý Thường Kiệt', 'Nguyễn Trãi', 'A', 'Lê Hoàn lãnh đạo kháng chiến chống Tống năm 981.'],
+    ['Trình bày những nét chính về xã hội phong kiến Tây Âu thời trung đại.', 'TL', 'TB', '', '', '', '', '', 'Câu tự luận không cần đáp án mẫu.'],
+    ['Nhà Lý dời đô từ Hoa Lư ra Thăng Long vào năm nào?', 'TN', 'D', '938', '981', '1009', '1010', 'D', 'Chiếu dời đô được ban hành năm 1010.'],
+    ['Nhà Trần ba lần kháng chiến chống quân Mông - Nguyên.', 'DS', 'D', '', '', '', '', 'A', 'Các cuộc kháng chiến diễn ra vào thế kỉ XIII.'],
+    ['Bộ luật thành văn nổi bật thời Lý là gì?', 'TN', 'TB', 'Hình thư', 'Quốc triều hình luật', 'Hoàng Việt luật lệ', 'Luật Gia Long', 'A', 'Hình thư được ban hành dưới thời Lý.'],
+    ['Nêu ý nghĩa của việc nhà Lý dời đô ra Thăng Long.', 'TL', 'TB', '', '', '', '', '', 'Câu tự luận không cần đáp án mẫu.'],
+    ['Người chỉ huy nổi bật trong cuộc kháng chiến chống Tống thời Lý là ai?', 'TN', 'D', 'Lý Thường Kiệt', 'Trần Quốc Tuấn', 'Lê Lợi', 'Quang Trung', 'A', 'Lý Thường Kiệt chỉ huy kháng chiến chống Tống giai đoạn 1075-1077.'],
+    ['Bài thơ Nam quốc sơn hà được xem là bản tuyên ngôn độc lập đầu tiên của nước ta.', 'DS', 'TB', '', '', '', '', 'A', 'Tác phẩm khẳng định chủ quyền dân tộc.'],
+    ['Triều đại nào ban hành Quốc triều hình luật?', 'TN', 'TB', 'Nhà Lý', 'Nhà Trần', 'Nhà Hồ', 'Nhà Lê sơ', 'D', 'Quốc triều hình luật còn gọi là luật Hồng Đức.'],
+    ['Khởi nghĩa Lam Sơn bùng nổ vào năm nào?', 'TN', 'D', '1400', '1418', '1427', '1428', 'B', 'Khởi nghĩa Lam Sơn bắt đầu năm 1418.'],
+    ['Lê Lợi là lãnh tụ của khởi nghĩa Lam Sơn.', 'DS', 'D', '', '', '', '', 'A', 'Lê Lợi dựng cờ khởi nghĩa ở Lam Sơn.'],
+    ['Phân tích nguyên nhân thắng lợi của khởi nghĩa Lam Sơn.', 'TL', 'K', '', '', '', '', '', 'Câu tự luận không cần đáp án mẫu.'],
+    ['Tác phẩm Bình Ngô đại cáo do ai viết?', 'TN', 'D', 'Nguyễn Trãi', 'Lê Lợi', 'Trần Hưng Đạo', 'Chu Văn An', 'A', 'Nguyễn Trãi thay Lê Lợi viết Bình Ngô đại cáo.'],
+    ['Nhà Hồ tồn tại lâu dài và đánh bại hoàn toàn quân Minh.', 'DS', 'TB', '', '', '', '', 'B', 'Nhà Hồ tồn tại ngắn và thất bại trước quân Minh.'],
+    ['Chính sách cải cách của Hồ Quý Ly có nội dung nào sau đây?', 'TN', 'K', 'Phát hành tiền giấy', 'Bỏ giáo dục', 'Xóa bỏ quân đội', 'Dời đô ra Thăng Long', 'A', 'Hồ Quý Ly cho phát hành tiền giấy Thông bảo hội sao.'],
+    ['So sánh điểm giống và khác nhau giữa nhà Lý và nhà Trần trong xây dựng đất nước.', 'TL', 'K', '', '', '', '', '', 'Câu tự luận không cần đáp án mẫu.'],
   ];
 
   const ws = XLSX.utils.aoa_to_sheet([header, ...examples]);
@@ -588,13 +614,15 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
                                 <p className="truncate">{row.content || <span className="text-red-400 italic">Trống</span>}</p>
                               </td>
                               <td className="px-3 py-2 whitespace-nowrap text-on-surface-variant">
-                                {row.type === 'multiple_choice' ? 'Trắc nghiệm' : 'Đúng/Sai'}
+                                {questionTypeLabel(row.type)}
                               </td>
                               <td className="px-3 py-2">
                                 <DiffBadge d={row.difficulty} />
                               </td>
                               <td className="px-3 py-2 text-on-surface">
-                                {row.choices.find(c => c.isCorrect)?.content.slice(0, 30) ?? '—'}
+                                {row.type === 'essay'
+                                  ? <span className="text-on-surface-variant">Không cần đáp án</span>
+                                  : row.choices.find(c => c.isCorrect)?.content.slice(0, 30) ?? '—'}
                               </td>
                               <td className="px-3 py-2">
                                 {row.error ? (

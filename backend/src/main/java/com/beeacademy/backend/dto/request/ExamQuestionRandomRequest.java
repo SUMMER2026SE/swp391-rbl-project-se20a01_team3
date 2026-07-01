@@ -20,8 +20,14 @@ public record ExamQuestionRandomRequest(
         @NotNull @Min(0) @Max(200)
         Integer hardCount,
 
-        @NotNull @DecimalMin("0.01") @DecimalMax("100")
+        @DecimalMin("0.01") @DecimalMax("100")
         Double pointsPerQuestion,
+
+        @DecimalMin("0.0") @DecimalMax("10.0")
+        Double multipleChoicePointsPerQuestion,
+
+        @DecimalMin("0.0") @DecimalMax("10.0")
+        Double essayPointsPerQuestion,
 
         List<@Valid ChapterQuestionRandomRequest> chapterConfigs
 ) {
@@ -31,6 +37,12 @@ public record ExamQuestionRandomRequest(
 
             @NotNull @Min(0) @Max(200)
             Integer totalCount,
+
+            @Min(0) @Max(200)
+            Integer multipleChoiceCount,
+
+            @Min(0) @Max(200)
+            Integer essayCount,
 
             @Min(0) @Max(200)
             Integer easyCount,

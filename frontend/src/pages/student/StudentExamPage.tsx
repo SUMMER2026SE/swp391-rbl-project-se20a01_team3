@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   AlertCircle, ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight,
-  Clock, FileText, Loader2, RotateCcw, Trophy, XCircle,
+  Clock, FileText, Loader2, RotateCcw, Trophy, Upload, XCircle,
 } from 'lucide-react';
 import { notify } from '../../lib/toast';
 import {
@@ -15,6 +15,15 @@ import {
 } from '../../api/examService';
 
 type PagePhase = 'loading' | 'error' | 'exam' | 'submitting' | 'results';
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(new Error('Không đọc được file ảnh'));
+    reader.readAsDataURL(file);
+  });
+}
 
 function ScoreCircle({ score }: { score: number }) {
   const circumference = 2 * Math.PI * 15.9;
@@ -76,6 +85,8 @@ export default function StudentExamPage() {
   const [attempt, setAttempt] = useState<StudentExamStartResponse | null>(null);
   const [result, setResult] = useState<StudentExamResultResponse | null>(null);
   const [answers, setAnswers] = useState<Record<string, number[]>>({});
+  const [essayAnswers, setEssayAnswers] = useState<Record<string, string>>({});
+  const [essayImageUrls, setEssayImageUrls] = useState<Record<string, string[]>>({});
   const [currentIdx, setCurrentIdx] = useState(0);
 
   const startExam = useCallback(async () => {
@@ -90,9 +101,19 @@ export default function StudentExamPage() {
     try {
       const data = await startStudentExam(courseId, Number(slotIndex));
       const init: Record<string, number[]> = {};
-      data.questions.forEach(question => { init[question.id] = []; });
+      const initEssayAnswers: Record<string, string> = {};
+      const initEssayImages: Record<string, string[]> = {};
+      data.questions.forEach(question => {
+        init[question.id] = [];
+        if (question.type === 'essay') {
+          initEssayAnswers[question.id] = '';
+          initEssayImages[question.id] = [];
+        }
+      });
       setAttempt(data);
       setAnswers(init);
+      setEssayAnswers(initEssayAnswers);
+      setEssayImageUrls(initEssayImages);
       setPhase('exam');
     } catch (error) {
       setErrorMsg(error instanceof Error ? error.message : 'Không thể bắt đầu bài kiểm tra.');
@@ -108,14 +129,14 @@ export default function StudentExamPage() {
     if (!attempt) return;
     setPhase('submitting');
     try {
-      const data = await submitStudentExam(attempt.attemptId, answers);
+      const data = await submitStudentExam(attempt.attemptId, answers, essayAnswers, essayImageUrls);
       setResult(data);
       setPhase('results');
     } catch (error) {
       notify.error(error instanceof Error ? error.message : 'Nộp bài thất bại.');
       setPhase('exam');
     }
-  }, [answers, attempt]);
+  }, [answers, attempt, essayAnswers, essayImageUrls]);
 
   const handleTimeExpire = useCallback(() => {
     notify.error('Hết giờ, hệ thống tự động nộp bài.');
@@ -133,6 +154,40 @@ export default function StudentExamPage() {
         : [...current, optionIndex];
       return { ...prev, [question.id]: next };
     });
+  }
+
+  function updateEssayAnswer(questionId: string, value: string) {
+    setEssayAnswers(prev => ({ ...prev, [questionId]: value }));
+  }
+
+  async function addEssayImages(questionId: string, files: FileList | null) {
+    if (!files?.length) return;
+    const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
+      notify.error('Vui lòng chọn file ảnh');
+      return;
+    }
+    const oversized = imageFiles.find(file => file.size > 3 * 1024 * 1024);
+    if (oversized) {
+      notify.error('Mỗi ảnh tự luận tối đa 3MB');
+      return;
+    }
+    try {
+      const urls = await Promise.all(imageFiles.map(fileToDataUrl));
+      setEssayImageUrls(prev => {
+        const current = prev[questionId] ?? [];
+        return { ...prev, [questionId]: [...current, ...urls].slice(0, 5) };
+      });
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không đọc được file ảnh');
+    }
+  }
+
+  function removeEssayImage(questionId: string, index: number) {
+    setEssayImageUrls(prev => ({
+      ...prev,
+      [questionId]: (prev[questionId] ?? []).filter((_, i) => i !== index),
+    }));
   }
 
   if (phase === 'loading') {
@@ -165,6 +220,7 @@ export default function StudentExamPage() {
   }
 
   if (phase === 'results' && result && attempt) {
+    const hasPendingEssay = result.details.some(detail => detail.isCorrect === null);
     return (
       <div className="min-h-screen bg-surface font-sans">
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-outline-variant/30 bg-surface-container-lowest px-4 md:px-8">
@@ -179,12 +235,16 @@ export default function StudentExamPage() {
 
         <main className="mx-auto max-w-3xl px-4 py-8">
           <div className="overflow-hidden rounded-3xl border border-outline-variant/40 bg-surface-container-lowest shadow-lg">
-            <div className={`border-b border-outline-variant/30 p-8 text-center ${result.passed ? 'bg-green-500/5' : 'bg-red-500/5'}`}>
+            <div className={`border-b border-outline-variant/30 p-8 text-center ${
+              hasPendingEssay ? 'bg-amber-500/5' : result.passed ? 'bg-green-500/5' : 'bg-red-500/5'
+            }`}>
               <div className="mb-4 flex justify-center">
                 <ScoreCircle score={result.scorePercent} />
               </div>
-              <h1 className={`text-2xl font-extrabold ${result.passed ? 'text-green-600' : 'text-red-500'}`}>
-                {result.passed ? 'Đạt bài kiểm tra' : 'Chưa đạt bài kiểm tra'}
+              <h1 className={`text-2xl font-extrabold ${
+                hasPendingEssay ? 'text-amber-600' : result.passed ? 'text-green-600' : 'text-red-500'
+              }`}>
+                {hasPendingEssay ? 'Đã nộp, chờ giáo viên chấm' : result.passed ? 'Đạt bài kiểm tra' : 'Chưa đạt bài kiểm tra'}
               </h1>
               <p className="mt-2 text-sm font-semibold text-on-surface-variant">
                 {result.earnedPoints}/{result.totalPoints} điểm · Lần {result.attemptNumber}
@@ -194,10 +254,16 @@ export default function StudentExamPage() {
             <div className="space-y-3 p-5">
               {result.details.map((detail, index) => (
                 <div key={detail.questionId} className={`rounded-2xl border p-4 ${
-                  detail.isCorrect ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'
+                  detail.isCorrect === null
+                    ? 'border-amber-500/30 bg-amber-500/5'
+                    : detail.isCorrect
+                    ? 'border-green-500/30 bg-green-500/5'
+                    : 'border-red-500/30 bg-red-500/5'
                 }`}>
                   <div className="flex gap-3">
-                    {detail.isCorrect
+                    {detail.isCorrect === null
+                      ? <FileText className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" />
+                      : detail.isCorrect
                       ? <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-500" />
                       : <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
                     }
@@ -206,6 +272,11 @@ export default function StudentExamPage() {
                       {detail.correctAnswers.length > 0 && (
                         <p className="mt-2 text-xs font-semibold text-on-surface-variant">
                           Đáp án đúng: {detail.correctAnswers.map(i => i + 1).join(', ')}
+                        </p>
+                      )}
+                      {detail.isCorrect === null && (
+                        <p className="mt-2 text-xs font-semibold text-amber-600">
+                          Câu tự luận đang chờ giáo viên chấm.
                         </p>
                       )}
                       {detail.explanation && (
@@ -243,7 +314,13 @@ export default function StudentExamPage() {
 
   const questions = attempt?.questions ?? [];
   const currentQuestion = questions[currentIdx];
-  const answeredCount = Object.values(answers).filter(value => value.length > 0).length;
+  const currentEssayImages = currentQuestion ? essayImageUrls[currentQuestion.id] ?? [] : [];
+  const currentEssayText = currentQuestion ? essayAnswers[currentQuestion.id] ?? '' : '';
+  const answeredCount = questions.filter(question => (
+    question.type === 'essay'
+      ? Boolean(essayAnswers[question.id]?.trim()) || (essayImageUrls[question.id] ?? []).length > 0
+      : (answers[question.id] ?? []).length > 0
+  )).length;
   const allAnswered = answeredCount === questions.length;
 
   return (
@@ -276,7 +353,11 @@ export default function StudentExamPage() {
                   <h1 className="mt-2 text-xl font-extrabold text-on-surface">{attempt?.name}</h1>
                 </div>
                 <span className="rounded-full bg-secondary-container px-3 py-1 text-xs font-bold text-on-secondary-container">
-                  {currentQuestion.type === 'multiple' ? 'Nhiều đáp án' : 'Một đáp án'}
+                  {currentQuestion.type === 'essay'
+                    ? 'Tự luận'
+                    : currentQuestion.type === 'multiple'
+                    ? 'Nhiều đáp án'
+                    : 'Một đáp án'}
                 </span>
               </div>
 
@@ -284,31 +365,82 @@ export default function StudentExamPage() {
                 {currentQuestion.text}
               </p>
 
-              <div className="space-y-3">
-                {currentQuestion.options.map((option, index) => {
-                  const selected = (answers[currentQuestion.id] ?? []).includes(index);
-                  return (
-                    <button
-                      key={`${currentQuestion.id}-${index}`}
-                      type="button"
-                      onClick={() => toggleOption(currentQuestion, index)}
-                      disabled={phase !== 'exam'}
-                      className={`flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-all ${
-                        selected
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-outline-variant/40 bg-surface hover:border-primary/40 hover:bg-surface-container'
-                      }`}
-                    >
-                      <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-sm font-extrabold ${
-                        selected ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'
-                      }`}>
-                        {index + 1}
-                      </span>
-                      <span className="font-semibold">{option}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              {currentQuestion.type === 'essay' ? (
+                <div className="space-y-4">
+                  <textarea
+                    value={currentEssayText}
+                    onChange={e => updateEssayAnswer(currentQuestion.id, e.target.value)}
+                    disabled={phase !== 'exam'}
+                    rows={8}
+                    placeholder="Nhập bài làm tự luận tại đây..."
+                    className="w-full rounded-2xl border border-outline-variant/40 bg-surface px-4 py-3 text-sm leading-relaxed text-on-surface outline-none transition-colors focus:border-primary disabled:opacity-70"
+                  />
+
+                  <div className="rounded-2xl border border-dashed border-outline-variant/60 bg-surface p-4">
+                    <label className="flex cursor-pointer flex-col items-center justify-center gap-2 text-center text-on-surface-variant">
+                      <Upload className="h-6 w-6" />
+                      <span className="text-sm font-bold">Đính kèm ảnh bài làm</span>
+                      <span className="text-xs">Tối đa 5 ảnh, mỗi ảnh 3MB</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        disabled={phase !== 'exam'}
+                        className="hidden"
+                        onChange={e => {
+                          void addEssayImages(currentQuestion.id, e.target.files);
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {currentEssayImages.length > 0 && (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {currentEssayImages.map((url, index) => (
+                        <div key={`${currentQuestion.id}-image-${index}`} className="relative overflow-hidden rounded-2xl border border-outline-variant/40 bg-surface">
+                          <img src={url} alt={`Ảnh tự luận ${index + 1}`} className="h-32 w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => removeEssayImage(currentQuestion.id, index)}
+                            disabled={phase !== 'exam'}
+                            className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-white disabled:opacity-50"
+                            aria-label="Xóa ảnh"
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {currentQuestion.options.map((option, index) => {
+                    const selected = (answers[currentQuestion.id] ?? []).includes(index);
+                    return (
+                      <button
+                        key={`${currentQuestion.id}-${index}`}
+                        type="button"
+                        onClick={() => toggleOption(currentQuestion, index)}
+                        disabled={phase !== 'exam'}
+                        className={`flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-all ${
+                          selected
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-outline-variant/40 bg-surface hover:border-primary/40 hover:bg-surface-container'
+                        }`}
+                      >
+                        <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-sm font-extrabold ${
+                          selected ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'
+                        }`}>
+                          {index + 1}
+                        </span>
+                        <span className="font-semibold">{option}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               <div className="mt-8 flex items-center justify-between">
                 <button
@@ -345,7 +477,9 @@ export default function StudentExamPage() {
           <h2 className="mb-3 text-sm font-extrabold text-on-surface">Bản đồ câu hỏi</h2>
           <div className="grid grid-cols-5 gap-2">
             {questions.map((question, index) => {
-              const answered = (answers[question.id] ?? []).length > 0;
+              const answered = question.type === 'essay'
+                ? Boolean(essayAnswers[question.id]?.trim()) || (essayImageUrls[question.id] ?? []).length > 0
+                : (answers[question.id] ?? []).length > 0;
               const current = index === currentIdx;
               return (
                 <button

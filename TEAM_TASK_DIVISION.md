@@ -1,19 +1,29 @@
 # Kế hoạch chia code theo Use Case — Bee Academy (5 thành viên)
 
-> Mục tiêu: Mỗi thành viên **sở hữu một cụm Use Case end-to-end (Backend + Frontend)**, chịu trách nhiệm cả
-> phần **đã làm** (bảo trì, viết test, fix bug) lẫn phần **còn thiếu** (code mới).
-> Thành Đạt (TV1) quản lý **hạ tầng dùng chung**,
-> hai module mới mang tính nền tảng (Payout & Hệ thống thông báo) và **điều phối tích hợp/merge** cho cả nhóm.
+> Cập nhật ngày **01/07/2026** theo trạng thái code hiện tại trong `backend/` và `frontend/`.
+> Mỗi thành viên sở hữu một cụm Use Case end-to-end, bao gồm backend, frontend, test, bugfix và tài liệu liên quan.
 >
-> Cơ sở UC: tài liệu **SWT_v4_final.docx (SRS v4.0)** — 44 Use Case, 8 module, 7 actor.
-> Trạng thái triển khai khảo sát từ code thực tế trong `backend/` và `frontend/` (không theo CLAUDE.md vì
-> CLAUDE.md đã cũ — dự án thực tế đã có Order/Payment PayOS, Revenue, Bank, Exam, Q&A, AdminDashboard...).
+> Cơ sở đối chiếu: **SWT_v4_final.docx (SRS v4.0)** — 44 Use Case, 8 module, 7 actor.
+> Code hiện tại đã có nhiều phần vượt bản phân công cũ: PayOS, revenue split, payout, complaint, notification,
+> parent portal, parent-teacher message, course approval, question bank, quiz/exam, exam grading và teacher bank.
 
 ---
 
-## 1. Trạng thái triển khai thực tế (theo module)
+## 1. Tóm tắt cập nhật quan trọng
 
-Ký hiệu: ✅ Đã xong (BE+FE) · 🟡 Một phần · ⬜ Chưa có
+- **UC34 đã đổi nghiệp vụ:** bài kiểm tra không còn cố định "mỗi 3 chương". Giáo viên cấu hình 4 loại bài:
+  **giữa kỳ 1**, **cuối kỳ 1**, **giữa kỳ 2**, **cuối kỳ 2**, đồng thời chọn **đặt bài kiểm tra sau chương nào**.
+- `exam_configs` đã có thêm `exam_type` và `anchor_chapter_id`; migration mới: `V015__exam_type_and_anchor_chapter.sql`.
+- Parent portal đã có luồng liên kết, dashboard, tiến độ, lịch sử thanh toán và nhắn tin giáo viên.
+- Admin đã có dashboard, user management, duyệt khóa học, khiếu nại, payout và thông báo nội bộ.
+- Các phần còn thiếu lớn nhất: **chứng chỉ**, **đánh giá khóa học**, **student submit assignment**, **AI chat/lộ trình AI**,
+  **admin broadcast notification thật**, và **xuất `.xlsx` backend nếu bắt buộc đúng SRS**.
+
+---
+
+## 2. Trạng thái triển khai thực tế theo module
+
+Ký hiệu: ✅ Đã xong · 🟡 Một phần / cần hoàn thiện · ⬜ Chưa có
 
 | Module | UC | Tên | Backend | Frontend |
 |---|---|---|---|---|
@@ -24,259 +34,239 @@ Ký hiệu: ✅ Đã xong (BE+FE) · 🟡 Một phần · ⬜ Chưa có
 | | UC05 | Cập nhật hồ sơ | ✅ | ✅ |
 | **CRS** | UC06 | Tìm kiếm khóa học | ✅ | ✅ |
 | | UC07 | Xem chi tiết khóa học | ✅ | ✅ |
-| | UC08 | Xem bài học thử | 🟡 (free preview lồng trong course, chưa có khái niệm "trial" riêng) | 🟡 (lồng trong CourseDetail) |
-| **PAY** | UC09 | Mua khóa học (tạo Order) | ✅ | ✅ |
-| | UC10 | Thanh toán | ✅ (qua **PayOS** — thay cho VNPay/MoMo trong SRS) | ✅ |
-| | UC11 | Lịch sử mua khóa học | ✅ | 🟡 (OrdersPage còn fallback Zustand) |
-| | UC12 | Gửi khiếu nại đến Admin | ⬜ | 🟡 (ComplaintsPage chỉ skeleton) |
+| | UC08 | Xem bài học thử | ✅ (`isFree`, signed URL theo quyền) | ✅ (preview mode trong `CourseDetailPage`) |
+| **PAY** | UC09 | Mua khóa học / tạo Order | ✅ | ✅ |
+| | UC10 | Thanh toán | ✅ PayOS + webhook/verify | ✅ |
+| | UC11 | Lịch sử mua khóa học | ✅ | ✅ |
+| | UC12 | Gửi khiếu nại đến Admin | ✅ | ✅ (`ComplaintsPage`, cả HS/GV dùng chung API) |
 | **LRN** | UC13 | DS khóa đã mua | ✅ | ✅ |
 | | UC14 | Xem bài giảng & tài liệu | ✅ | ✅ |
-| | UC15 | Tải tài liệu học tập | 🟡 (doc có publicUrl, chưa có signed URL + watermark) | ⬜ (chưa có UI tải riêng) |
-| | UC16 | Nộp bài tập | ⬜ (chưa có model Assignment) | ⬜ |
-| | UC17 | Làm bài kiểm tra | ✅ (quiz) | ✅ (StudentQuizPage) |
-| | UC18 | Xem điểm & tiến độ | 🟡 (dữ liệu có qua quiz/parent) | 🟡 (chưa có trang riêng cho HS) |
-| | UC19 | Đánh giá khóa học | ⬜ | ⬜ |
+| | UC15 | Tải tài liệu học tập | 🟡 public document URL; chưa có watermark/signed URL riêng cho tài liệu | ✅ có link tải tài liệu trong phòng học |
+| | UC16 | Nộp bài tập | 🟡 có model/submission cho grading; thiếu API tạo/nộp bài từ HS | ⬜ chưa có UI nộp bài tập |
+| | UC17 | Làm bài kiểm tra | ✅ quiz chương + exam giai đoạn | ✅ `StudentQuizPage`, `StudentExamPage` |
+| | UC18 | Xem điểm & tiến độ | 🟡 có dữ liệu quiz/exam/assignment cho báo cáo; cần trang HS riêng nếu SRS yêu cầu | 🟡 Parent Progress đã có; HS chưa có trang điểm riêng |
+| | UC19 | Đánh giá khóa học | ⬜ chưa có model review/rating thật | ⬜ rating đang là dữ liệu hiển thị, chưa có luồng đánh giá |
 | | UC20 | Xem & tải chứng chỉ | ⬜ | ⬜ |
-| **INT** | UC21 | Gửi câu hỏi cho GV | ✅ (Qa) | ✅ (MessagesPage) |
+| **INT** | UC21 | Gửi câu hỏi cho GV | ✅ Q&A/discussion | ✅ Messages/Q&A |
 | | UC22 | Chat AI hỗ trợ | ⬜ | ⬜ |
 | | UC23 | Đề xuất lộ trình AI | ⬜ | ⬜ |
-| **PRN** | UC24 | Theo dõi tiến độ con | ✅ (BE: ChildOverview) | 🟡 (FE còn mock) |
-| | UC25 | Liên hệ & nhận thông báo GV | ⬜ | ⬜ |
-| | UC26 | Lịch sử thanh toán của con | ⬜ | ⬜ |
-| | UC27 | Gửi lời mời liên kết con | ⬜ (link đang prepopulate, chưa có invite) | ⬜ |
-| | UC28 | Chấp nhận / từ chối liên kết | ⬜ | ⬜ |
-| | UC29 | Hủy liên kết | ✅ (revoke/unlink) | ✅ |
+| **PRN** | UC24 | Theo dõi tiến độ con | ✅ overview + progress report | ✅ `ParentDashboard`, `ParentProgress`, `ParentCourses` |
+| | UC25 | Liên hệ & nhận thông báo GV | ✅ parent-teacher message + email/in-app notify | ✅ `ParentMessages`; GV nhận qua Q&A/notification |
+| | UC26 | Lịch sử thanh toán của con | ✅ | ✅ `ParentPayments` |
+| | UC27 | Gửi lời mời liên kết con | ✅ email + in-app notify | ✅ `ParentStudentLink` |
+| | UC28 | Chấp nhận / từ chối liên kết | ✅ student invitation API | ✅ `NotificationsPage` |
+| | UC29 | Hủy liên kết | ✅ request/confirm hai phía + audit log | ✅ |
 | **TCH** | UC30 | Tạo khóa học | ✅ | ✅ |
-| | UC31 | Cập nhật bài giảng & tài liệu (upload) | ✅ | ✅ |
-| | UC32 | Tạo question bank | ✅ | ✅ |
+| | UC31 | Cập nhật bài giảng & tài liệu | ✅ upload video/document | ✅ |
+| | UC32 | Tạo question bank | ✅ manual/bulk/AI scan import | ✅ |
 | | UC33 | Cập nhật question bank | ✅ | ✅ |
-| | UC34 | Tạo bài kiểm tra (exam) | ✅ | ✅ |
-| | UC35 | Chấm điểm bài tập | ⬜ (phụ thuộc UC16) | 🟡 (TeacherGradesPage skeleton) |
-| | UC36 | Trả lời câu hỏi học sinh | ✅ | ✅ |
-| | UC37 | Xem lịch sử doanh thu | ✅ | ✅ |
+| | UC34 | Tạo bài kiểm tra | ✅ 4 loại exam + chọn vị trí sau chương | ✅ `TeacherExamPage` |
+| | UC35 | Chấm điểm bài tập | 🟡 có endpoint chấm submission; phụ thuộc UC16 để đủ luồng nộp | ✅ `TeacherGradesPage` đã gọi API thật |
+| | UC36 | Trả lời câu hỏi học sinh | ✅ | ✅ `TeacherQAPage` |
+| | UC37 | Xem lịch sử doanh thu | ✅ revenue split + payout period | ✅ `TeacherRevenuePage` |
 | **ADM** | UC38 | Dashboard quản trị | ✅ | ✅ |
-| | UC39 | DS tài khoản người dùng | ✅ (BE: AdminUserController) | 🟡 (tab Users skeleton) |
-| | UC40 | Mở/khóa tài khoản, đổi vai trò | ✅ (BE) | 🟡 (chưa wire FE) |
-| | UC41 | Duyệt khóa học | ✅ | 🟡 (ApprovalsPage/CourseReview wire 1 phần) |
-| | UC42 | Xử lý khiếu nại | ⬜ | 🟡 (tab Complaints skeleton) |
-| | UC43 | Xác nhận chuyển khoản GV + xuất Excel | ⬜ (chưa có endpoint confirm/export) | ⬜ |
-| | UC44 | Gửi thông báo | ⬜ | ⬜ |
+| | UC39 | DS tài khoản người dùng | ✅ list/search/filter/stats | ✅ tab Users |
+| | UC40 | Mở/khóa tài khoản, đổi vai trò | ✅ | ✅ |
+| | UC41 | Duyệt khóa học | ✅ approve/reject/revise + history + notify GV | ✅ `ApprovalsPage`, `CourseReviewPage` |
+| | UC42 | Xử lý khiếu nại | ✅ list/detail/reply/status | ✅ tab Complaints |
+| | UC43 | Xác nhận chuyển khoản GV + xuất Excel | 🟡 list/stats/confirm payout có API; export `.xlsx` backend chưa có | ✅ export CSV tương thích Excel + confirm payout |
+| | UC44 | Gửi thông báo | 🟡 có hạ tầng in-app notify và admin notify; chưa có API broadcast từ Admin | 🟡 notification UI có thật; form phát thông báo hiện còn local state |
 
-**Tổng quan mức hoàn thành:** Auth ~100% · Thanh toán ~100% (PayOS) · Course/Learning cốt lõi ~80% ·
-Teacher ~85% · Admin ~45% · Parent ~40% · AI/Chứng chỉ/Bài tập/Đánh giá ~0%.
+**Tổng quan:** Auth/Payment/Course/Teacher/Parent đã khá đầy đủ; Admin đã vận hành được phần chính.
+Các điểm rủi ro còn lại nằm ở nhóm học tập nâng cao, AI, chứng chỉ, review, assignment student flow và NFR.
 
 ---
 
-## 2. Nguyên tắc chia & thang điểm công sức
-
-Vì phần lớn UC đã hoàn thành, **không chia theo số lượng UC** (sẽ sai lệch), mà chia theo **công sức thực tế**
-quy đổi ra điểm:
-
-| Loại công việc | Điểm | Diễn giải |
-|---|---|---|
-| 🔨 Module mới lớn (model + BE + FE) | **3** | vd chứng chỉ, hệ thống bài tập, payout/Excel, thông báo |
-| 🔧 Tính năng mới gọn | **2** | vd đánh giá, tải tài liệu bảo mật, khiếu nại, liên kết PH |
-| 🔌 Wire/hoàn thiện phần dở | **1** | nối FE vào API có sẵn, bỏ mock |
-| 🧪 Bảo trì + viết test phần đã xong | **0.5/UC** | giữ chất lượng, bổ sung Unit/Integration/System test |
-
-
-
 ## 3. Bảng phân chia 5 thành viên
 
-| TV | Vai trò | Cụm phụ trách | UC sở hữu | Điểm công sức |
+| TV | Vai trò | Cụm phụ trách | UC sở hữu | Trọng tâm hiện tại |
 |---|---|---|---|---|
-| **TV1 — Thành Đạt** | Chủ trì kỹ thuật · Hạ tầng + Tài chính + Thông báo | Auth, Thanh toán/Doanh thu, Payout, Notification, hạ tầng dùng chung | UC01-05, 09, 10, 11, 37, **43, 44** | **≈ 18 (cao nhất)** |
-| **TV2** | Học tập & Chứng chỉ | Khám phá khóa học + học tập cốt lõi + đánh giá + chứng chỉ | UC06, 07, 08, 13, 14, **15, 19, 20** | ≈ 11 |
-| **TV3** | Khảo thí, Bài tập & Tương tác học | Quiz/Exam + bài tập/chấm + tiến độ + Q&A (+AI) | UC16, 17, 18, 21, 35, 36 (+22, 23\*) | ≈ 10 |
-| **TV4** | Giáo viên & Liên kết Phụ huynh | Teacher authoring + luồng liên kết PH–HS | UC24, 25, 27, 28, 29, 30, 31, 32, 33, 34 | ≈ 10 |
-| **TV5** | Quản trị & Khiếu nại | Admin user/duyệt + khiếu nại + lịch sử thanh toán PH | UC12, 26, 38, 39, 40, 41, 42 | ≈ 10 |
+| **TV1 — Thành Đạt** | Chủ trì kỹ thuật · Hạ tầng + Tài chính + Thông báo | Auth, Payment, Revenue, Payout, Notification, file dùng chung | UC01-05, UC09-11, UC37, UC43, UC44 | Hardening PayOS/payout, chuẩn hóa notification, migration, merge, CI/test |
+| **TV2** | Học tập cốt lõi & Chứng chỉ | Course browsing, learning room, tài liệu, review, certificate | UC06-08, UC13-15, UC19, UC20 | Hoàn thiện signed/watermark tài liệu, review/rating, certificate PDF/QR |
+| **TV3** | Khảo thí, Bài tập & Tương tác học | Quiz, exam, assignment, grading, progress, Q&A, AI stretch | UC16-18, UC21-23, UC35, UC36 | Hoàn tất student assignment flow, progress HS, test exam mới |
+| **TV4** | Giáo viên & Phụ huynh | Teacher authoring, parent portal, parent-teacher communication | UC24-29, UC30-34 | Bảo trì parent portal, authoring, exam placement, edge case liên kết PH-HS |
+| **TV5** | Quản trị & Khiếu nại | Admin user, approvals, complaints, phối hợp payout/notification | UC12, UC38-42 | Hoàn thiện admin UX, complaint SLA, user/admin test, phối hợp UC43/44 với TV1 |
 
-\* UC22, UC23 (AI) là **mục tiêu mở rộng (stretch goal)** — chỉ làm nếu còn thời gian, vì cần AI Engine chưa có.
+UC22 và UC23 vẫn là **stretch goal** vì code hiện tại mới có AI scan PDF cho ngân hàng câu hỏi, chưa có chat AI/lộ trình AI cho học sinh.
 
 ---
 
 ## 4. Chi tiết từng thành viên
 
-### 🟦 TV1 — Thành Đạt · Chủ trì kỹ thuật (Hạ tầng + Tài chính + Thông báo)
+### TV1 — Thành Đạt · Hạ tầng + Tài chính + Thông báo
 
-**UC sở hữu:** UC01-05 (Auth) · UC09, UC10, UC11 (Mua/Thanh toán/Lịch sử) · UC37 (Doanh thu GV) ·
-**UC43** (Xác nhận payout + xuất Excel) · **UC44** (Hệ thống thông báo).
+**UC sở hữu:** UC01-05, UC09-11, UC37, UC43, UC44.
 
-**Backend:**
-- `controller/AuthController.java`, `service/AuthService.java`, `service/OtpService.java`
-- `controller/OrderController.java`, `service/OrderService.java`, `controller/PayOSWebhookController.java`
-- `controller/TeacherRevenueController.java`, `service/TeacherRevenueService.java`
-- `repository/OrderRepository`, `OrderItemRepository`, `RevenueSplitRepository`, `PayoutPeriodRepository`
-- **Mới:** `PayoutController` + endpoint xác nhận chuyển khoản & xuất Excel (Apache POI) — UC43
-- **Mới:** `NotificationController` + `NotificationService` + model `Notification` (in-app/email) — UC44
+**Backend chính:**
+- `AuthController`, `AuthService`, `OtpService`, `ProfileController`
+- `OrderController`, `OrderService`, `PayOSWebhookController`
+- `TeacherRevenueController`, `TeacherRevenueService`
+- `AdminPayoutController`, `AdminPayoutService`
+- `UserNotificationController`, `AdminNotificationController`, `UserNotificationService`, `AdminNotificationService`
+- Spring Security, JWT, CORS, exception handling, `application.yml`, migration SQL
 
-**Frontend:**
-- `pages/common/Login, Register, ForgotPassword, OAuthCallbackPage`
-- `pages/student/AccountPage, CheckoutPage, PaymentResultPage, OrdersPage`
-- `api/authService.ts, orderService.ts, revenueService.ts`
-- `pages/teacher/TeacherRevenuePage`
-- **Mới:** trang Admin xác nhận payout + tải Excel (UC43) · trung tâm thông báo + trang gửi thông báo (UC44)
+**Frontend chính:**
+- `Login`, `Register`, `ForgotPassword`, `OAuthCallbackPage`
+- `CheckoutPage`, `PaymentResultPage`, `OrdersPage`
+- `TeacherRevenuePage`
+- Admin payout tab trong `DashboardAdmin`
+- `NotificationsPage`, notification dropdown/header
 
-**Hạ tầng dùng chung (chỉ TV1 sửa — các TV khác đề nghị qua TV1):**
-- `frontend/src/api/client.ts` (apiClient + interceptor) · `App.tsx` (routing) · `components/ProtectedRoute.tsx`
-- Spring Security / `JwtAuthenticationFilter` / CORS / GlobalExceptionHandler · cấu trúc `dto/`, enum chung
-- `application.yml` · **thư mục migration SQL (gác cổng đánh số thứ tự)**
-- **Điều phối merge, review PR, giải quyết conflict, chuẩn hóa convention, dựng CI.**
+**Việc còn lại:**
+- Bổ sung test cho PayOS webhook/verify, revenue split, payout confirm.
+- Nếu SRS yêu cầu file Excel thật: thêm endpoint export `.xlsx` bằng Apache POI; hiện UI export CSV tương thích Excel.
+- Chuẩn hóa UC44: thêm API Admin broadcast notification theo role/nhóm người dùng, có thể kèm email.
+- Gác cổng migration: hiện đã có tới `V015__exam_type_and_anchor_chapter.sql`.
 
-**Việc còn phải code:** **UC43** (payout confirm + Excel — module mới) · **UC44** (thông báo in-app + email,
-dùng chung cả hệ thống — module mới) · wire lại UC11 (bỏ fallback Zustand). Thanh toán PayOS (UC09/10) đã
-hoàn thiện → bảo trì + viết test.
+### TV2 · Học tập cốt lõi & Chứng chỉ
 
----
+**UC sở hữu:** UC06-08, UC13-15, UC19, UC20.
 
-### 🟩 TV2 · Học tập cốt lõi & Chứng chỉ
+**Backend chính:**
+- `CourseController`, `CourseService`
+- `EnrollmentController`, `EnrollmentService`
+- `CourseDocument`, `CourseDocumentRepository`
+- Signed video URL qua Supabase Storage
 
-**UC sở hữu:** UC06, UC07, UC08 (Tìm kiếm/Chi tiết/Học thử) · UC13, UC14 (Khóa đã mua/Bài giảng) ·
-**UC15** (Tải tài liệu) · **UC19** (Đánh giá) · **UC20** (Chứng chỉ).
+**Frontend chính:**
+- `CoursesPage`, `CourseDetailPage`, learning room trong `CourseDetailPage`
+- `courseService.ts`, `enrollmentService.ts`, `adapter.ts`
 
-**Backend:**
-- `controller/CourseController.java`, `service/CourseService.java`
-- `controller/EnrollmentController.java`, `service/EnrollmentService.java`
-- `model/CourseDocument.java`, `repository/CourseDocumentRepository`
-- **Mới:** signed URL + watermark cho UC15 · `Review` model/controller/service (UC19) ·
-  `Certificate` model + sinh PDF + QR + trang xác minh công khai (UC20)
+**Việc còn lại:**
+- UC15: chuyển tài liệu từ public URL sang signed URL nếu cần, thêm watermark/log tải xuống theo NFR.
+- UC19: thêm `Review`/`CourseReview` model, API đánh giá sao/nhận xét, chỉ cho học sinh đã mua đánh giá.
+- UC20: sinh chứng chỉ PDF + QR verify public, trang xem/tải chứng chỉ.
+- Rà lại rating đang hiển thị để tránh nhầm với đánh giá thật.
 
-**Frontend:**
-- `pages/student/CoursesPage, CourseDetailPage` · `api/courseService.ts, enrollmentService.ts`
-- **Mới:** UI tải tài liệu (UC15) · UI đánh giá sao + review (UC19) · trang `/certificates` xem & tải PDF (UC20)
+### TV3 · Khảo thí, Bài tập & Tương tác học
 
-**Việc còn phải code:** UC15 (tải có bảo mật) · UC19 (đánh giá — BE+FE mới) · UC20 (chứng chỉ PDF+QR — module
-mới) · UC08 (đánh dấu/hiển thị bài học thử rõ ràng).
+**UC sở hữu:** UC16-18, UC21-23, UC35, UC36.
 
----
+**Backend chính:**
+- `QuizController`, `QuizService`, `QuizConfig`, `QuizAttempt`
+- `ExamController`, `StudentExamController`, `TeacherExamGradingController`, `ExamService`, `ExamConfig`, `ExamAttempt`, `ExamType`
+- `AssignmentController`, `AssignmentService`, `Assignment`, `AssignmentSubmission`
+- `QaController`, `QaService`, `CourseDiscussionController`, `CourseDiscussionService`
 
-### 🟨 TV3 · Khảo thí, Bài tập & Tương tác học
+**Frontend chính:**
+- `StudentQuizPage`, `StudentExamPage`
+- `TeacherExamPage`, `TeacherGradesPage`, `TeacherQAPage`
+- `MessagesPage`, Q&A tab trong learning room
+- `quizService.ts`, `examService.ts`, `assignmentService.ts`, `qaService.ts`, `courseDiscussionService.ts`
 
-**UC sở hữu:** UC16 (Nộp bài tập) · UC17 (Làm bài kiểm tra) · UC18 (Điểm & tiến độ HS) · UC21 (Hỏi GV) ·
-UC35 (Chấm bài tập) · UC36 (GV trả lời) · *UC22, UC23 (AI — stretch)*.
+**Việc còn lại:**
+- UC16: thêm API/UI để giáo viên tạo assignment và học sinh nộp bài/file.
+- UC18: nếu cần đúng SRS cho học sinh, thêm trang điểm/tiến độ riêng thay vì chỉ nằm trong parent report/course detail.
+- UC35: hoàn thiện end-to-end sau khi UC16 có submission thật.
+- Test kỹ UC34/UC17 mới: exam type, anchor chapter, thứ tự 4 mốc, điều kiện unlock theo các chương trước vị trí exam.
+- UC22/UC23: chỉ làm khi còn thời gian; AI scan PDF hiện không thay thế Chat AI/lộ trình AI.
 
-**Backend:**
-- `controller/QuizController.java`, `service/QuizService.java`, `controller/ExamController.java`, `service/ExamService.java`
-- `controller/QaController.java`, `service/QaService.java` (Q&A cả hai chiều HS↔GV)
-- `model/QuizConfig, QuizAttempt, ExamConfig, QaThread, QaMessage`
-- **Mới:** `Assignment` + `AssignmentSubmission` model/controller/service (UC16) · endpoint chấm điểm (UC35) ·
-  endpoint tổng hợp điểm & tiến độ (UC18)
+### TV4 · Giáo viên authoring & Phụ huynh
 
-**Frontend:**
-- `pages/student/StudentQuizPage, MessagesPage` · `pages/teacher/TeacherGradesPage, TeacherQAPage`
-- `api/quizService.ts, examService.ts, qaService.ts`
-- **Mới:** UI nộp bài tập (UC16) · wire TeacherGradesPage chấm điểm (UC35) · trang tiến độ HS (UC18)
+**UC sở hữu:** UC24-29, UC30-34.
 
-**Việc còn phải code:** UC16 + UC35 (hệ thống bài tập + chấm — module mới) · UC18 (trang điểm/tiến độ riêng).
-*Stretch:* UC22 Chat AI, UC23 Lộ trình AI (chỉ khi còn thời gian / làm bản rule-based).
+**Backend chính:**
+- `TeacherCourseController`, `TeacherCourseService`
+- `UploadController`, `ContentUploadService`
+- `QuestionController`, `QuestionService`, `AiScanController`, `AiScanService`
+- `ParentController`, `ParentService`
+- `StudentParentLinkController`, `StudentParentLinkService`
+- `ParentStudentLink`, `ParentLinkAuditLog`
 
----
+**Frontend chính:**
+- `TeacherCoursesPage`, `TeacherContentPage`, `QuestionBankPage`, `TeacherQuizChapterPage`, `TeacherExamPage`
+- `ParentDashboard`, `ParentCourses`, `ParentProgress`, `ParentPayments`, `ParentMessages`, `ParentStudentLink`
+- `teacherCourseService.ts`, `questionService.ts`, `parentService.ts`, `studentParentLinkService.ts`
 
-### 🟧 TV4 · Giáo viên (authoring) & Liên kết Phụ huynh
+**Việc còn lại:**
+- Rà UI/validation cho authoring, đặc biệt submit course/revision và upload tài liệu/video.
+- Rà parent link edge cases: gửi lại lời mời, hủy lời mời, học sinh/phụ huynh cùng yêu cầu unlink.
+- Phối hợp TV3 để parent progress đọc đúng quiz/exam/assignment sau khi UC16 hoàn chỉnh.
+- Rà lại `TeacherExamPage` sau thay đổi UC34: vị trí sau chương, required chapters, lỗi trùng/thứ tự mốc.
 
-**UC sở hữu:** UC30-34 (Tạo khóa/Nội dung/Question bank/Exam) · UC24 (Theo dõi tiến độ con) ·
-**UC25** (Liên hệ GV) · **UC27** (Gửi lời mời) · **UC28** (Chấp nhận/từ chối) · UC29 (Hủy liên kết).
+### TV5 · Admin & Khiếu nại
 
-**Backend:**
-- `controller/TeacherCourseController.java`, `service/TeacherCourseService.java`, `controller/UploadController.java`, `service/ContentUploadService.java`
-- `controller/QuestionController.java`, `service/QuestionService.java`
-- `controller/ParentController.java`, `service/ParentService.java`, `model/ParentStudentLink.java`, `repository/ParentStudentLinkRepository`
-- **Mới:** luồng invite/accept/reject liên kết PH–HS (UC27, UC28) · kênh liên hệ GV cho PH (UC25)
+**UC sở hữu:** UC12, UC38-42.
 
-**Frontend:**
-- `pages/teacher/TeacherCoursesPage, TeacherContentPage, QuestionBankPage, TeacherQuizChapterPage, TeacherExamPage`
-- `pages/parents/ParentDashboard, ParentProgress, ParentMessages, ParentStudentLink`
-- `api/teacherCourseService.ts, questionService.ts, parentService.ts`
+**Backend chính:**
+- `AdminDashboardController`, `AdminDashboardService`
+- `AdminUserController`
+- `AdminApprovalController`, `ApprovalService`, `ApprovalHistory`, `CourseVersion`
+- `ComplaintController`, `AdminComplaintController`, `ComplaintService`, `Complaint`, `ComplaintMessage`
 
-**Việc còn phải code:** Teacher authoring (UC30-34) đã gần xong → **bảo trì + viết test**. Trọng tâm code mới:
-UC24 (thay mock bằng API thật), UC25 (PH liên hệ GV), UC27 (gửi lời mời), UC28 (chấp nhận/từ chối).
+**Frontend chính:**
+- `DashboardAdmin`, `ApprovalsPage`, `CourseReviewPage`
+- `ComplaintsPage` phía student/teacher
+- `adminService.ts`, `complaintService.ts`
 
----
-
-### 🟥 TV5 · Quản trị & Khiếu nại
-
-**UC sở hữu:** UC38 (Dashboard) · UC39 (DS tài khoản) · UC40 (Mở/khóa tài khoản) · UC41 (Duyệt khóa học) ·
-**UC12** (HS/PH gửi khiếu nại) · **UC42** (Admin xử lý khiếu nại) · **UC26** (Lịch sử thanh toán của con).
-
-**Backend:**
-- `controller/AdminDashboardController.java`, `service/AdminDashboardService.java`
-- `controller/AdminUserController.java`
-- `controller/AdminApprovalController.java`, `service/ApprovalService.java`, `model/ApprovalHistory`
-- **Mới:** `Complaint`/`Ticket` model + controller + service (UC12 gửi, UC42 xử lý) · truy vấn lịch sử thanh
-  toán theo con cho PH (UC26 — đọc Order, phối hợp TV1)
-
-**Frontend:**
-- `pages/admin/DashboardAdmin, ApprovalsPage, CourseReviewPage` · `pages/student/ComplaintsPage` · `api/adminService.ts`
-- **Mới:** wire tab Users (UC39, UC40) · hoàn thiện CourseReview (UC41) · UI khiếu nại HS/PH (UC12) + tab xử lý
-  (UC42) · màn lịch sử thanh toán của con cho PH (UC26)
-
-**Việc còn phải code:** UC12 + UC42 (hệ thống khiếu nại — BE+FE mới) · UC26 (lịch sử thanh toán con) ·
-wire FE UC39/40/41 (BE đã có).
+**Việc còn lại:**
+- Viết test cho user list/search/filter, block/unblock, change role.
+- Viết test cho duyệt khóa học: approve/reject/revise, history, notification cho teacher.
+- Hoàn thiện complaint UX: filter/search/pagination, SLA, đóng/mở thread nếu SRS yêu cầu.
+- Phối hợp TV1 ở UC43/UC44 vì payout/notification là tính năng Admin nhưng đụng hạ tầng/tài chính chung.
 
 ---
 
-## 5. Sở hữu schema dùng chung & thứ tự migration
+## 5. Sở hữu schema dùng chung & migration
 
-Nhiều entity bị nhiều người động vào → quy định **chủ sở hữu schema** để tránh xung đột cột/migration:
-
-| Entity | Chủ sở hữu | Người dùng chung (chỉ đọc / xin thêm cột qua chủ) |
+| Entity / bảng | Chủ sở hữu | Người dùng chung |
 |---|---|---|
-| `Profile` (thêm cột `grade`) | TV1 | TV4 (parent), TV5 (admin user) |
-| `Course`, `Chapter`, `Lesson` | TV2 | TV4 (GV tạo), TV5 (duyệt) |
-| `Order`, `RevenueSplit`, `PayoutPeriod` | TV1 | TV5 (UC26 đọc), TV4 |
-| `ParentStudentLink` | TV4 | TV5 |
-| `Assignment`, `QuizAttempt` | TV3 | TV2 (UC20 cert đọc pass), TV4 (UC24) |
-| `Complaint`, `Notification` | TV5 / TV1 | tất cả (chỉ tạo qua API của chủ) |
+| `profiles`, auth/session, role/block | TV1 | TV4, TV5 |
+| `courses`, `chapters`, `lessons`, `course_documents`, `course_versions` | TV2/TV4 | TV5 duyệt, TV3 đọc để exam/quiz |
+| `orders`, `order_items`, `revenue_splits`, `payout_periods` | TV1 | TV5 Admin payout, TV4 Parent payments |
+| `quiz_configs`, `quiz_attempts`, `exam_configs`, `exam_attempts`, `assignments`, `assignment_submissions` | TV3 | TV2 certificate/progress, TV4 parent report |
+| `parent_student_links`, `parent_link_audit_log` | TV4 | TV3/TV5 đọc trạng thái liên quan |
+| `qa_threads`, `qa_messages`, `course_discussion_*` | TV3/TV4 | Parent/Teacher/Student UI |
+| `complaints`, `complaint_messages` | TV5 | Student/Teacher/Parent tạo qua API chung |
+| `user_notifications`, `admin_notifications` | TV1 | Tất cả module chỉ gọi service/API chung |
 
-**Quy tắc migration:** mọi thay đổi DB ghi vào **một thư mục migration đánh số tăng dần** do TV1 gác cổng;
-không ai tự sửa bảng của module khác — gửi yêu cầu thêm cột cho chủ sở hữu.
+**Quy tắc migration:** không sửa migration cũ đã chạy nếu không cần thiết. Thay đổi DB mới thêm file `Vxxx__...sql`,
+TV1 kiểm tra thứ tự và conflict. Với UC34 hiện đã thêm `V015__exam_type_and_anchor_chapter.sql`.
 
 ---
 
-## 6. Phụ thuộc chéo & điểm tích hợp (cần hẹn checkpoint)
+## 6. Phụ thuộc chéo cần checkpoint
 
-| Tính năng | Phụ thuộc dữ liệu của | Ghi chú |
+| Tính năng | Phụ thuộc | Checkpoint |
 |---|---|---|
-| UC18 Tiến độ HS (TV3) | quiz/bài tập (TV3) + enrollment (TV2) | thống nhất công thức % hoàn thành |
-| UC20 Chứng chỉ (TV2) | điều kiện *pass bài kiểm tra* (TV3) | TV3 cung cấp API "đã pass?" |
-| UC24/UC26 Parent (TV4/TV5) | quiz (TV3) + Order (TV1) | đọc qua API, không query thẳng bảng |
-| UC44 Thông báo (TV1) | mọi module bắn notify (duyệt khóa, payout, Q&A) | TV1 cung cấp 1 API `notify()` chung |
-
-> Thông báo (UC44) là **hạ tầng dùng chung**: các TV khác chỉ gọi API của TV1, không tự dựng cơ chế riêng.
-
----
-
-## 7. Quy tắc làm việc chung (code song song, tránh đụng nhau)
-
-1. **Branch theo UC:** `feature/uc16-nop-bai-tap`, `feature/uc43-payout-export`... Mỗi UC một PR nhỏ.
-2. **File dùng chung chỉ TV1 sửa:** `App.tsx`, `client.ts`, Spring Security, enum/DTO chung, `application.yml`,
-   migration SQL. Cần thêm route/endpoint chung → báo TV1 gộp một lần.
-3. **Mỗi TV ưu tiên tạo file mới** (controller/service/page riêng) thay vì sửa file của người khác.
-4. **Quy ước theo CLAUDE.md:** UI text tiếng Việt; dùng CSS var Material Design 3 (`bg-surface`,
-   `text-on-surface`...), không dùng màu Tailwind trực tiếp cho surface/text; commit **không** kèm
-   `Co-Authored-By`; dev server chạy port **3000**.
-5. **Test theo SRS:** mỗi UC viết tối thiểu 1 happy-path (từ Tiêu chí chấp nhận) + 1 negative (từ Ngoại lệ) —
-   đúng mã UT/IT/ST trong Ma trận truy xuất (Bảng 49 SRS). Coverage mục tiêu ≥ 70%.
-6. **Sync hằng ngày:** trước khi push, `git pull --rebase` nhánh chính; conflict ở file chung → TV1 xử lý.
+| UC16/UC35 Assignment | TV3 + TV4 content authoring | Thống nhất assignment gắn course/chapter/lesson và luồng HS nộp |
+| UC18 Progress HS | quiz/exam/assignment + enrollment | TV3 cung cấp dữ liệu; TV2/TV4 hiển thị đúng vai trò |
+| UC20 Certificate | completion/progress + pass exam | TV2 cần API điều kiện đạt từ TV3 |
+| UC24/UC26 Parent | progress + order/payment | TV4 đọc qua API/service, không query thẳng bảng module khác |
+| UC34 Exam placement | chapter order + exam config | TV3/TV4 test thứ tự 4 mốc và migration `anchor_chapter_id` |
+| UC43 Payout | revenue split + teacher bank | TV1 chủ trì; TV5 test luồng Admin |
+| UC44 Notification | mọi module phát thông báo | TV1 chuẩn hóa service/API, module khác không tự dựng cơ chế riêng |
 
 ---
 
-## 8. Lưu ý đối chiếu SRS (để báo cáo giảng viên)
+## 7. Quy tắc làm việc chung
 
-- **SRS ghi VNPay/MoMo, code dùng PayOS** → cập nhật SRS ghi nhận PayOS như quyết định thay thế (hoặc ghi chú
-  "deviation được duyệt"), tránh mâu thuẫn khi chấm.
-- **AI (UC22, UC23)** đưa vào diện *stretch goal*, không tính vào phạm vi bắt buộc do chưa có AI Engine.
-- Các NFR cần bổ sung để đủ điểm: gửi **email thông báo** thật, **mã hóa AES-256** TK ngân hàng GV,
-  **audit log** thao tác tài chính/Admin, **watermark** tài liệu/chứng chỉ.
+1. **Branch theo UC hoặc cụm nhỏ:** `feature/uc16-assignment-submit`, `feature/uc20-certificate`, `fix/uc34-exam-placement`.
+2. **File dùng chung báo TV1 trước khi sửa:** `App.tsx`, `api/client.ts`, `ProtectedRoute.tsx`, Spring Security, enum/DTO chung,
+   `application.yml`, migration SQL.
+3. **Ưu tiên thêm file theo module** thay vì sửa lan sang module người khác.
+4. **UI text tiếng Việt**, giữ phong cách Material Design 3 token đang dùng trong frontend.
+5. **Test tối thiểu mỗi UC:** 1 happy path + 1 negative path; phần tiền/role/payout/approval phải có test quyền truy cập.
+6. **Không trộn refactor lớn vào PR tính năng.** Với schema chung, mô tả rõ entity nào bị ảnh hưởng.
 
 ---
 
-## 9. Phân bổ công việc theo trạng thái
+## 8. Phân bổ công việc theo trạng thái
 
-| TV | UC đã xong (bảo trì + test) | UC code mới | Điểm |
+| TV | UC đã xong / bảo trì + test | UC cần hoàn thiện | Ghi chú |
 |---|---|---|---|
-| **TV1** | UC01-05, 09, 10, 11, 37 | **UC43, UC44** + wire UC11 + hạ tầng + điều phối | **≈ 18** |
-| TV2 | UC06, 07, 13, 14 | UC15, UC19, UC20 (+UC08) | ≈ 11 |
-| TV3 | UC17, 21, 36 | UC16, UC35, UC18 (+UC22/23 stretch) | ≈ 10 |
-| TV4 | UC30-34, 29 | UC24, UC25, UC27, UC28 | ≈ 10 |
-| TV5 | UC38, 39, 40, 41 (BE) | UC12, UC42, UC26 + wire FE 39/40/41 | ≈ 10 |
+| **TV1** | UC01-05, UC09-11, UC37 | UC43 export `.xlsx` nếu cần, UC44 broadcast/email, hạ tầng test | Cao nhất vì giữ file chung + merge |
+| **TV2** | UC06-08, UC13-15 mức cơ bản | UC15 bảo mật tài liệu, UC19, UC20 | Tập trung learning/certificate |
+| **TV3** | UC17, UC21, UC36, UC35 phía teacher | UC16, UC18, test UC34/Exam, UC22/23 stretch | Phụ trách logic đánh giá học tập |
+| **TV4** | UC24-29, UC30-34 | Rà edge case parent/teacher authoring, phối hợp UC34 | Parent portal gần đủ luồng |
+| **TV5** | UC12, UC38-42 | Test Admin/Complaint, phối hợp UC43/44 với TV1 | Admin UX và nghiệp vụ xử lý |
+
+---
+
+## 9. Lưu ý khi báo cáo giảng viên
+
+- SRS ghi VNPay/MoMo nhưng code dùng **PayOS**; cần ghi rõ đây là quyết định thay thế.
+- Không ghi UC34 là "mỗi 3 chương" nữa; hiện là **4 mốc kiểm tra do giáo viên đặt sau chương**.
+- UC43 hiện export CSV tương thích Excel ở frontend; nếu giảng viên bắt buộc `.xlsx`, cần thêm backend export.
+- UC44 có notification thật cho các sự kiện hệ thống, nhưng **form phát thông báo toàn hệ thống** chưa có API lưu/gửi thật.
+- UC19/UC20/UC22/UC23 chưa hoàn thiện, không nên trình bày là đã xong.

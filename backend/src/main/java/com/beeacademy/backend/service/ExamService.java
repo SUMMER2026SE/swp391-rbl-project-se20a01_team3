@@ -16,6 +16,7 @@ import com.beeacademy.backend.model.Chapter;
 import com.beeacademy.backend.model.Course;
 import com.beeacademy.backend.model.ExamAttempt;
 import com.beeacademy.backend.model.ExamConfig;
+import com.beeacademy.backend.model.ExamType;
 import com.beeacademy.backend.model.Profile;
 import com.beeacademy.backend.model.Question;
 import com.beeacademy.backend.model.QuestionChoice;
@@ -115,10 +116,19 @@ public class ExamService {
             for (ExamQuestionRandomRequest.ChapterQuestionRandomRequest chapterReq
                     : req.chapterConfigs()) {
                 Chapter chapter = loadCourseChapter(courseId, chapterReq.chapterId());
-                List<Question> selected = pickRandomQuestionsByChapter(
-                        me.userId(), chapter.getId(), chapterReq.totalCount());
-                result.addAll(selected.stream()
-                        .map(question -> toExamQuestion(question, req.pointsPerQuestion()))
+                int objectiveCount = chapterReq.multipleChoiceCount() != null
+                        ? chapterReq.multipleChoiceCount()
+                        : chapterReq.totalCount();
+                int essayCount = chapterReq.essayCount() != null ? chapterReq.essayCount() : 0;
+                List<Question> selectedObjective = pickRandomQuestionsByChapterAndType(
+                        me.userId(), chapter.getId(), List.of("multiple_choice", "true_false"), objectiveCount);
+                result.addAll(selectedObjective.stream()
+                        .map(question -> toExamQuestion(question, objectivePointValue(req)))
+                        .toList());
+                List<Question> selectedEssay = pickRandomQuestionsByChapterAndType(
+                        me.userId(), chapter.getId(), List.of("essay"), essayCount);
+                result.addAll(selectedEssay.stream()
+                        .map(question -> toExamQuestion(question, essayPointValue(req)))
                         .toList());
             }
             Collections.shuffle(result);
@@ -146,22 +156,32 @@ public class ExamService {
                                        AuthenticatedUser me, ExamConfigRequest req) {
         Course course = loadOwnedCourse(courseId, me.userId());
         Profile teacher = loadProfile(me.userId());
-        validateSlot(courseId, slotIndex);
+        validateSlot(slotIndex);
         validateRequest(req);
+        ExamType examType = parseExamType(req.examType());
+        if (examType.slotIndex() != slotIndex) {
+            throw new BusinessException("INVALID_EXAM_TYPE",
+                    "Loại bài kiểm tra không khớp với vị trí đang chọn.");
+        }
+        Chapter startChapter = loadCourseChapter(courseId, req.startChapterId());
+        Chapter anchorChapter = loadCourseChapter(courseId, req.afterChapterId());
+        validateExamPlacement(courseId, slotIndex, startChapter, anchorChapter);
 
         String questionsJson = toJson(req.questions());
         ExamConfig config = examRepository.findByCourseIdAndSlotIndex(courseId, slotIndex)
                 .orElse(null);
 
         if (config == null) {
-            config = ExamConfig.create(course, teacher, slotIndex,
+            config = ExamConfig.create(course, teacher, slotIndex, examType, startChapter, anchorChapter,
                     req.name().trim(), trimToNull(req.description()),
-                    req.durationMinutes(), req.passScorePercent(), req.maxAttempts(),
+                    req.durationMinutes(), req.passScorePercent(),
+                    req.multipleChoiceScore(), req.essayScore(), req.maxAttempts(),
                     req.shuffleQuestions(), req.shuffleOptions(), req.showAnswerAfterSubmit(),
                     questionsJson);
         } else {
-            config.update(req.name().trim(), trimToNull(req.description()),
-                    req.durationMinutes(), req.passScorePercent(), req.maxAttempts(),
+            config.update(examType, startChapter, anchorChapter, req.name().trim(), trimToNull(req.description()),
+                    req.durationMinutes(), req.passScorePercent(),
+                    req.multipleChoiceScore(), req.essayScore(), req.maxAttempts(),
                     req.shuffleQuestions(), req.shuffleOptions(), req.showAnswerAfterSubmit(),
                     questionsJson);
         }
@@ -184,18 +204,13 @@ public class ExamService {
     public List<StudentExamSummaryResponse> listStudentExams(UUID courseId, AuthenticatedUser me) {
         verifyEnrollment(courseId, me.userId());
         List<Chapter> chapters = chapterRepository.findByCourseIdOrderByPositionAsc(courseId);
-        Map<Integer, ExamConfig> examsBySlot = new HashMap<>();
-        examRepository.findByCourseIdOrderBySlotIndexAsc(courseId)
-                .forEach(exam -> examsBySlot.put(exam.getSlotIndex(), exam));
-
-        int slotCount = chapters.size() / 3;
-        List<StudentExamSummaryResponse> result = new ArrayList<>();
-        for (int slot = 0; slot < slotCount; slot++) {
-            List<Chapter> requiredChapters = chapters.subList(slot * 3, slot * 3 + 3);
-            result.add(buildStudentExamSummary(
-                    examsBySlot.get(slot), slot, requiredChapters, me.userId()));
-        }
-        return result;
+        List<ExamConfig> exams = configuredCourseExams(courseId, chapters);
+        return exams.stream()
+                .map(config -> buildStudentExamSummary(
+                        config,
+                        requiredChaptersForExam(config, exams, chapters),
+                        me.userId()))
+                .toList();
     }
 
     @Transactional
@@ -254,6 +269,8 @@ public class ExamService {
 
         List<SnapshotExamQuestion> questions = readSnapshotQuestions(attempt.getQuestionsSnapshot());
         Map<String, List<Integer>> answers = req.answers() != null ? req.answers() : Map.of();
+        Map<String, String> essayAnswers = req.essayAnswers() != null ? req.essayAnswers() : Map.of();
+        Map<String, List<String>> essayImageUrls = req.essayImageUrls() != null ? req.essayImageUrls() : Map.of();
         double earned = 0.0;
         double total = questions.stream()
                 .map(SnapshotExamQuestion::points)
@@ -261,8 +278,22 @@ public class ExamService {
                 .mapToDouble(Double::doubleValue)
                 .sum();
         List<StudentExamResultResponse.QuestionResult> details = new ArrayList<>();
+        boolean hasEssay = false;
 
         for (SnapshotExamQuestion question : questions) {
+            if ("essay".equals(question.type())) {
+                hasEssay = true;
+                details.add(new StudentExamResultResponse.QuestionResult(
+                        question.id(),
+                        question.text(),
+                        List.of(),
+                        List.of(),
+                        null,
+                        null,
+                        question.points()
+                ));
+                continue;
+            }
             List<Integer> studentAnswers = normalizeAnswer(answers.get(question.id()));
             List<Integer> correctAnswers = normalizeAnswer(question.correctIndices());
             boolean correct = studentAnswers.equals(correctAnswers);
@@ -282,8 +313,8 @@ public class ExamService {
         }
 
         double scorePercent = total > 0 ? Math.round((earned / total) * 1000.0) / 10.0 : 0.0;
-        boolean passed = scorePercent >= attempt.getExamConfig().getPassScorePercent();
-        attempt.submit(toJson(answers), scorePercent, passed);
+        boolean passed = !hasEssay && scorePercent >= attempt.getExamConfig().getPassScorePercent();
+        attempt.submit(toJson(answers), toJson(essayAnswers), toJson(essayImageUrls), scorePercent, passed);
         examAttemptRepository.save(attempt);
 
         return new StudentExamResultResponse(
@@ -325,8 +356,25 @@ public class ExamService {
     private TeacherExamAttemptResponse toTeacherExamAttemptResponse(ExamAttempt attempt) {
         List<SnapshotExamQuestion> questions = readSnapshotQuestions(attempt.getQuestionsSnapshot());
         Map<String, List<Integer>> answers = readAnswers(attempt.getAnswers());
+        Map<String, String> essayAnswers = readEssayAnswers(attempt.getEssayAnswers());
+        Map<String, List<String>> essayImageUrls = readEssayImageUrls(attempt.getEssayImageUrls());
         List<TeacherExamAttemptResponse.QuestionReview> reviews = questions.stream()
                 .map(question -> {
+                    if ("essay".equals(question.type())) {
+                        return new TeacherExamAttemptResponse.QuestionReview(
+                                question.id(),
+                                question.text(),
+                                question.type(),
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                null,
+                                question.points() != null ? question.points() : 0.0,
+                                null,
+                                question.explanation(),
+                                essayAnswers.get(question.id()),
+                                essayImageUrls.getOrDefault(question.id(), List.of()));
+                    }
                     List<Integer> studentAnswers = normalizeAnswer(answers.get(question.id()));
                     List<Integer> correctAnswers = normalizeAnswer(question.correctIndices());
                     boolean correct = studentAnswers.equals(correctAnswers);
@@ -341,7 +389,9 @@ public class ExamService {
                             correct,
                             points,
                             correct ? points : 0.0,
-                            question.explanation());
+                            question.explanation(),
+                            null,
+                            List.of());
                 })
                 .toList();
 
@@ -392,8 +442,34 @@ public class ExamService {
         }
     }
 
+    private Map<String, String> readEssayAnswers(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(
+                    json,
+                    new TypeReference<Map<String, String>>() {});
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    private Map<String, List<String>> readEssayImageUrls(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(
+                    json,
+                    new TypeReference<Map<String, List<String>>>() {});
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
     private StudentExamSummaryResponse buildStudentExamSummary(
-            ExamConfig config, int slotIndex, List<Chapter> requiredChapters, UUID studentId) {
+            ExamConfig config, List<Chapter> requiredChapters, UUID studentId) {
         Map<UUID, QuizConfig> quizByChapter = new HashMap<>();
         quizConfigRepository.findByChapterIdIn(
                 requiredChapters.stream().map(Chapter::getId).toList())
@@ -419,31 +495,37 @@ public class ExamService {
                 ? examAttemptRepository
                         .findFirstByStudentIdAndExamConfigIdAndSubmittedAtIsNotNullOrderBySubmittedAtDesc(
                                 studentId, config.getId())
-                        .orElse(null)
+                .orElse(null)
                 : null;
         boolean passed = latestAttempt != null && Boolean.TRUE.equals(latestAttempt.getPassed());
         boolean prerequisitesMet = passedQuizCount == requiredChapters.size()
                 && chapterDtos.stream().allMatch(StudentExamSummaryResponse.RequiredChapter::hasQuiz);
-        boolean attemptsAvailable = configured && attemptsUsed < config.getMaxAttempts();
-        boolean unlocked = configured && prerequisitesMet && (attemptsAvailable || passed);
+        boolean attemptsAvailable = attemptsUsed < config.getMaxAttempts();
+        boolean unlocked = prerequisitesMet && (attemptsAvailable || passed);
         String lockedReason = null;
-        if (!configured) {
-            lockedReason = "Giáo viên chưa cấu hình bài kiểm tra.";
-        } else if (!prerequisitesMet) {
-            lockedReason = "Cần pass đủ 3 quiz chương liên tiếp để mở khóa.";
+        if (!prerequisitesMet) {
+            lockedReason = "Cần pass đủ quiz của các chương trong phạm vi bài kiểm tra.";
         } else if (!attemptsAvailable && !passed) {
             lockedReason = "Bạn đã hết lượt làm bài kiểm tra này.";
         }
 
         return new StudentExamSummaryResponse(
-                configured ? config.getId() : null,
-                slotIndex,
-                configured ? config.getName() : "Bài kiểm tra sau chương " + (slotIndex * 3 + 1) + "-" + (slotIndex * 3 + 3),
-                configured ? config.getDescription() : null,
-                configured ? config.getDurationMinutes() : null,
-                configured ? config.getPassScorePercent() : null,
-                configured ? config.getMaxAttempts() : null,
-                configured,
+                config.getId(),
+                config.getSlotIndex(),
+                config.getExamType() != null ? config.getExamType().name() : null,
+                config.getExamType() != null ? config.getExamType().label() : null,
+                config.getStartChapter() != null ? config.getStartChapter().getId() : null,
+                config.getStartChapter() != null ? config.getStartChapter().getTitle() : null,
+                config.getAnchorChapter() != null ? config.getAnchorChapter().getId() : null,
+                config.getAnchorChapter() != null ? config.getAnchorChapter().getTitle() : null,
+                config.getName(),
+                config.getDescription(),
+                config.getDurationMinutes(),
+                config.getPassScorePercent(),
+                config.getMultipleChoiceScore(),
+                config.getEssayScore(),
+                config.getMaxAttempts(),
+                true,
                 unlocked,
                 passed,
                 latestAttempt != null && latestAttempt.getEffectiveScorePercent() != null
@@ -459,15 +541,15 @@ public class ExamService {
 
     private void assertStudentExamUnlocked(UUID courseId, int slotIndex, UUID studentId) {
         List<Chapter> chapters = chapterRepository.findByCourseIdOrderByPositionAsc(courseId);
-        int from = slotIndex * 3;
-        if (slotIndex < 0 || from + 3 > chapters.size()) {
-            throw new BusinessException("INVALID_SLOT",
-                    "Vị trí bài kiểm tra không hợp lệ.", HttpStatus.BAD_REQUEST);
-        }
+        List<ExamConfig> exams = configuredCourseExams(courseId, chapters);
+        ExamConfig config = exams.stream()
+                .filter(exam -> Objects.equals(exam.getSlotIndex(), slotIndex))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("EXAM_NOT_FOUND",
+                        "Giáo viên chưa cấu hình bài kiểm tra này.", HttpStatus.NOT_FOUND));
         StudentExamSummaryResponse summary = buildStudentExamSummary(
-                examRepository.findByCourseIdAndSlotIndex(courseId, slotIndex).orElse(null),
-                slotIndex,
-                chapters.subList(from, from + 3),
+                config,
+                requiredChaptersForExam(config, exams, chapters),
                 studentId);
         if (!Boolean.TRUE.equals(summary.unlocked())) {
             throw new BusinessException("EXAM_LOCKED",
@@ -496,6 +578,17 @@ public class ExamService {
 
     private SnapshotExamQuestion toSnapshotQuestion(
             ExamConfigResponse.ExamQuestionResponse question, boolean shuffleOptions) {
+        if ("essay".equals(question.type())) {
+            return new SnapshotExamQuestion(
+                    question.id(),
+                    question.text(),
+                    question.type(),
+                    List.of(),
+                    List.of(),
+                    question.explanation(),
+                    question.points() != null ? question.points() : 0.0
+            );
+        }
         List<OptionWithOriginalIndex> options = IntStream.range(0, question.options().size())
                 .mapToObj(i -> new OptionWithOriginalIndex(question.options().get(i), i))
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
@@ -568,15 +661,108 @@ public class ExamService {
                 .orElseThrow(() -> new ResourceNotFoundException("Profile", profileId));
     }
 
-    private void validateSlot(UUID courseId, Integer slotIndex) {
-        if (slotIndex == null || slotIndex < 0) {
+    private List<ExamConfig> configuredCourseExams(UUID courseId, List<Chapter> chapters) {
+        return examRepository.findByCourseIdOrderBySlotIndexAsc(courseId).stream()
+                .filter(config -> ExamType.fromSlotIndex(config.getSlotIndex()) != null)
+                .filter(config -> config.getAnchorChapter() != null)
+                .filter(config -> chapterIndex(chapters, config.getAnchorChapter().getId()) >= 0)
+                .sorted(Comparator
+                        .comparingInt((ExamConfig config) ->
+                                chapterIndex(chapters, config.getAnchorChapter().getId()))
+                        .thenComparingInt(config -> config.getExamType() != null
+                                ? config.getExamType().slotIndex()
+                                : config.getSlotIndex()))
+                .toList();
+    }
+
+    private List<Chapter> requiredChaptersForExam(
+            ExamConfig config, List<ExamConfig> exams, List<Chapter> chapters) {
+        if (config.getAnchorChapter() == null) {
+            return List.of();
+        }
+        int anchorIndex = chapterIndex(chapters, config.getAnchorChapter().getId());
+        if (anchorIndex < 0) {
+            return List.of();
+        }
+        int startIndex = config.getStartChapter() != null
+                ? chapterIndex(chapters, config.getStartChapter().getId())
+                : -1;
+        if (startIndex < 0) {
+            startIndex = previousAnchorIndex(config, exams, chapters, anchorIndex) + 1;
+        }
+        if (startIndex < 0 || startIndex > anchorIndex) {
+            return List.of();
+        }
+
+        return chapters.subList(startIndex, anchorIndex + 1);
+    }
+
+    private int chapterIndex(List<Chapter> chapters, UUID chapterId) {
+        for (int i = 0; i < chapters.size(); i++) {
+            if (Objects.equals(chapters.get(i).getId(), chapterId)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int previousAnchorIndex(
+            ExamConfig config, List<ExamConfig> exams, List<Chapter> chapters, int anchorIndex) {
+        return exams.stream()
+                .filter(other -> !Objects.equals(other.getId(), config.getId()))
+                .filter(other -> other.getAnchorChapter() != null)
+                .filter(other -> {
+                    int otherSlot = other.getSlotIndex() != null ? other.getSlotIndex() : 0;
+                    int currentSlot = config.getSlotIndex() != null ? config.getSlotIndex() : 0;
+                    return otherSlot < currentSlot;
+                })
+                .map(other -> chapterIndex(chapters, other.getAnchorChapter().getId()))
+                .filter(index -> index >= 0 && index < anchorIndex)
+                .max(Integer::compareTo)
+                .orElse(-1);
+    }
+
+    private void validateSlot(Integer slotIndex) {
+        if (ExamType.fromSlotIndex(slotIndex) == null) {
             throw new BusinessException("INVALID_SLOT", "Vị trí bài kiểm tra không hợp lệ.");
         }
-        List<Chapter> chapters = chapterRepository.findByCourseIdOrderByPositionAsc(courseId);
-        int slotCount = chapters.size() / 3;
-        if (slotIndex >= slotCount) {
-            throw new BusinessException("INVALID_SLOT",
-                    "Khóa học cần đủ 3 chương cho mỗi bài kiểm tra.");
+    }
+
+    private ExamType parseExamType(String value) {
+        ExamType examType = ExamType.fromValue(value);
+        if (examType == null) {
+            throw new BusinessException("INVALID_EXAM_TYPE", "Loại bài kiểm tra không hợp lệ.");
+        }
+        return examType;
+    }
+
+    private void validateExamPlacement(UUID courseId, Integer slotIndex,
+                                       Chapter startChapter, Chapter anchorChapter) {
+        if (startChapter.getPosition() > anchorChapter.getPosition()) {
+            throw new BusinessException("INVALID_EXAM_RANGE",
+                    "ChÆ°Æ¡ng báº¯t Ä‘áº§u pháº£i náº±m trÆ°á»›c hoáº·c báº±ng chÆ°Æ¡ng káº¿t thÃºc.");
+        }
+        ExamType currentType = ExamType.fromSlotIndex(slotIndex);
+        List<ExamConfig> configs = examRepository.findByCourseIdOrderBySlotIndexAsc(courseId);
+        for (ExamConfig other : configs) {
+            if (Objects.equals(other.getSlotIndex(), slotIndex)
+                    || other.getAnchorChapter() == null) {
+                continue;
+            }
+            ExamType otherType = ExamType.fromSlotIndex(other.getSlotIndex());
+            if (otherType == null) {
+                continue;
+            }
+            if (otherType.slotIndex() < currentType.slotIndex()
+                    && other.getAnchorChapter().getPosition() >= anchorChapter.getPosition()) {
+                throw new BusinessException("INVALID_EXAM_PLACEMENT",
+                        currentType.label() + " phải nằm sau " + otherType.label() + ".");
+            }
+            if (otherType.slotIndex() > currentType.slotIndex()
+                    && other.getAnchorChapter().getPosition() <= anchorChapter.getPosition()) {
+                throw new BusinessException("INVALID_EXAM_PLACEMENT",
+                        currentType.label() + " phải nằm trước " + otherType.label() + ".");
+            }
         }
     }
 
@@ -588,16 +774,33 @@ public class ExamService {
             throw new BusinessException("INVALID_QUESTIONS",
                     "Bài kiểm tra phải có ít nhất 1 câu hỏi.");
         }
+        double multipleChoiceScore = req.multipleChoiceScore() != null ? req.multipleChoiceScore() : 0.0;
+        double essayScore = req.essayScore() != null ? req.essayScore() : 0.0;
+        if (Math.abs((multipleChoiceScore + essayScore) - 10.0) > 0.001) {
+            throw new BusinessException("INVALID_SCORE_PARTS",
+                    "Tổng điểm phần trắc nghiệm và tự luận phải bằng 10.");
+        }
+        double objectivePoints = 0.0;
+        double essayPoints = 0.0;
         for (int i = 0; i < req.questions().size(); i++) {
             ExamConfigRequest.ExamQuestionRequest q = req.questions().get(i);
-            if (q == null || q.options() == null || q.correctIndices() == null) {
+            if (q == null) {
                 throw new BusinessException("INVALID_QUESTIONS",
                         "Câu " + (i + 1) + " không hợp lệ.");
+            }
+            if ("essay".equals(q.type())) {
+                essayPoints += q.points() != null ? q.points() : 0.0;
+                continue;
+            }
+            if (q.options() == null || q.correctIndices() == null || q.options().size() < 2) {
+                throw new BusinessException("INVALID_QUESTIONS",
+                        "Câu " + (i + 1) + " trắc nghiệm không hợp lệ.");
             }
             if ("single".equals(q.type()) && q.correctIndices().size() != 1) {
                 throw new BusinessException("INVALID_QUESTIONS",
                         "Câu " + (i + 1) + " dạng một đáp án phải có đúng 1 đáp án đúng.");
             }
+            objectivePoints += q.points() != null ? q.points() : 0.0;
             int optionCount = q.options().size();
             for (Integer correctIndex : q.correctIndices()) {
                 if (correctIndex == null || correctIndex < 0 || correctIndex >= optionCount) {
@@ -605,6 +808,14 @@ public class ExamService {
                             "Câu " + (i + 1) + " có đáp án đúng không hợp lệ.");
                 }
             }
+        }
+        if (Math.abs(objectivePoints - multipleChoiceScore) > 0.05) {
+            throw new BusinessException("INVALID_SCORE_PARTS",
+                    "Tổng điểm câu trắc nghiệm phải bằng điểm phần trắc nghiệm.");
+        }
+        if (Math.abs(essayPoints - essayScore) > 0.05) {
+            throw new BusinessException("INVALID_SCORE_PARTS",
+                    "Tổng điểm câu tự luận phải bằng điểm phần tự luận.");
         }
     }
 
@@ -633,19 +844,24 @@ public class ExamService {
     }
 
     private void validateChapterRandomRequest(ExamQuestionRandomRequest req) {
-        if (req.pointsPerQuestion() == null) {
+        if (req.pointsPerQuestion() == null
+                && req.multipleChoicePointsPerQuestion() == null
+                && req.essayPointsPerQuestion() == null) {
             throw new BusinessException("INVALID_RANDOM_CONFIG",
                     "Phân bổ câu hỏi random không hợp lệ.");
         }
         int total = 0;
         for (ExamQuestionRandomRequest.ChapterQuestionRandomRequest chapterReq
                 : req.chapterConfigs()) {
-            if (chapterReq.chapterId() == null
-                    || chapterReq.totalCount() == null) {
+            if (chapterReq.chapterId() == null) {
                 throw new BusinessException("INVALID_RANDOM_CONFIG",
                         "Phân bổ câu hỏi theo chương không hợp lệ.");
             }
-            total += chapterReq.totalCount();
+            int objectiveCount = chapterReq.multipleChoiceCount() != null
+                    ? chapterReq.multipleChoiceCount()
+                    : (chapterReq.totalCount() != null ? chapterReq.totalCount() : 0);
+            int essayCount = chapterReq.essayCount() != null ? chapterReq.essayCount() : 0;
+            total += objectiveCount + essayCount;
         }
         if (total <= 0) {
             throw new BusinessException("INVALID_RANDOM_CONFIG",
@@ -694,6 +910,35 @@ public class ExamService {
         return pool.subList(0, count);
     }
 
+    private List<Question> pickRandomQuestionsByChapterAndType(
+            UUID teacherId, UUID chapterId, List<String> types, int count) {
+        if (count <= 0) {
+            return List.of();
+        }
+        List<Question> pool = new ArrayList<>(
+                questionRepository.findActiveByTeacherAndChapterAndTypeIn(teacherId, chapterId, types));
+        if (pool.size() < count) {
+            String label = types.contains("essay") ? "tự luận" : "trắc nghiệm";
+            throw new BusinessException("QUESTION_BANK_NOT_ENOUGH",
+                    "Ngân hàng câu hỏi chưa đủ câu " + label + " cho chương này: cần "
+                            + count + ", hiện có " + pool.size() + ".");
+        }
+        Collections.shuffle(pool);
+        return pool.subList(0, count);
+    }
+
+    private Double objectivePointValue(ExamQuestionRandomRequest req) {
+        return req.multipleChoicePointsPerQuestion() != null
+                ? req.multipleChoicePointsPerQuestion()
+                : req.pointsPerQuestion();
+    }
+
+    private Double essayPointValue(ExamQuestionRandomRequest req) {
+        return req.essayPointsPerQuestion() != null
+                ? req.essayPointsPerQuestion()
+                : req.pointsPerQuestion();
+    }
+
     private Chapter loadCourseChapter(UUID courseId, UUID chapterId) {
         Chapter chapter = chapterRepository.findById(chapterId)
                 .orElseThrow(() -> new ResourceNotFoundException("Chapter", chapterId));
@@ -706,6 +951,18 @@ public class ExamService {
 
     private ExamConfigResponse.ExamQuestionResponse toExamQuestion(Question question,
                                                                    Double pointsPerQuestion) {
+        if ("essay".equals(question.getType())) {
+            return new ExamConfigResponse.ExamQuestionResponse(
+                    question.getId().toString(),
+                    question.getContent(),
+                    "essay",
+                    List.of(),
+                    List.of(),
+                    question.getExplanation(),
+                    pointsPerQuestion,
+                    question.getDifficulty()
+            );
+        }
         List<QuestionChoice> choices = new ArrayList<>(question.getChoices());
         choices.sort(Comparator.comparing(QuestionChoice::getPosition));
         List<String> options = choices.stream()

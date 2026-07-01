@@ -3,6 +3,8 @@ CREATE TABLE IF NOT EXISTS public.exam_configs (
     course_id UUID NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
     teacher_id UUID NOT NULL REFERENCES public.profiles(id),
     slot_index INTEGER NOT NULL,
+    exam_type TEXT NOT NULL DEFAULT 'MIDTERM_1',
+    anchor_chapter_id UUID REFERENCES public.chapters(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
     description TEXT,
     duration_minutes INTEGER NOT NULL,
@@ -22,3 +24,6 @@ ON public.exam_configs (course_id);
 
 CREATE INDEX IF NOT EXISTS idx_exam_configs_teacher
 ON public.exam_configs (teacher_id);
+
+CREATE INDEX IF NOT EXISTS idx_exam_configs_anchor_chapter
+ON public.exam_configs (anchor_chapter_id);

@@ -44,6 +44,14 @@ public class ExamAttempt {
     @Column(name = "answers", columnDefinition = "jsonb")
     private String answers;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "essay_answers", columnDefinition = "jsonb")
+    private String essayAnswers;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "essay_image_urls", columnDefinition = "jsonb")
+    private String essayImageUrls;
+
     @Column(name = "score_percent", precision = 5, scale = 1)
     private BigDecimal scorePercent;
 
@@ -80,8 +88,11 @@ public class ExamAttempt {
         return attempt;
     }
 
-    public void submit(String answersJson, double scorePercent, boolean passed) {
+    public void submit(String answersJson, String essayAnswersJson, String essayImageUrlsJson,
+                       double scorePercent, boolean passed) {
         this.answers = answersJson;
+        this.essayAnswers = essayAnswersJson;
+        this.essayImageUrls = essayImageUrlsJson;
         this.scorePercent = BigDecimal.valueOf(scorePercent)
                 .setScale(1, java.math.RoundingMode.HALF_UP);
         this.passed = passed;

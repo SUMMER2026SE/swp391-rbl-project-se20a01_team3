@@ -13,7 +13,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-    CREATE TYPE question_type AS ENUM ('multiple_choice', 'true_false');
+    CREATE TYPE question_type AS ENUM ('multiple_choice', 'true_false', 'essay');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN

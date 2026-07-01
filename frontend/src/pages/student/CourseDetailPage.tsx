@@ -1979,9 +1979,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
               <div className="flex-grow overflow-y-auto px-3 py-4 space-y-4">
                 {chapterSections.map((chapter, chapterIndex) => {
                   const isExpanded = expandedChapterIds.has(chapter.id);
-                  const examSlotIndex = Math.floor(chapterIndex / 3);
-                  const exam = studentExams.find(item => item.slotIndex === examSlotIndex);
-                  const shouldShowExam = (chapterIndex + 1) % 3 === 0 && exam;
+                  const exam = studentExams.find(item => item.afterChapterId === chapter.id);
                   const videoLessonsInChapter = chapter.lessons.filter(lesson => lesson.type === 'video');
                   const completedVideoCount = videoLessonsInChapter.filter(lesson =>
                     completedList.includes(lesson.id)
@@ -2108,7 +2106,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                       </AnimatePresence>
                     </section>
 
-                    {shouldShowExam && (
+                    {exam && (
                       exam.unlocked ? (
                         <Link
                           to={`/courses/${courseId}/exams/${exam.slotIndex}`}
@@ -2125,7 +2123,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className={`text-sm font-extrabold line-clamp-2 ${exam.passed ? 'text-green-700' : 'text-primary'}`}>
-                              {exam.name}
+                              {exam.examTypeLabel ? `${exam.examTypeLabel}: ${exam.name}` : exam.name}
                             </p>
                             <p className="mt-0.5 text-xs font-medium text-on-surface-variant">
                               {exam.passed
@@ -2140,7 +2138,9 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                             <Lock className="w-4.5 h-4.5" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-extrabold text-on-surface line-clamp-2">{exam.name}</p>
+                            <p className="text-sm font-extrabold text-on-surface line-clamp-2">
+                              {exam.examTypeLabel ? `${exam.examTypeLabel}: ${exam.name}` : exam.name}
+                            </p>
                             <p className="mt-0.5 text-xs font-medium text-on-surface-variant">
                               {exam.lockedReason ?? `Cần pass ${exam.requiredQuizCount} quiz chương`}
                             </p>

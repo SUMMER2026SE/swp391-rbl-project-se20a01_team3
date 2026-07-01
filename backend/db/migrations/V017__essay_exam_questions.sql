@@ -1,0 +1,13 @@
+DO $$ BEGIN
+    ALTER TYPE public.question_type ADD VALUE IF NOT EXISTS 'essay';
+EXCEPTION
+    WHEN undefined_object THEN NULL;
+END $$;
+
+ALTER TABLE public.exam_configs
+ADD COLUMN IF NOT EXISTS multiple_choice_score DOUBLE PRECISION NOT NULL DEFAULT 10,
+ADD COLUMN IF NOT EXISTS essay_score DOUBLE PRECISION NOT NULL DEFAULT 0;
+
+ALTER TABLE public.exam_attempts
+ADD COLUMN IF NOT EXISTS essay_answers JSONB,
+ADD COLUMN IF NOT EXISTS essay_image_urls JSONB;

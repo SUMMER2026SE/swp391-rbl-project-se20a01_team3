@@ -2,6 +2,8 @@ package com.beeacademy.backend.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -46,6 +48,18 @@ public class ExamConfig {
     @Column(name = "slot_index", nullable = false)
     private Integer slotIndex;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "exam_type", nullable = false, length = 20)
+    private ExamType examType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "anchor_chapter_id")
+    private Chapter anchorChapter;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "start_chapter_id")
+    private Chapter startChapter;
+
     @Column(name = "name", nullable = false)
     private String name;
 
@@ -57,6 +71,12 @@ public class ExamConfig {
 
     @Column(name = "pass_score_percent", nullable = false)
     private Integer passScorePercent;
+
+    @Column(name = "multiple_choice_score", nullable = false)
+    private Double multipleChoiceScore;
+
+    @Column(name = "essay_score", nullable = false)
+    private Double essayScore;
 
     @Column(name = "max_attempts", nullable = false)
     private Integer maxAttempts;
@@ -83,8 +103,10 @@ public class ExamConfig {
     private Instant updatedAt;
 
     public static ExamConfig create(Course course, Profile teacher, Integer slotIndex,
+                                    ExamType examType, Chapter startChapter, Chapter anchorChapter,
                                     String name, String description,
                                     Integer durationMinutes, Integer passScorePercent,
+                                    Double multipleChoiceScore, Double essayScore,
                                     Integer maxAttempts, Boolean shuffleQuestions,
                                     Boolean shuffleOptions, Boolean showAnswerAfterSubmit,
                                     String questionsJson) {
@@ -93,20 +115,28 @@ public class ExamConfig {
         config.course = course;
         config.teacher = teacher;
         config.slotIndex = slotIndex;
-        config.update(name, description, durationMinutes, passScorePercent, maxAttempts,
+        config.update(examType, startChapter, anchorChapter, name, description, durationMinutes, passScorePercent,
+                multipleChoiceScore, essayScore, maxAttempts,
                 shuffleQuestions, shuffleOptions, showAnswerAfterSubmit, questionsJson);
         return config;
     }
 
-    public void update(String name, String description,
+    public void update(ExamType examType, Chapter startChapter, Chapter anchorChapter,
+                       String name, String description,
                        Integer durationMinutes, Integer passScorePercent,
+                       Double multipleChoiceScore, Double essayScore,
                        Integer maxAttempts, Boolean shuffleQuestions,
                        Boolean shuffleOptions, Boolean showAnswerAfterSubmit,
                        String questionsJson) {
+        this.examType = examType;
+        this.startChapter = startChapter;
+        this.anchorChapter = anchorChapter;
         this.name = name;
         this.description = description;
         this.durationMinutes = durationMinutes;
         this.passScorePercent = passScorePercent;
+        this.multipleChoiceScore = multipleChoiceScore;
+        this.essayScore = essayScore;
         this.maxAttempts = maxAttempts;
         this.shuffleQuestions = shuffleQuestions;
         this.shuffleOptions = shuffleOptions;

@@ -36,7 +36,9 @@ public record TeacherExamAttemptResponse(
             Boolean correct,
             Double points,
             Double earnedPoints,
-            String explanation
+            String explanation,
+            String essayAnswer,
+            List<String> essayImageUrls
     ) {
     }
 }

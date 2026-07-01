@@ -7,5 +7,9 @@ import java.util.Map;
 
 public record SubmitExamRequest(
         @NotNull(message = "Thiếu danh sách câu trả lời")
-        Map<String, List<Integer>> answers
+        Map<String, List<Integer>> answers,
+
+        Map<String, String> essayAnswers,
+
+        Map<String, List<String>> essayImageUrls
 ) {}

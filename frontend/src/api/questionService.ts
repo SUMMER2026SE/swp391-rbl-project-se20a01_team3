@@ -8,7 +8,7 @@ import type { ApiResponse, PageResponse } from '../types/api';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
-export type QuestionType = 'multiple_choice' | 'true_false';
+export type QuestionType = 'multiple_choice' | 'true_false' | 'essay';
 export type QuestionStatus = 'active' | 'inactive';
 
 export interface ChoiceResponse {
@@ -66,6 +66,7 @@ export interface ListQuestionsParams {
   grade?: number;
   chapterId?: string;
   difficulty?: Difficulty;
+  type?: QuestionType;
   status?: QuestionStatus;
   page?: number;
   size?: number;
@@ -103,9 +104,13 @@ export async function getQuestionStats(chapterId: string): Promise<QuestionStats
   return unwrap(res.data);
 }
 
-export async function countActiveQuestionsByChapter(chapterId: string): Promise<number> {
+export async function countActiveQuestionsByChapter(
+  chapterId: string,
+  type?: QuestionType,
+): Promise<number> {
   const page = await listQuestions({
     chapterId,
+    type,
     status: 'active',
     page: 0,
     size: 1,

@@ -1,8 +1,9 @@
 import { apiClient, unwrap } from './client';
 import type { ApiResponse } from '../types/api';
 
-export type ExamQuestionType = 'single' | 'multiple';
+export type ExamQuestionType = 'single' | 'multiple' | 'essay';
 export type ExamDifficulty = 'easy' | 'medium' | 'hard';
+export type ExamType = 'MIDTERM_1' | 'FINAL_1' | 'MIDTERM_2' | 'FINAL_2';
 
 export interface ExamQuestionPayload {
   id: string;
@@ -16,10 +17,15 @@ export interface ExamQuestionPayload {
 }
 
 export interface ExamConfigRequest {
+  examType: ExamType;
+  startChapterId: string;
+  afterChapterId: string;
   name: string;
   description?: string | null;
   durationMinutes: number;
   passScorePercent: number;
+  multipleChoiceScore: number;
+  essayScore: number;
   maxAttempts: number;
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
@@ -31,6 +37,9 @@ export interface ExamConfigResponse extends ExamConfigRequest {
   id: string;
   courseId: string;
   slotIndex: number;
+  examTypeLabel: string;
+  startChapterTitle: string | null;
+  afterChapterTitle: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -47,9 +56,13 @@ export interface ExamQuestionRandomRequest {
   mediumCount: number;
   hardCount: number;
   pointsPerQuestion: number;
+  multipleChoicePointsPerQuestion?: number;
+  essayPointsPerQuestion?: number;
   chapterConfigs?: Array<{
     chapterId: string;
     totalCount: number;
+    multipleChoiceCount?: number;
+    essayCount?: number;
   }>;
 }
 
@@ -63,10 +76,18 @@ export interface StudentExamRequiredChapter {
 export interface StudentExamSummaryResponse {
   examId: string | null;
   slotIndex: number;
+  examType: ExamType | null;
+  examTypeLabel: string | null;
+  startChapterId: string | null;
+  startChapterTitle: string | null;
+  afterChapterId: string | null;
+  afterChapterTitle: string | null;
   name: string;
   description: string | null;
   durationMinutes: number | null;
   passScorePercent: number | null;
+  multipleChoiceScore: number | null;
+  essayScore: number | null;
   maxAttempts: number | null;
   configured: boolean;
   unlocked: boolean;
@@ -104,7 +125,7 @@ export interface StudentExamResultDetail {
   text: string;
   studentAnswers: number[];
   correctAnswers: number[];
-  isCorrect: boolean;
+  isCorrect: boolean | null;
   explanation: string | null;
   points: number;
 }
@@ -128,10 +149,12 @@ export interface TeacherExamQuestionReview {
   options: string[];
   studentAnswers: number[];
   correctAnswers: number[];
-  correct: boolean;
+  correct: boolean | null;
   points: number;
-  earnedPoints: number;
+  earnedPoints: number | null;
   explanation: string | null;
+  essayAnswer: string | null;
+  essayImageUrls: string[];
 }
 
 export interface TeacherExamAttemptResponse {
@@ -228,10 +251,12 @@ export async function startStudentExam(
 export async function submitStudentExam(
     attemptId: string,
     answers: Record<string, number[]>,
+    essayAnswers: Record<string, string> = {},
+    essayImageUrls: Record<string, string[]> = {},
 ): Promise<StudentExamResultResponse> {
   const res = await apiClient.post<ApiResponse<StudentExamResultResponse>>(
     `/api/student/exam-attempts/${attemptId}/submit`,
-    { answers },
+    { answers, essayAnswers, essayImageUrls },
   );
   return unwrap(res.data);
 }

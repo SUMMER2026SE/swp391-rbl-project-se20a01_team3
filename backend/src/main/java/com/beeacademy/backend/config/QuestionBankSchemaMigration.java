@@ -36,6 +36,14 @@ public class QuestionBankSchemaMigration implements ApplicationRunner {
             return;
         }
 
+        jdbcTemplate.execute("""
+                DO $$ BEGIN
+                    ALTER TYPE public.question_type ADD VALUE IF NOT EXISTS 'essay';
+                EXCEPTION
+                    WHEN undefined_object THEN NULL;
+                END $$;
+                """);
+
         Boolean hasGradeColumn = jdbcTemplate.queryForObject("""
                 SELECT EXISTS (
                     SELECT 1

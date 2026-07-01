@@ -75,7 +75,16 @@ function formatDate(iso: string) {
 
 interface ChoiceRow { content: string; isCorrect: boolean }
 
-function emptyChoices(type: 'multiple_choice' | 'true_false'): ChoiceRow[] {
+type BankQuestionType = 'multiple_choice' | 'true_false' | 'essay';
+
+function questionTypeLabel(type: BankQuestionType): string {
+  if (type === 'multiple_choice') return 'Trắc nghiệm';
+  if (type === 'true_false') return 'Đúng / Sai';
+  return 'Tự luận';
+}
+
+function emptyChoices(type: BankQuestionType): ChoiceRow[] {
+  if (type === 'essay') return [];
   if (type === 'true_false') return [
     { content: 'Đúng', isCorrect: true },
     { content: 'Sai',  isCorrect: false },
@@ -94,7 +103,7 @@ interface FormState {
   content: string;
   explanation: string;
   difficulty: Difficulty;
-  type: 'multiple_choice' | 'true_false';
+  type: BankQuestionType;
   choices: ChoiceRow[];
 }
 
@@ -179,7 +188,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
     }));
   }
 
-  function handleTypeChange(type: 'multiple_choice' | 'true_false') {
+  function handleTypeChange(type: BankQuestionType) {
     setForm(f => ({ ...f, type, choices: emptyChoices(type) }));
   }
 
@@ -218,8 +227,14 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
     if (!form.categoryId) { notify.error('Vui lòng chọn môn học'); return; }
     if (!form.grade) { notify.error('Vui lòng chọn lớp'); return; }
     if (!form.content.trim()) { notify.error('Vui lòng nhập nội dung câu hỏi'); return; }
-    if (form.choices.some(c => !c.content.trim())) { notify.error('Vui lòng điền đầy đủ nội dung các đáp án'); return; }
-    if (!form.choices.some(c => c.isCorrect)) { notify.error('Vui lòng chọn đáp án đúng'); return; }
+    if (form.type !== 'essay' && form.choices.some(c => !c.content.trim())) {
+      notify.error('Vui lòng điền đầy đủ nội dung các đáp án');
+      return;
+    }
+    if (form.type !== 'essay' && !form.choices.some(c => c.isCorrect)) {
+      notify.error('Vui lòng chọn đáp án đúng');
+      return;
+    }
 
     const req: CreateQuestionRequest = {
       categoryId:  form.categoryId,
@@ -229,7 +244,9 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
       explanation: form.explanation.trim() || undefined,
       difficulty:  form.difficulty,
       type:        form.type,
-      choices:     form.choices.map(c => ({ content: c.content.trim(), isCorrect: c.isCorrect })),
+      choices:     form.type === 'essay'
+        ? []
+        : form.choices.map(c => ({ content: c.content.trim(), isCorrect: c.isCorrect })),
     };
 
     setSaving(true);
@@ -378,7 +395,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
               <div>
                 <label className="block text-sm font-bold text-on-surface mb-1.5">Loại câu hỏi</label>
                 <div className="flex rounded-xl overflow-hidden border border-outline-variant">
-                  {(['multiple_choice', 'true_false'] as const).map(t => (
+                  {(['multiple_choice', 'true_false', 'essay'] as const).map(t => (
                     <button
                       key={t}
                       type="button"
@@ -389,7 +406,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                           : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
                       }`}
                     >
-                      {t === 'multiple_choice' ? 'Trắc nghiệm' : 'Đúng / Sai'}
+                      {questionTypeLabel(t)}
                     </button>
                   ))}
                 </div>
@@ -435,71 +452,77 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
               </div>
 
               {/* Đáp án */}
-              <div>
-                <label className="block text-sm font-bold text-on-surface mb-1.5">
-                  Đáp án <span className="text-red-500">*</span>
-                  <span className="ml-1 text-xs font-normal text-on-surface-variant">
-                    (click vòng tròn để chọn đáp án đúng)
-                  </span>
-                </label>
-                <div className="space-y-2">
-                  {form.choices.map((choice, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      {/* Radio chọn đúng */}
-                      <button
-                        type="button"
-                        onClick={() => setChoiceCorrect(idx)}
-                        className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                          choice.isCorrect
-                            ? 'border-primary bg-primary text-on-primary'
-                            : 'border-outline-variant text-transparent hover:border-primary/50'
-                        }`}
-                      >
-                        {choice.isCorrect ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5 opacity-0" />}
-                      </button>
-
-                      {/* Input nội dung */}
-                      {form.type === 'true_false' ? (
-                        <div className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium border ${
-                          choice.isCorrect ? 'border-primary bg-primary/5 text-primary' : 'border-outline-variant bg-surface-container text-on-surface-variant'
-                        }`}>
-                          {choice.content}
-                        </div>
-                      ) : (
-                        <input
-                          type="text"
-                          value={choice.content}
-                          onChange={e => setChoiceContent(idx, e.target.value)}
-                          placeholder={`Đáp án ${String.fromCharCode(65 + idx)}`}
-                          className="flex-1 px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
-                        />
-                      )}
-
-                      {/* Nút xóa (chỉ khi multiple_choice và có > 2 đáp án) */}
-                      {form.type === 'multiple_choice' && form.choices.length > 2 && (
+              {form.type === 'essay' ? (
+                <div className="rounded-xl border border-outline-variant/40 bg-surface-container px-3 py-2.5 text-sm text-on-surface-variant">
+                  Câu hỏi tự luận không cần nhập đáp án trong ngân hàng câu hỏi.
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-bold text-on-surface mb-1.5">
+                    Đáp án <span className="text-red-500">*</span>
+                    <span className="ml-1 text-xs font-normal text-on-surface-variant">
+                      (click vòng tròn để chọn đáp án đúng)
+                    </span>
+                  </label>
+                  <div className="space-y-2">
+                    {form.choices.map((choice, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        {/* Radio chọn đúng */}
                         <button
                           type="button"
-                          onClick={() => removeChoice(idx)}
-                          className="flex-shrink-0 p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          onClick={() => setChoiceCorrect(idx)}
+                          className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
+                            choice.isCorrect
+                              ? 'border-primary bg-primary text-on-primary'
+                              : 'border-outline-variant text-transparent hover:border-primary/50'
+                          }`}
                         >
-                          <X className="w-4 h-4" />
+                          {choice.isCorrect ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5 opacity-0" />}
                         </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
 
-                {/* Nút thêm đáp án */}
-                {form.type === 'multiple_choice' && form.choices.length < 4 && (
-                  <button
-                    type="button"
-                    onClick={addChoice}
-                    className="mt-2 flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Thêm đáp án
-                  </button>
-                )}
-              </div>
+                        {/* Input nội dung */}
+                        {form.type === 'true_false' ? (
+                          <div className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium border ${
+                            choice.isCorrect ? 'border-primary bg-primary/5 text-primary' : 'border-outline-variant bg-surface-container text-on-surface-variant'
+                          }`}>
+                            {choice.content}
+                          </div>
+                        ) : (
+                          <input
+                            type="text"
+                            value={choice.content}
+                            onChange={e => setChoiceContent(idx, e.target.value)}
+                            placeholder={`Đáp án ${String.fromCharCode(65 + idx)}`}
+                            className="flex-1 px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                          />
+                        )}
+
+                        {/* Nút xóa (chỉ khi multiple_choice và có > 2 đáp án) */}
+                        {form.type === 'multiple_choice' && form.choices.length > 2 && (
+                          <button
+                            type="button"
+                            onClick={() => removeChoice(idx)}
+                            className="flex-shrink-0 p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Nút thêm đáp án */}
+                  {form.type === 'multiple_choice' && form.choices.length < 4 && (
+                    <button
+                      type="button"
+                      onClick={addChoice}
+                      className="mt-2 flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Thêm đáp án
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Giải thích */}
               <div>
@@ -1144,8 +1167,10 @@ export default function QuestionBankPage() {
                             <td className="px-5 py-3">
                               <p className="text-on-surface font-medium leading-snug">{truncate(q.content, 100)}</p>
                               <p className="text-xs text-on-surface-variant mt-0.5">
-                                {q.type === 'multiple_choice' ? 'Trắc nghiệm' : 'Đúng / Sai'}
-                                {q.choices.length > 0 && ` · ${q.choices.length} đáp án`}
+                                {questionTypeLabel(q.type as BankQuestionType)}
+                                {q.type === 'essay'
+                                  ? ' · không cần đáp án'
+                                  : q.choices.length > 0 && ` · ${q.choices.length} đáp án`}
                               </p>
                             </td>
                             <td className="px-4 py-3"><DifficultyBadge difficulty={q.difficulty} /></td>
