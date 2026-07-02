@@ -41,6 +41,11 @@ import {
   type AssignmentSubmissionResponse,
   type AssignmentSubmissionStatus,
 } from '../../api/assignmentService';
+import {
+  gradeTeacherExamAttempt,
+  listTeacherExamAttempts,
+  type TeacherExamAttemptResponse,
+} from '../../api/examService';
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Tổng quan', path: '/teacher' },
@@ -117,6 +122,8 @@ function StatusBadge({ status }: { status: AssignmentSubmissionStatus }) {
 
 export default function TeacherGradesPage() {
   const [submissions, setSubmissions] = useState<AssignmentSubmissionResponse[]>([]);
+  const [examAttempts, setExamAttempts] = useState<TeacherExamAttemptResponse[]>([]);
+  const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [courseFilter, setCourseFilter] = useState('all');
   const [assignmentFilter, setAssignmentFilter] = useState('all');
@@ -124,6 +131,8 @@ export default function TeacherGradesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [scoreInput, setScoreInput] = useState('');
   const [feedbackInput, setFeedbackInput] = useState('');
+  const [examScoreInput, setExamScoreInput] = useState('');
+  const [examFeedbackInput, setExamFeedbackInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -137,8 +146,12 @@ export default function TeacherGradesPage() {
   async function loadSubmissions(showSuccess = false) {
     setLoading(true);
     try {
-      const data = await listTeacherAssignmentSubmissions();
+      const [data, examData] = await Promise.all([
+        listTeacherAssignmentSubmissions(),
+        listTeacherExamAttempts(),
+      ]);
       setSubmissions(data);
+      setExamAttempts(examData);
       if (showSuccess) notify.success('Đã làm mới danh sách bài tự luận.');
     } catch (err) {
       notify.error(isApiError(err) ? err.message : 'Không thể tải bài tự luận đã nộp.');
@@ -186,11 +199,27 @@ export default function TeacherGradesPage() {
   }, [filteredSubmissions, selectedId]);
 
   const selected = submissions.find(item => item.id === selectedId) ?? null;
+  const selectedExam = examAttempts.find(item => item.id === selectedExamId) ?? null;
 
   useEffect(() => {
     setScoreInput(selected?.score != null ? String(selected.score) : '');
     setFeedbackInput(selected?.feedback ?? '');
   }, [selected?.id]);
+
+  useEffect(() => {
+    if (examAttempts.length === 0) {
+      setSelectedExamId(null);
+    } else if (!examAttempts.some(item => item.id === selectedExamId)) {
+      setSelectedExamId(examAttempts[0].id);
+    }
+  }, [examAttempts, selectedExamId]);
+
+  useEffect(() => {
+    setExamScoreInput(selectedExam?.effectiveScorePercent != null
+      ? String(selectedExam.effectiveScorePercent)
+      : '');
+    setExamFeedbackInput(selectedExam?.feedback ?? '');
+  }, [selectedExam?.id]);
 
   const stats = useMemo(() => ({
     total: submissions.length,
@@ -234,6 +263,32 @@ export default function TeacherGradesPage() {
     } catch (err) {
       notify.dismiss(toastId);
       notify.error(isApiError(err) ? err.message : 'Không thể lưu điểm.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSaveExamGrade() {
+    if (!selectedExam || saving) return;
+    const score = Number(examScoreInput);
+    if (!Number.isFinite(score) || score < 0 || score > 100) {
+      notify.error('Điểm bài kiểm tra phải từ 0 đến 100%.');
+      return;
+    }
+    setSaving(true);
+    const toastId = notify.loading('Đang lưu điểm bài kiểm tra...');
+    try {
+      const updated = await gradeTeacherExamAttempt(
+        selectedExam.id,
+        score,
+        examFeedbackInput.trim(),
+      );
+      setExamAttempts(current => current.map(item => item.id === updated.id ? updated : item));
+      notify.dismiss(toastId);
+      notify.success('Đã lưu điểm bài kiểm tra.');
+    } catch (err) {
+      notify.dismiss(toastId);
+      notify.error(isApiError(err) ? err.message : 'Không thể lưu điểm bài kiểm tra.');
     } finally {
       setSaving(false);
     }
@@ -368,6 +423,92 @@ export default function TeacherGradesPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
                 <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Tìm tên học sinh..." className="w-full pl-9 pr-3 py-2.5 bg-surface-container border border-outline-variant rounded-xl text-sm outline-none focus:border-primary" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-4 shadow-sm mb-6">
+            <div className="flex flex-col lg:flex-row gap-4">
+              <div className="lg:w-80">
+                <h3 className="font-extrabold flex items-center gap-2 mb-3">
+                  <GraduationCap className="w-4 h-4 text-primary" />
+                  Bài kiểm tra đã nộp
+                </h3>
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {examAttempts.length === 0 ? (
+                    <p className="text-sm text-on-surface-variant">Chưa có lượt làm bài kiểm tra.</p>
+                  ) : examAttempts.map(attempt => (
+                    <button
+                      key={attempt.id}
+                      onClick={() => setSelectedExamId(attempt.id)}
+                      className={`w-full rounded-xl border p-3 text-left text-sm transition-all ${
+                        attempt.id === selectedExamId
+                          ? 'border-primary/40 bg-primary/10'
+                          : 'border-outline-variant/30 bg-surface-container/30 hover:border-primary/30'
+                      }`}
+                    >
+                      <p className="font-bold">{attempt.studentName ?? 'Học sinh'}</p>
+                      <p className="text-xs text-on-surface-variant">{attempt.examName}</p>
+                      <p className="text-xs font-semibold mt-1">
+                        {attempt.status === 'graded' ? `Đã chấm: ${attempt.effectiveScorePercent}%` : 'Chưa chấm tự luận'}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex-1 min-w-0">
+                {!selectedExam ? (
+                  <p className="text-sm text-on-surface-variant">Chọn một lượt làm bài kiểm tra để xem phần tự luận.</p>
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <p className="font-extrabold">{selectedExam.studentName ?? 'Học sinh'}</p>
+                      <p className="text-sm text-on-surface-variant">{selectedExam.courseTitle} · {selectedExam.examName}</p>
+                    </div>
+                    <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                      {selectedExam.questions.map((question, index) => (
+                        <div key={question.id} className="rounded-xl border border-outline-variant/30 bg-surface-container/30 p-3">
+                          <p className="text-sm font-bold">Câu {index + 1}: {question.text}</p>
+                          {question.type === 'essay' ? (
+                            <div className="mt-2 space-y-2">
+                              <p className="text-sm whitespace-pre-wrap">
+                                {question.textAnswer || 'Học sinh không nhập văn bản.'}
+                              </p>
+                              {question.imageUrls.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                  {question.imageUrls.map((url, fileIndex) => (
+                                    <a key={url} href={url} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary underline">
+                                      Ảnh {fileIndex + 1}
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-on-surface-variant">
+                              Trắc nghiệm: {question.earnedPoints}/{question.points} điểm
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-[140px_1fr_auto] gap-3 items-end border-t border-outline-variant/20 pt-4">
+                      <label className="block">
+                        <span className="text-xs uppercase font-extrabold text-on-surface-variant mb-1.5 block">Điểm %</span>
+                        <input value={examScoreInput} onChange={event => setExamScoreInput(event.target.value)} type="number" min={0} max={100} className="w-full px-3 py-2.5 bg-surface-container border border-outline-variant rounded-xl text-sm outline-none focus:border-primary" />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs uppercase font-extrabold text-on-surface-variant mb-1.5 block">Nhận xét</span>
+                        <input value={examFeedbackInput} onChange={event => setExamFeedbackInput(event.target.value)} className="w-full px-3 py-2.5 bg-surface-container border border-outline-variant rounded-xl text-sm outline-none focus:border-primary" />
+                      </label>
+                      <button onClick={handleSaveExamGrade} disabled={saving} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 disabled:opacity-60">
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        Lưu điểm
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

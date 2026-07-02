@@ -2852,9 +2852,8 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
               <div className="flex-grow overflow-y-auto px-3 py-4 space-y-4">
                 {chapterSections.map((chapter, chapterIndex) => {
                   const isExpanded = expandedChapterIds.has(chapter.id);
-                  const examSlotIndex = Math.floor(chapterIndex / 3);
-                  const exam = studentExams.find(item => item.slotIndex === examSlotIndex);
-                  const shouldShowExam = (chapterIndex + 1) % 3 === 0 && exam;
+                  const examsAfterChapter = studentExams.filter(item => item.placementChapterId === chapter.id);
+                  const shouldShowExam = examsAfterChapter.length > 0;
                   const videoLessonsInChapter = chapter.lessons.filter(lesson => lesson.type === 'video');
                   const completedVideoCount = videoLessonsInChapter.filter(lesson =>
                     completedList.includes(lesson.id)
@@ -3002,9 +3001,10 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                       </AnimatePresence>
                     </section>
 
-                    {shouldShowExam && (
+                    {shouldShowExam && examsAfterChapter.map(exam => (
                       exam.unlocked ? (
                         <Link
+                          key={exam.slotIndex}
                           to={`/courses/${courseId}/exams/${exam.slotIndex}`}
                           className={`w-full text-left rounded-2xl border px-3 py-3 flex items-start gap-3 transition-all ${
                             exam.passed
@@ -3029,7 +3029,10 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                           </div>
                         </Link>
                       ) : (
-                        <div className="w-full rounded-2xl border border-outline-variant/40 bg-surface-container/50 px-3 py-3 flex items-start gap-3 opacity-90">
+                        <div
+                          key={exam.slotIndex}
+                          className="w-full rounded-2xl border border-outline-variant/40 bg-surface-container/50 px-3 py-3 flex items-start gap-3 opacity-90"
+                        >
                           <div className="w-8 h-8 rounded-xl bg-surface-container-high text-on-surface-variant flex items-center justify-center flex-shrink-0">
                             <Lock className="w-4.5 h-4.5" />
                           </div>
@@ -3044,7 +3047,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                           </div>
                         </div>
                       )
-                    )}
+                    ))}
                     </div>
                   );
                 })}

@@ -32,11 +32,10 @@ public record CreateQuestionRequest(
         String difficulty,
 
         @NotNull
-        @Pattern(regexp = "multiple_choice|true_false", message = "Loại phải là: multiple_choice, true_false")
+        @Pattern(regexp = "multiple_choice|true_false|essay", message = "Loại phải là: multiple_choice, true_false hoặc essay")
         String type,
 
-        @NotNull
-        @Size(min = 2, max = 4, message = "Câu hỏi phải có 2-4 đáp án")
+        @Size(max = 4, message = "Câu hỏi trắc nghiệm có tối đa 4 đáp án")
         @Valid
         List<ChoiceRequest> choices
 ) {
