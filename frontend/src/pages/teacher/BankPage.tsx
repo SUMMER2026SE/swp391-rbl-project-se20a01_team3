@@ -35,7 +35,7 @@ import {
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, CheckCircle2, Clock, AlertTriangle,
   Eye, EyeOff, History, ChevronDown, ChevronRight,
-  Megaphone, Database, UserCircle, Lock,
+  Megaphone, Database, UserCircle, Lock, Star,
 } from 'lucide-react';
 
 type VerifyStatus = 'pending' | 'verified' | 'rejected';
@@ -82,6 +82,7 @@ const VN_BANKS = [
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Tổng quan',         path: '/teacher',          },
   { icon: BookOpen,        label: 'Khóa học của tôi',  path: '/teacher/courses',  },
+  { icon: Star,            label: 'Đánh giá khóa học', path: '/teacher/reviews',  },
   { icon: FileText,        label: 'Bài giảng',          path: '/teacher/content',  },
   { icon: PenSquare,       label: 'Quiz chương',        path: '/teacher/quiz',     },
   { icon: Database,        label: 'Ngân hàng câu hỏi',  path: '/teacher/questions',},

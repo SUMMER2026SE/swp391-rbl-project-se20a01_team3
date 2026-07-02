@@ -26,7 +26,7 @@ import {
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, CheckCircle2, Clock, AlertTriangle,
   Megaphone, Database, Send, RefreshCcw, Eye, Save, Loader2, ChevronDown,
-  Upload, Image as ImageIcon, MessageSquare, UserCircle, Lock, Video,
+  Upload, Image as ImageIcon, MessageSquare, UserCircle, Lock, Video, Star,
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -36,6 +36,7 @@ import {
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Tổng quan',         path: '/teacher'           },
   { icon: BookOpen,        label: 'Khóa học của tôi',  path: '/teacher/courses'   },
+  { icon: Star,            label: 'Đánh giá khóa học', path: '/teacher/reviews'   },
   { icon: FileText,        label: 'Bài giảng',          path: '/teacher/content'   },
   { icon: PenSquare,       label: 'Quiz chương',        path: '/teacher/quiz'      },
   { icon: Database,        label: 'Ngân hàng câu hỏi',  path: '/teacher/questions' },
