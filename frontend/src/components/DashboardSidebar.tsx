@@ -25,7 +25,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Bell, BookOpen, CreditCard, Heart, MessageSquare,
   ShoppingBag, UserCircle, Camera, LogOut, Lock, Megaphone,
-  DollarSign, BarChart2, Settings, Calendar, TrendingUp, Database
+  DollarSign, BarChart2, Settings, Calendar, TrendingUp, Database, Star
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -56,6 +56,7 @@ const PARENT_MENU_ITEMS = [
 const TEACHER_MENU_ITEMS = [
   { icon: UserCircle,    label: 'Dashboard tổng quan',  path: '/teacher'       },
   { icon: BookOpen,      label: 'Khóa học của tôi',     path: '/teacher/courses' },
+  { icon: Star,          label: 'Đánh giá khóa học',    path: '/teacher/reviews' },
   { icon: BookOpen,      label: 'Nội dung giảng dạy',   path: '/teacher/content' },
   { icon: BookOpen,      label: 'Quản lý Quiz',         path: '/teacher/quiz'  },
   { icon: Database,      label: 'Ngân hàng câu hỏi',    path: '/teacher/questions' },
@@ -148,7 +149,10 @@ export default function DashboardSidebar({
               : STUDENT_MENU_ITEMS
         ).map(item => {
           // exact match: '/account' không active khi ở '/account/type'
-          const isActive = pathname === item.path;
+          const isActive = pathname === item.path
+            || (item.path === '/teacher/reviews'
+              && pathname.startsWith('/teacher/courses/')
+              && pathname.endsWith('/reviews'));
 
           return (
             <button

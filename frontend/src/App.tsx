@@ -31,6 +31,7 @@ import TeacherQAPage from './pages/teacher/QAPage';
 import TeacherRevenuePage from './pages/teacher/RevenuePage';
 import TeacherBankPage from './pages/teacher/BankPage';
 import TeacherComplaintsPage from './pages/teacher/ComplaintsPage';
+import TeacherReviewsPage from './pages/teacher/ReviewsPage';
 import QuestionBankPage from './pages/teacher/QuestionBankPage';
 import TeacherProfilePage from './pages/teacher/ProfilePage';
 import TeacherAccountPage from './pages/teacher/AccountPage';
@@ -90,6 +91,8 @@ export default function App() {
         {/* ── Teacher (chỉ role=teacher) ── */}
         <Route path="/teacher"            element={<ProtectedRoute role="teacher"><DashboardTeacher /></ProtectedRoute>} />
         <Route path="/teacher/courses"    element={<ProtectedRoute role="teacher"><TeacherCoursesPage /></ProtectedRoute>} />
+        <Route path="/teacher/reviews"    element={<ProtectedRoute role="teacher"><TeacherReviewsPage /></ProtectedRoute>} />
+        <Route path="/teacher/courses/:courseId/reviews" element={<ProtectedRoute role="teacher"><TeacherReviewsPage /></ProtectedRoute>} />
         <Route path="/teacher/content"    element={<ProtectedRoute role="teacher"><TeacherContentPage /></ProtectedRoute>} />
         <Route path="/teacher/quiz"       element={<ProtectedRoute role="teacher"><TeacherQuizChapterPage /></ProtectedRoute>} />
         <Route path="/teacher/exam"       element={<ProtectedRoute role="teacher"><TeacherExamPage /></ProtectedRoute>} />

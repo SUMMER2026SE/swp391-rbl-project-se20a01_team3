@@ -5,6 +5,7 @@
  */
 import { apiClient, unwrap } from './client';
 import type { ApiResponse, PageResponse } from '../types/api';
+import type { CourseReviewSummary } from '../types/api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -131,6 +132,13 @@ export async function getCourseDetail(courseId: string):
     Promise<TeacherCourseDetailResponse> {
   const res = await apiClient.get<ApiResponse<TeacherCourseDetailResponse>>(
     `/api/teacher/courses/${courseId}`);
+  return unwrap(res.data);
+}
+
+export async function getTeacherCourseReviews(courseId: string):
+    Promise<CourseReviewSummary> {
+  const res = await apiClient.get<ApiResponse<CourseReviewSummary>>(
+    `/api/teacher/courses/${encodeURIComponent(courseId)}/reviews`);
   return unwrap(res.data);
 }
 
