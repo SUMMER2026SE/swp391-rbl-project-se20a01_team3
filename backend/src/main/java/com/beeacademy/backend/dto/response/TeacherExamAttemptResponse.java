@@ -32,6 +32,8 @@ public record TeacherExamAttemptResponse(
             String type,
             List<String> options,
             List<Integer> studentAnswers,
+            String textAnswer,
+            List<String> imageUrls,
             List<Integer> correctAnswers,
             Boolean correct,
             Double points,

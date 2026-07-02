@@ -5,6 +5,7 @@ import com.beeacademy.backend.dto.response.ApiResponse;
 import com.beeacademy.backend.dto.response.StudentExamResultResponse;
 import com.beeacademy.backend.dto.response.StudentExamStartResponse;
 import com.beeacademy.backend.dto.response.StudentExamSummaryResponse;
+import com.beeacademy.backend.dto.response.UploadResponse;
 import com.beeacademy.backend.security.CurrentUser;
 import com.beeacademy.backend.service.ExamService;
 import jakarta.validation.Valid;
@@ -14,7 +15,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -45,5 +48,13 @@ public class StudentExamController {
         return ApiResponse.ok(
                 examService.submitStudentExam(attemptId, CurrentUser.required(), req),
                 "Submitted exam");
+    }
+
+    @PostMapping("/api/student/exam-attempts/{attemptId}/images")
+    public ApiResponse<UploadResponse> uploadEssayImage(@PathVariable UUID attemptId,
+                                                        @RequestParam("file") MultipartFile file) {
+        return ApiResponse.ok(
+                examService.uploadExamAnswerImage(attemptId, CurrentUser.required(), file),
+                "Uploaded exam answer image");
     }
 }

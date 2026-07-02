@@ -8,7 +8,7 @@ import type { ApiResponse, PageResponse } from '../types/api';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
-export type QuestionType = 'multiple_choice' | 'true_false';
+export type QuestionType = 'multiple_choice' | 'true_false' | 'essay';
 export type QuestionStatus = 'active' | 'inactive';
 
 export interface ChoiceResponse {
