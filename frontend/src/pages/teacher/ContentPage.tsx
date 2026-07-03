@@ -21,7 +21,7 @@ import {
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, ChevronDown, ChevronRight, Save,
   Upload, Link2, Video, FileImage, Presentation,
-  Youtube, Megaphone, Database, Loader2, CheckCircle2, AlertTriangle, UserCircle, Lock,
+  Youtube, Megaphone, Database, Loader2, CheckCircle2, AlertTriangle, UserCircle, Lock, Star,
   GripVertical,
 } from 'lucide-react';
 
@@ -37,6 +37,10 @@ interface LessonFormData {
   videoSource: 'upload' | 'embed' | 'none';
   videoEmbedUrl: string;
   videoStoragePath: string;
+  existingPdfName: string;
+  existingSlideName: string;
+  existingPdfId: string;
+  existingSlideId: string;
 }
 
 interface ChapterFormData {
@@ -74,6 +78,8 @@ function emptyLessonForm(position = 1): LessonFormData {
   return {
     title: '', description: '', position, isFree: false,
     videoSource: 'none', videoEmbedUrl: '', videoStoragePath: '',
+    existingPdfName: '', existingSlideName: '',
+    existingPdfId: '', existingSlideId: '',
   };
 }
 
@@ -82,6 +88,13 @@ function emptyChapterForm(position = 1): ChapterFormData {
 }
 
 function lessonToForm(l: TeacherLessonResponse): LessonFormData {
+  const documents = l.documents ?? [];
+  const slideDocument = documents.find(document => document.position === 2) ??
+    documents.find(document => ['ppt', 'pptx', 'key'].includes(document.fileType.toLowerCase()));
+  const pdfDocument = documents.find(document =>
+    document.position === 1 && document !== slideDocument) ??
+    documents.find(document => document !== slideDocument);
+
   return {
     title: l.title,
     description: l.description ?? '',
@@ -90,6 +103,10 @@ function lessonToForm(l: TeacherLessonResponse): LessonFormData {
     videoSource: l.videoEmbedUrl ? 'embed' : (l.videoStoragePath ? 'upload' : 'none'),
     videoEmbedUrl: l.videoEmbedUrl ?? '',
     videoStoragePath: l.videoStoragePath ?? '',
+    existingPdfName: pdfDocument?.name ?? '',
+    existingSlideName: slideDocument?.name ?? '',
+    existingPdfId: pdfDocument?.id ?? '',
+    existingSlideId: slideDocument?.id ?? '',
   };
 }
 
@@ -167,6 +184,7 @@ async function getVideoDurationSec(file: File): Promise<number | null> {
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Tổng quan',        path: '/teacher'           },
   { icon: BookOpen,        label: 'Khóa học của tôi', path: '/teacher/courses'   },
+  { icon: Star,            label: 'Đánh giá khóa học', path: '/teacher/reviews'  },
   { icon: FileText,        label: 'Bài giảng',         path: '/teacher/content'   },
   { icon: PenSquare,       label: 'Quiz chương',       path: '/teacher/quiz'      },
   { icon: Database,        label: 'Ngân hàng câu hỏi', path: '/teacher/questions' },
@@ -206,9 +224,7 @@ function FileSlot({ label, icon, accept, existingName, file, onSelect, onRemove 
 
       {displayName ? (
         <div className="flex items-center justify-between gap-2 bg-surface-container rounded-lg px-3 py-2">
-          {!file && existingName && (
-            <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-          )}
+          <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
           <span className="text-sm text-on-surface truncate flex-1">{displayName}</span>
           <button
             onClick={onRemove}
@@ -421,6 +437,7 @@ export default function TeacherContentPage() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [slideFile, setSlideFile] = useState<File | null>(null);
+  const [documentIdsToDelete, setDocumentIdsToDelete] = useState<string[]>([]);
 
   // Chapter form state
   const [chapterEditing, setChapterEditing] = useState<ChapterEditingState>({ mode: 'closed' });
@@ -497,6 +514,7 @@ export default function TeacherContentPage() {
 
   function clearFiles() {
     setVideoFile(null); setPdfFile(null); setSlideFile(null);
+    setDocumentIdsToDelete([]);
   }
 
   async function refreshSelectedCourseDetail() {
@@ -649,17 +667,20 @@ export default function TeacherContentPage() {
           });
         }
         if (pdfFile) {
-          await svc.uploadDocument(lesson.id, pdfFile);
+          await svc.uploadDocument(lesson.id, pdfFile, 'pdf');
         }
         if (slideFile) {
-          await svc.uploadDocument(lesson.id, slideFile, slideFile.name);
+          await svc.uploadDocument(lesson.id, slideFile, 'slide', slideFile.name);
+        }
+        for (const documentId of documentIdsToDelete) {
+          await svc.deleteDocument(lesson.id, documentId);
         }
       } catch (uploadErr: unknown) {
         uploadError = true;
         // Lấy message từ backend nếu có (vd: file quá lớn, sai định dạng)
         // FIX: dùng err.message thay vì err.response?.data?.message
-        const msg = uploadErr instanceof Error ? uploadErr.message : 'Upload file thất bại';
-        notify.error(msg + ' — Bài giảng đã được lưu. Vào chỉnh sửa bài giảng để upload lại.');
+        const msg = uploadErr instanceof Error ? uploadErr.message : 'Cập nhật file đính kèm thất bại';
+        notify.error(msg + ' — Bài giảng đã được lưu. Vào chỉnh sửa bài giảng để thử lại.');
       }
 
       // Bước 3: Refresh danh sách từ server (dù upload lỗi, lesson vẫn cần hiển thị)
@@ -966,20 +987,50 @@ export default function TeacherContentPage() {
                   label="Tài liệu PDF"
                   icon={<FileImage className="w-5 h-5" />}
                   accept=".pdf"
-                  existingName={undefined}
+                  existingName={lessonForm.existingPdfName
+                    ? `(Tài liệu PDF đã tải lên) ${lessonForm.existingPdfName}`
+                    : undefined}
                   file={pdfFile}
                   onSelect={f => setPdfFile(f)}
-                  onRemove={() => setPdfFile(null)}
+                  onRemove={() => {
+                    if (pdfFile) {
+                      setPdfFile(null);
+                      return;
+                    }
+                    if (lessonForm.existingPdfId) {
+                      setDocumentIdsToDelete(ids => [...ids, lessonForm.existingPdfId]);
+                      setLessonForm({
+                        ...lessonForm,
+                        existingPdfId: '',
+                        existingPdfName: '',
+                      });
+                    }
+                  }}
                 />
 
                 <FileSlot
                   label="Slide bài giảng"
                   icon={<Presentation className="w-5 h-5" />}
                   accept=".pptx,.ppt,.key,.pdf"
-                  existingName={undefined}
+                  existingName={lessonForm.existingSlideName
+                    ? `(Slide bài giảng đã tải lên) ${lessonForm.existingSlideName}`
+                    : undefined}
                   file={slideFile}
                   onSelect={f => setSlideFile(f)}
-                  onRemove={() => setSlideFile(null)}
+                  onRemove={() => {
+                    if (slideFile) {
+                      setSlideFile(null);
+                      return;
+                    }
+                    if (lessonForm.existingSlideId) {
+                      setDocumentIdsToDelete(ids => [...ids, lessonForm.existingSlideId]);
+                      setLessonForm({
+                        ...lessonForm,
+                        existingSlideId: '',
+                        existingSlideName: '',
+                      });
+                    }
+                  }}
                 />
               </div>
             </div>

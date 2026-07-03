@@ -5,6 +5,7 @@
  */
 import { apiClient, unwrap } from './client';
 import type { ApiResponse, PageResponse } from '../types/api';
+import type { CourseReviewSummary } from '../types/api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,12 @@ export interface TeacherLessonResponse {
   videoUrl: string | null;
   durationSec: number;
   hasVideo: boolean;
+  documents: Array<{
+    id: string;
+    name: string;
+    fileType: string;
+    position: number;
+  }>;
 }
 
 export interface TeacherChapterResponse {
@@ -125,6 +132,13 @@ export async function getCourseDetail(courseId: string):
     Promise<TeacherCourseDetailResponse> {
   const res = await apiClient.get<ApiResponse<TeacherCourseDetailResponse>>(
     `/api/teacher/courses/${courseId}`);
+  return unwrap(res.data);
+}
+
+export async function getTeacherCourseReviews(courseId: string):
+    Promise<CourseReviewSummary> {
+  const res = await apiClient.get<ApiResponse<CourseReviewSummary>>(
+    `/api/teacher/courses/${encodeURIComponent(courseId)}/reviews`);
   return unwrap(res.data);
 }
 
@@ -258,14 +272,20 @@ export async function uploadVideo(
 }
 
 export async function uploadDocument(lessonId: string, file: File,
+                                      slot: 'pdf' | 'slide',
                                       displayName?: string): Promise<UploadResponse> {
   const form = new FormData();
   form.append('file', file);
+  form.append('slot', slot);
   if (displayName) form.append('name', displayName);
   const res = await apiClient.post<ApiResponse<UploadResponse>>(
     `/api/upload/document/${lessonId}`, form,
     { headers: { 'Content-Type': 'multipart/form-data' } });
   return unwrap(res.data);
+}
+
+export async function deleteDocument(lessonId: string, documentId: string): Promise<void> {
+  await apiClient.delete(`/api/upload/document/${lessonId}/${documentId}`);
 }
 
 export async function uploadCourseThumbnail(file: File): Promise<UploadResponse> {

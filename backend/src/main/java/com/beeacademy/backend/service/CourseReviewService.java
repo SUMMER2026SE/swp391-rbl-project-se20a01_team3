@@ -46,11 +46,38 @@ public class CourseReviewService {
                     .orElse(null);
         }
 
-        RatingSummary summary = getRatingSummary(courseId);
+        RatingSummary summary = fallbackSummary(getRatingSummary(courseId), reviews);
         return new CourseReviewSummaryResponse(
                 summary.averageRating(),
                 summary.reviewCount(),
                 myReview,
+                reviews
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public CourseReviewSummaryResponse getTeacherCourseReviews(UUID courseId, AuthenticatedUser me) {
+        Course course = courseRepository.findWithCategoryAndTeacherById(courseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Course", courseId));
+        if (course.getTeacher() == null || !course.getTeacher().getId().equals(me.userId())) {
+            throw new BusinessException(
+                    "TEACHER_COURSE_REVIEW_FORBIDDEN",
+                    "Ban khong co quyen xem danh gia cua khoa hoc nay.",
+                    HttpStatus.FORBIDDEN
+            );
+        }
+
+        List<CourseReviewResponse> reviews = courseReviewRepository
+                .findTop20ByCourse_IdOrderByUpdatedAtDesc(courseId)
+                .stream()
+                .map(CourseReviewResponse::fromEntity)
+                .toList();
+
+        RatingSummary summary = fallbackSummary(getRatingSummary(courseId), reviews);
+        return new CourseReviewSummaryResponse(
+                summary.averageRating(),
+                summary.reviewCount(),
+                null,
                 reviews
         );
     }
@@ -114,6 +141,17 @@ public class CourseReviewService {
 
     private double round1(double value) {
         return Math.round(value * 10.0) / 10.0;
+    }
+
+    private RatingSummary fallbackSummary(RatingSummary summary, List<CourseReviewResponse> reviews) {
+        if (summary.reviewCount() > 0 || reviews == null || reviews.isEmpty()) {
+            return summary;
+        }
+        double average = reviews.stream()
+                .mapToInt(CourseReviewResponse::rating)
+                .average()
+                .orElse(0.0);
+        return new RatingSummary(round1(average), reviews.size());
     }
 
     public record RatingSummary(double averageRating, long reviewCount) {

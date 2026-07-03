@@ -18,7 +18,7 @@ import {
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, Megaphone, RefreshCcw, Filter,
   ChevronDown, Zap, TrendingUp, Minus, Database,
-  Save, Loader2, CheckCircle2, Circle, FileSpreadsheet, Sparkles, Lock, UserCircle,
+  Save, Loader2, CheckCircle2, Circle, FileSpreadsheet, Sparkles, Lock, UserCircle, Star,
 } from 'lucide-react';
 import ExcelImportModal from './ExcelImportModal';
 import AIScanModal from './AIScanModal';
@@ -30,6 +30,7 @@ import AIScanModal from './AIScanModal';
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Tổng quan',         path: '/teacher'            },
   { icon: BookOpen,        label: 'Khóa học của tôi',  path: '/teacher/courses'    },
+  { icon: Star,            label: 'Đánh giá khóa học', path: '/teacher/reviews'    },
   { icon: FileText,        label: 'Bài giảng',          path: '/teacher/content'    },
   { icon: PenSquare,       label: 'Quiz chương',        path: '/teacher/quiz'       },
   { icon: Database,        label: 'Ngân hàng câu hỏi', path: '/teacher/questions'  },
