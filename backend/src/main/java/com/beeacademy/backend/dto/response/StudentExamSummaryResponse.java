@@ -6,6 +6,10 @@ import java.util.UUID;
 public record StudentExamSummaryResponse(
         UUID examId,
         Integer slotIndex,
+        UUID scopeStartChapterId,
+        String scopeStartChapterTitle,
+        UUID placementChapterId,
+        String placementChapterTitle,
         String name,
         String description,
         Integer durationMinutes,

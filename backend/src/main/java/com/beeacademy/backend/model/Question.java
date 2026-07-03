@@ -155,13 +155,14 @@ public class Question {
     }
 
     public void update(Category category, Integer grade, Chapter chapter,
-                       String content, String explanation, String difficulty) {
+                       String content, String explanation, String difficulty, String type) {
         if (category != null) this.category = category;
         if (grade != null) this.grade = grade;
         this.chapter = chapter;
         if (content != null && !content.isBlank()) this.content = content;
         if (explanation != null) this.explanation = explanation;
         if (difficulty != null) this.difficulty = difficulty;
+        if (type != null) this.type = type;
     }
 
     /** Soft-delete: chỉ đặt status = inactive, không xóa khỏi DB. */

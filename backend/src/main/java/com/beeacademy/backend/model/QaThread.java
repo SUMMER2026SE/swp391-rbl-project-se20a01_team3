@@ -72,6 +72,13 @@ public class QaThread {
         return createWithAuthor(student, course, lesson, student, content);
     }
 
+    public static QaThread create(Profile student, Course course, Lesson lesson, String content,
+                                  String attachmentUrl, String attachmentName,
+                                  String attachmentType, Long attachmentSizeBytes) {
+        return createWithAuthor(student, course, lesson, student, content,
+                attachmentUrl, attachmentName, attachmentType, attachmentSizeBytes);
+    }
+
     public static QaThread createWithAuthor(Profile student, Course course, Lesson lesson,
                                             Profile author, String content) {
         return createWithAuthor(student, course, lesson, author, content, null, null, null, null);
@@ -98,7 +105,14 @@ public class QaThread {
     }
 
     public void addStudentMessage(Profile student, String content) {
-        this.messages.add(QaMessage.create(this, student, content));
+        addStudentMessage(student, content, null, null, null, null);
+    }
+
+    public void addStudentMessage(Profile student, String content,
+                                  String attachmentUrl, String attachmentName,
+                                  String attachmentType, Long attachmentSizeBytes) {
+        this.messages.add(QaMessage.create(this, student, content,
+                attachmentUrl, attachmentName, attachmentType, attachmentSizeBytes));
         this.status = QaThreadStatus.PENDING;
         this.resolvedAt = null;
         this.lastActivityAt = Instant.now();
@@ -119,7 +133,14 @@ public class QaThread {
     }
 
     public void addTeacherMessage(Profile teacher, String content) {
-        this.messages.add(QaMessage.create(this, teacher, content));
+        addTeacherMessage(teacher, content, null, null, null, null);
+    }
+
+    public void addTeacherMessage(Profile teacher, String content,
+                                  String attachmentUrl, String attachmentName,
+                                  String attachmentType, Long attachmentSizeBytes) {
+        this.messages.add(QaMessage.create(this, teacher, content,
+                attachmentUrl, attachmentName, attachmentType, attachmentSizeBytes));
         this.status = QaThreadStatus.ANSWERED;
         this.resolvedAt = null;
         this.lastActivityAt = Instant.now();

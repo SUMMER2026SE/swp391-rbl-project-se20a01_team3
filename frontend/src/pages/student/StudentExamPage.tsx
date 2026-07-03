@@ -4,18 +4,26 @@ import { motion } from 'motion/react';
 import {
   AlertCircle, ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight,
   Clock, FileText, Loader2, RotateCcw, Trophy, XCircle,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { notify } from '../../lib/toast';
 import LatexText from '../../components/LatexText';
 import {
   startStudentExam,
   submitStudentExam,
+  uploadExamAnswerImage,
   type StudentExamQuestion,
   type StudentExamResultResponse,
   type StudentExamStartResponse,
 } from '../../api/examService';
 
 type PagePhase = 'loading' | 'error' | 'exam' | 'submitting' | 'results';
+type ExamAnswerDraft = {
+  selectedIndices: number[];
+  textAnswer: string;
+  imageUrls: string[];
+  uploading?: boolean;
+};
 
 function ScoreCircle({ score }: { score: number }) {
   const circumference = 2 * Math.PI * 15.9;
@@ -76,7 +84,7 @@ export default function StudentExamPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [attempt, setAttempt] = useState<StudentExamStartResponse | null>(null);
   const [result, setResult] = useState<StudentExamResultResponse | null>(null);
-  const [answers, setAnswers] = useState<Record<string, number[]>>({});
+  const [answers, setAnswers] = useState<Record<string, ExamAnswerDraft>>({});
   const [currentIdx, setCurrentIdx] = useState(0);
 
   const startExam = useCallback(async () => {
@@ -90,8 +98,10 @@ export default function StudentExamPage() {
     setCurrentIdx(0);
     try {
       const data = await startStudentExam(courseId, Number(slotIndex));
-      const init: Record<string, number[]> = {};
-      data.questions.forEach(question => { init[question.id] = []; });
+      const init: Record<string, ExamAnswerDraft> = {};
+      data.questions.forEach(question => {
+        init[question.id] = { selectedIndices: [], textAnswer: '', imageUrls: [] };
+      });
       setAttempt(data);
       setAnswers(init);
       setPhase('exam');
@@ -109,7 +119,15 @@ export default function StudentExamPage() {
     if (!attempt) return;
     setPhase('submitting');
     try {
-      const data = await submitStudentExam(attempt.attemptId, answers);
+      const payload = Object.fromEntries(Object.entries(answers).map(([id, answer]) => [
+        id,
+        {
+          selectedIndices: answer.selectedIndices,
+          textAnswer: answer.textAnswer,
+          imageUrls: answer.imageUrls,
+        },
+      ]));
+      const data = await submitStudentExam(attempt.attemptId, payload);
       setResult(data);
       setPhase('results');
     } catch (error) {
@@ -125,15 +143,57 @@ export default function StudentExamPage() {
 
   function toggleOption(question: StudentExamQuestion, optionIndex: number) {
     setAnswers(prev => {
-      const current = prev[question.id] ?? [];
+      const current = prev[question.id]?.selectedIndices ?? [];
       if (question.type === 'single') {
-        return { ...prev, [question.id]: [optionIndex] };
+        return {
+          ...prev,
+          [question.id]: { ...prev[question.id], selectedIndices: [optionIndex] },
+        };
       }
       const next = current.includes(optionIndex)
         ? current.filter(item => item !== optionIndex)
         : [...current, optionIndex];
-      return { ...prev, [question.id]: next };
+      return {
+        ...prev,
+        [question.id]: { ...prev[question.id], selectedIndices: next },
+      };
     });
+  }
+
+  function updateEssayText(questionId: string, textAnswer: string) {
+    setAnswers(prev => ({
+      ...prev,
+      [questionId]: { ...prev[questionId], textAnswer },
+    }));
+  }
+
+  async function handleEssayImages(questionId: string, files: FileList | null) {
+    if (!attempt || !files?.length) return;
+    setAnswers(prev => ({
+      ...prev,
+      [questionId]: { ...prev[questionId], uploading: true },
+    }));
+    try {
+      const uploaded: string[] = [];
+      for (const file of Array.from(files)) {
+        const res = await uploadExamAnswerImage(attempt.attemptId, file);
+        if (res.publicUrl) uploaded.push(res.publicUrl);
+      }
+      setAnswers(prev => ({
+        ...prev,
+        [questionId]: {
+          ...prev[questionId],
+          imageUrls: [...(prev[questionId]?.imageUrls ?? []), ...uploaded],
+          uploading: false,
+        },
+      }));
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không tải được ảnh bài làm.');
+      setAnswers(prev => ({
+        ...prev,
+        [questionId]: { ...prev[questionId], uploading: false },
+      }));
+    }
   }
 
   if (phase === 'loading') {
@@ -180,12 +240,12 @@ export default function StudentExamPage() {
 
         <main className="mx-auto max-w-3xl px-4 py-8">
           <div className="overflow-hidden rounded-3xl border border-outline-variant/40 bg-surface-container-lowest shadow-lg">
-            <div className={`border-b border-outline-variant/30 p-8 text-center ${result.passed ? 'bg-green-500/5' : 'bg-red-500/5'}`}>
+            <div className={`border-b border-outline-variant/30 p-8 text-center ${result.passed === null ? 'bg-primary/5' : result.passed ? 'bg-green-500/5' : 'bg-red-500/5'}`}>
               <div className="mb-4 flex justify-center">
                 <ScoreCircle score={result.scorePercent} />
               </div>
-              <h1 className={`text-2xl font-extrabold ${result.passed ? 'text-green-600' : 'text-red-500'}`}>
-                {result.passed ? 'Đạt bài kiểm tra' : 'Chưa đạt bài kiểm tra'}
+              <h1 className={`text-2xl font-extrabold ${result.passed === null ? 'text-primary' : result.passed ? 'text-green-600' : 'text-red-500'}`}>
+                {result.passed === null ? 'Đã nộp, chờ giáo viên chấm tự luận' : result.passed ? 'Đạt bài kiểm tra' : 'Chưa đạt bài kiểm tra'}
               </h1>
               <p className="mt-2 text-sm font-semibold text-on-surface-variant">
                 {result.earnedPoints}/{result.totalPoints} điểm · Lần {result.attemptNumber}
@@ -195,10 +255,16 @@ export default function StudentExamPage() {
             <div className="space-y-3 p-5">
               {result.details.map((detail, index) => (
                 <div key={detail.questionId} className={`rounded-2xl border p-4 ${
-                  detail.isCorrect ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'
+                  detail.isCorrect === null
+                    ? 'border-primary/30 bg-primary/5'
+                    : detail.isCorrect
+                    ? 'border-green-500/30 bg-green-500/5'
+                    : 'border-red-500/30 bg-red-500/5'
                 }`}>
                   <div className="flex gap-3">
-                    {detail.isCorrect
+                    {detail.isCorrect === null
+                      ? <FileText className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
+                      : detail.isCorrect
                       ? <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-500" />
                       : <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
                     }
@@ -244,7 +310,14 @@ export default function StudentExamPage() {
 
   const questions = attempt?.questions ?? [];
   const currentQuestion = questions[currentIdx];
-  const answeredCount = Object.values(answers).filter(value => value.length > 0).length;
+  const answeredCount = questions.filter(question => {
+    const answer = answers[question.id];
+    if (!answer) return false;
+    if (question.type === 'essay') {
+      return Boolean(answer.textAnswer.trim()) || answer.imageUrls.length > 0;
+    }
+    return answer.selectedIndices.length > 0;
+  }).length;
   const allAnswered = answeredCount === questions.length;
 
   return (
@@ -277,7 +350,11 @@ export default function StudentExamPage() {
                   <h1 className="mt-2 text-xl font-extrabold text-on-surface">{attempt?.name}</h1>
                 </div>
                 <span className="rounded-full bg-secondary-container px-3 py-1 text-xs font-bold text-on-secondary-container">
-                  {currentQuestion.type === 'multiple' ? 'Nhiều đáp án' : 'Một đáp án'}
+                  {currentQuestion.type === 'essay'
+                    ? 'Tự luận'
+                    : currentQuestion.type === 'multiple'
+                    ? 'Nhiều đáp án'
+                    : 'Một đáp án'}
                 </span>
               </div>
 
@@ -285,9 +362,42 @@ export default function StudentExamPage() {
                 <LatexText content={currentQuestion.text} />
               </p>
 
+              {currentQuestion.type === 'essay' ? (
+                <div className="space-y-4">
+                  <textarea
+                    value={answers[currentQuestion.id]?.textAnswer ?? ''}
+                    onChange={event => updateEssayText(currentQuestion.id, event.target.value)}
+                    rows={10}
+                    disabled={phase !== 'exam'}
+                    placeholder="Nhập bài làm tự luận..."
+                    className="w-full rounded-2xl border border-outline-variant/40 bg-surface p-4 text-sm leading-7 outline-none focus:border-primary disabled:opacity-60"
+                  />
+                  <label className="flex cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-outline-variant/50 bg-surface p-4 text-sm font-bold text-on-surface-variant hover:border-primary/50 hover:text-primary">
+                    <ImageIcon className="h-4 w-4" />
+                    {answers[currentQuestion.id]?.uploading ? 'Đang tải ảnh...' : 'Tải ảnh bài làm'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      disabled={phase !== 'exam' || answers[currentQuestion.id]?.uploading}
+                      onChange={event => handleEssayImages(currentQuestion.id, event.target.files)}
+                    />
+                  </label>
+                  {(answers[currentQuestion.id]?.imageUrls ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {answers[currentQuestion.id].imageUrls.map((url, index) => (
+                        <a key={url} href={url} target="_blank" rel="noreferrer" className="rounded-xl bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary">
+                          Ảnh {index + 1}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
               <div className="space-y-3">
                 {currentQuestion.options.map((option, index) => {
-                  const selected = (answers[currentQuestion.id] ?? []).includes(index);
+                  const selected = (answers[currentQuestion.id]?.selectedIndices ?? []).includes(index);
                   return (
                     <button
                       key={`${currentQuestion.id}-${index}`}
@@ -310,6 +420,7 @@ export default function StudentExamPage() {
                   );
                 })}
               </div>
+              )}
 
               <div className="mt-8 flex items-center justify-between">
                 <button
@@ -346,7 +457,10 @@ export default function StudentExamPage() {
           <h2 className="mb-3 text-sm font-extrabold text-on-surface">Bản đồ câu hỏi</h2>
           <div className="grid grid-cols-5 gap-2">
             {questions.map((question, index) => {
-              const answered = (answers[question.id] ?? []).length > 0;
+              const answer = answers[question.id];
+              const answered = question.type === 'essay'
+                ? Boolean(answer?.textAnswer.trim()) || (answer?.imageUrls.length ?? 0) > 0
+                : (answer?.selectedIndices.length ?? 0) > 0;
               const current = index === currentIdx;
               return (
                 <button

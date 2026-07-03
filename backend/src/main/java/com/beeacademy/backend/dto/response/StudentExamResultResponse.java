@@ -17,7 +17,10 @@ public record StudentExamResultResponse(
     public record QuestionResult(
             String questionId,
             String text,
+            String type,
             List<Integer> studentAnswers,
+            String textAnswer,
+            List<String> imageUrls,
             List<Integer> correctAnswers,
             Boolean isCorrect,
             String explanation,
