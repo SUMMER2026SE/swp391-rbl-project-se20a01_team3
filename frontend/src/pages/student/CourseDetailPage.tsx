@@ -31,6 +31,7 @@ import {
   Trophy, Loader2, Send, AlertCircle, Plus, Minus, Clock, Trash2, Pencil,
 } from 'lucide-react';
 import DashboardHeader from '../../components/DashboardHeader';
+import EmbeddedVideoPlayer from '../../components/EmbeddedVideoPlayer';
 import QaImagePicker from '../../components/QaImagePicker';
 import type { Course, Lesson, QuizQuestion } from '../../data/mockCourses';
 import { notify } from '../../lib/toast';
@@ -58,8 +59,18 @@ import {
 import { listStudentCourseExams } from '../../api/examService';
 import { uploadQaImage } from '../../api/qaService';
 import { completeCourseProgressItem, getCourseProgress } from '../../api/courseProgressService';
+import {
+  createStudentLessonNote,
+  deleteStudentLessonNote,
+  listStudentLessonNotes,
+} from '../../api/studentLessonNoteService';
+import {
+  getStudentVideoProgress,
+  saveStudentVideoProgress,
+} from '../../api/studentVideoProgressService';
 import type { CourseDiscussionThread } from '../../api/courseDiscussionService';
 import type { StudentExamSummaryResponse } from '../../api/examService';
+import type { StudentLessonNote } from '../../api/studentLessonNoteService';
 import type { ChapterDetail, CourseReviewSummary, LessonDetail } from '../../types/api';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1780,20 +1791,20 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const markQuizCompleted = useCourseStore((state) => state.markQuizCompleted);
   const lessonDurations = useCourseStore((state) => state.lessonDurations);
   const saveLessonDuration = useCourseStore((state) => state.saveLessonDuration);
+  const videoPositions = useCourseStore((state) => state.videoPositions);
+  const saveVideoPosition = useCourseStore((state) => state.saveVideoPosition);
   const quizScores = useCourseStore((state) => state.quizScores);
   const saveQuizScore = useCourseStore((state) => state.saveQuizScore);
-  const lessonNotes = useCourseStore((state) => state.lessonNotes);
-  const saveLessonNote = useCourseStore((state) => state.saveLessonNote);
-  // Dữ liệu persist từ phiên bản cũ có thể chưa có field này.
-  const timedLessonNotes = useCourseStore((state) => state.timedLessonNotes ?? {});
-  const addTimedLessonNote = useCourseStore((state) => state.addTimedLessonNote);
-  const deleteTimedLessonNote = useCourseStore((state) => state.deleteTimedLessonNote);
   const completedList = completedLessons[course.id] ?? [];
   const completedQuizList = completedQuizzes[course.id] ?? [];
 
   // State cục bộ cho ghi chú
-  const [noteText, setNoteText] = useState('');
   const [timedNoteInput, setTimedNoteInput] = useState('');
+  const [activeTimedNotes, setActiveTimedNotes] = useState<StudentLessonNote[]>([]);
+  const [loadingTimedNotes, setLoadingTimedNotes] = useState(false);
+  const [savingTimedNote, setSavingTimedNote] = useState(false);
+  const [deletingTimedNoteId, setDeletingTimedNoteId] = useState<string | null>(null);
+  const [videoNoteOverlayOpen, setVideoNoteOverlayOpen] = useState(false);
   const [currentVideoTime, setCurrentVideoTime] = useState(0);
 
   // State cục bộ cho Q&A
@@ -1814,6 +1825,10 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const videoRef = useRef<HTMLVideoElement>(null);
   const isResettingSeekRef = useRef(false);
   const lastSeekWarningAtRef = useRef(0);
+  const currentPositionRef = useRef(0);
+  const currentDurationRef = useRef(0);
+  const lastLocalProgressRef = useRef(-1);
+  const lastRemoteSaveAtRef = useRef(0);
 
   const chapterSections = useMemo(() => (
     rawChapters.length > 0
@@ -1859,10 +1874,9 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     () => new Set(chapterSections.slice(0, 1).map(chapter => chapter.id))
   );
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(firstLesson);
+  const [resumePositionSec, setResumePositionSec] = useState(0);
+  const videoProgressStorageKey = `${user?.id ?? 'guest'}:${course.id}`;
   const [activeTab, setActiveTab] = useState<'overview' | 'qa' | 'notes' | 'reviews'>('overview');
-  const activeTimedNotes = activeLesson
-    ? timedLessonNotes[course.id]?.[activeLesson.id] ?? []
-    : [];
   const isDirectVideo = Boolean(
     activeLesson?.type === 'video' &&
     activeLesson.url &&
@@ -1883,21 +1897,75 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   }, [chapterSections, course.id, firstLesson]);
 
   useEffect(() => {
-    watchedUntilRef.current = 0;
+    const localProgress = activeLesson
+      ? videoPositions[videoProgressStorageKey]?.[activeLesson.id]
+      : undefined;
+    const localPosition = localProgress?.positionSec ?? 0;
+    watchedUntilRef.current = localPosition;
+    currentPositionRef.current = localPosition;
+    currentDurationRef.current = localProgress?.durationSec ?? 0;
+    lastLocalProgressRef.current = localPosition;
+    lastRemoteSaveAtRef.current = 0;
     isResettingSeekRef.current = false;
     lastSeekWarningAtRef.current = 0;
-    setCurrentVideoTime(0);
+    setCurrentVideoTime(localPosition);
+    setResumePositionSec(localPosition);
     setTimedNoteInput('');
-  }, [activeLesson?.id]);
+    setVideoNoteOverlayOpen(false);
+  }, [activeLesson?.id, videoProgressStorageKey]);
 
-  // Cập nhật nội dung ghi chú khi chuyển bài học
   useEffect(() => {
-    if (activeLesson) {
-      const savedNote = lessonNotes[course.id]?.[activeLesson.id] ?? '';
-      setNoteText(savedNote);
-
+    if (!activeLesson || activeLesson.type !== 'video' || user?.role !== 'student' || !course.isEnrolled) {
+      return;
     }
-  }, [activeLesson, course.id, lessonNotes]);
+
+    let cancelled = false;
+    const lessonId = activeLesson.id;
+    const localProgress = videoPositions[videoProgressStorageKey]?.[lessonId];
+    getStudentVideoProgress(course.id, lessonId)
+      .then(remoteProgress => {
+        if (cancelled) return;
+        const localUpdatedAt = localProgress?.updatedAt
+          ? new Date(localProgress.updatedAt).getTime()
+          : 0;
+        const remoteUpdatedAt = remoteProgress.updatedAt
+          ? new Date(remoteProgress.updatedAt).getTime()
+          : 0;
+        if (localProgress && localUpdatedAt > remoteUpdatedAt) return;
+
+        currentPositionRef.current = remoteProgress.positionSec;
+        currentDurationRef.current = remoteProgress.durationSec;
+        watchedUntilRef.current = Math.max(watchedUntilRef.current, remoteProgress.positionSec);
+        setCurrentVideoTime(remoteProgress.positionSec);
+        setResumePositionSec(remoteProgress.positionSec);
+        saveVideoPosition(
+          videoProgressStorageKey,
+          lessonId,
+          remoteProgress.positionSec,
+          remoteProgress.durationSec,
+          remoteProgress.updatedAt ?? undefined,
+        );
+      })
+      .catch(() => {
+        // Mất mạng không chặn việc học; vị trí cục bộ vẫn được dùng để khôi phục.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLesson?.id, course.id, course.isEnrolled, user?.role, videoProgressStorageKey]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || resumePositionSec <= 0 || !Number.isFinite(video.duration)) return;
+    if (video.duration - resumePositionSec <= 5) return;
+    isResettingSeekRef.current = true;
+    video.currentTime = Math.min(resumePositionSec, video.duration);
+    watchedUntilRef.current = Math.max(watchedUntilRef.current, video.currentTime);
+    window.setTimeout(() => {
+      isResettingSeekRef.current = false;
+    }, 0);
+  }, [activeLesson?.id, resumePositionSec]);
 
   useEffect(() => {
     if (!activeLesson) return;
@@ -1914,6 +1982,34 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       return next;
     });
   }, [activeLesson, chapterSections]);
+
+  useEffect(() => {
+    const shouldLoadNotes = activeTab === 'notes' || videoNoteOverlayOpen;
+    if (!shouldLoadNotes || !activeLesson || user?.role !== 'student') {
+      setActiveTimedNotes([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingTimedNotes(true);
+    listStudentLessonNotes(course.id, activeLesson.id)
+      .then(notes => {
+        if (!cancelled) setActiveTimedNotes(notes);
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setActiveTimedNotes([]);
+          notify.error(error instanceof Error ? error.message : 'Không tải được ghi chú');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingTimedNotes(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLesson, activeTab, course.id, user?.role, videoNoteOverlayOpen]);
 
   useEffect(() => {
     if (activeTab !== 'qa') return;
@@ -2036,6 +2132,54 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     notify.success(`Đã thêm "${course.title}" vào giỏ hàng!`);
   }
 
+  function persistCurrentVideoProgress(positionOverride?: number) {
+    if (!activeLesson || activeLesson.type !== 'video') return;
+    const position = Math.max(0, Math.floor(positionOverride ?? currentPositionRef.current));
+    const duration = Math.max(0, Math.floor(currentDurationRef.current));
+    saveVideoPosition(videoProgressStorageKey, activeLesson.id, position, duration);
+
+    if (user?.role !== 'student' || !course.isEnrolled) return;
+    lastRemoteSaveAtRef.current = Date.now();
+    void saveStudentVideoProgress(course.id, activeLesson.id, {
+      positionSec: position,
+      durationSec: duration,
+    }).catch(() => {
+      // Bản cục bộ đã được lưu; lần cập nhật tiếp theo sẽ thử đồng bộ lại.
+    });
+  }
+
+  function recordVideoProgress(positionSec: number, durationSec: number) {
+    if (!Number.isFinite(positionSec) || !Number.isFinite(durationSec)) return;
+    const normalizedPosition = Math.max(0, positionSec);
+    const normalizedDuration = Math.max(0, durationSec);
+    currentPositionRef.current = normalizedPosition;
+    currentDurationRef.current = normalizedDuration;
+    watchedUntilRef.current = Math.max(watchedUntilRef.current, normalizedPosition);
+    setCurrentVideoTime(normalizedPosition);
+
+    const wholeSecond = Math.floor(normalizedPosition);
+    if (Math.abs(wholeSecond - lastLocalProgressRef.current) >= 2) {
+      lastLocalProgressRef.current = wholeSecond;
+      if (activeLesson) {
+        saveVideoPosition(videoProgressStorageKey, activeLesson.id, wholeSecond, normalizedDuration);
+      }
+    }
+    if (Date.now() - lastRemoteSaveAtRef.current >= 10_000) {
+      persistCurrentVideoProgress();
+    }
+  }
+
+  useEffect(() => {
+    function saveWhenLeavingPage() {
+      if (document.visibilityState === 'hidden') persistCurrentVideoProgress();
+    }
+    document.addEventListener('visibilitychange', saveWhenLeavingPage);
+    return () => {
+      document.removeEventListener('visibilitychange', saveWhenLeavingPage);
+      persistCurrentVideoProgress();
+    };
+  }, [activeLesson?.id, course.id, course.isEnrolled, user?.role, videoProgressStorageKey]);
+
   // Callback từ QuizModal khi user nộp bài
   async function syncCompletedProgressItem(itemId: string, itemType: 'lesson' | 'quiz') {
     if (!course.isEnrolled || !accessToken) return;
@@ -2049,23 +2193,34 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   }
 
   function handleVideoEnded() {
-    if (!activeLesson || completedList.includes(activeLesson.id)) {
-      return;
+    currentPositionRef.current = 0;
+    persistCurrentVideoProgress(0);
+    if (activeLesson && !completedList.includes(activeLesson.id)) {
+      markLessonCompleted(course.id, activeLesson.id);
+      void syncCompletedProgressItem(activeLesson.id, 'lesson');
+      notify.success('Đã hoàn thành video bài học!');
     }
-    markLessonCompleted(course.id, activeLesson.id);
-    void syncCompletedProgressItem(activeLesson.id, 'lesson');
-    notify.success('Đã hoàn thành video bài học!');
   }
 
   function handleVideoMetadataLoaded(event: SyntheticEvent<HTMLVideoElement>) {
     if (!activeLesson) {
       return;
     }
-    saveLessonDuration(course.id, activeLesson.id, event.currentTarget.duration);
+    const video = event.currentTarget;
+    saveLessonDuration(course.id, activeLesson.id, video.duration);
+    currentDurationRef.current = video.duration;
+    if (resumePositionSec > 0 && video.duration - resumePositionSec > 5) {
+      isResettingSeekRef.current = true;
+      video.currentTime = Math.min(resumePositionSec, video.duration);
+      watchedUntilRef.current = Math.max(watchedUntilRef.current, video.currentTime);
+      window.setTimeout(() => {
+        isResettingSeekRef.current = false;
+      }, 0);
+    }
   }
 
   function handleVideoTimeUpdate(event: SyntheticEvent<HTMLVideoElement>) {
-    setCurrentVideoTime(event.currentTarget.currentTime);
+    recordVideoProgress(event.currentTarget.currentTime, event.currentTarget.duration);
     if (isResettingSeekRef.current) {
       return;
     }
@@ -2119,12 +2274,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     void syncCompletedProgressItem(lessonId, 'quiz');
   }
 
-  const handleSaveNote = () => {
-    saveLessonNote(course.id, activeLesson.id, noteText);
-    notify.success('Đã lưu ghi chú thành công!');
-  };
-
-  function handleAddTimedNote() {
+  async function handleAddTimedNote() {
     if (!activeLesson || !isDirectVideo || !videoRef.current) {
       notify.error('Ghi chú theo mốc thời gian hiện hỗ trợ video tải trực tiếp.');
       return;
@@ -2133,9 +2283,37 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       notify.error('Vui lòng nhập nội dung ghi chú.');
       return;
     }
-    addTimedLessonNote(course.id, activeLesson.id, videoRef.current.currentTime, timedNoteInput);
-    setTimedNoteInput('');
-    notify.success(`Đã lưu ghi chú tại ${formatDurationSec(Math.floor(videoRef.current.currentTime))}`);
+    const timeSec = Math.max(0, Math.floor(videoRef.current.currentTime));
+    try {
+      setSavingTimedNote(true);
+      const note = await createStudentLessonNote(course.id, activeLesson.id, {
+        timeSec,
+        content: timedNoteInput.trim(),
+      });
+      setActiveTimedNotes(previous =>
+        [...previous, note].sort((a, b) => a.timeSec - b.timeSec),
+      );
+      setTimedNoteInput('');
+      notify.success(`Đã lưu ghi chú tại ${formatDurationSec(timeSec)}`);
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không lưu được ghi chú');
+    } finally {
+      setSavingTimedNote(false);
+    }
+  }
+
+  async function handleDeleteTimedNote(noteId: string) {
+    if (!activeLesson) return;
+    try {
+      setDeletingTimedNoteId(noteId);
+      await deleteStudentLessonNote(course.id, activeLesson.id, noteId);
+      setActiveTimedNotes(previous => previous.filter(note => note.id !== noteId));
+      notify.success('Đã xóa ghi chú');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không xóa được ghi chú');
+    } finally {
+      setDeletingTimedNoteId(null);
+    }
   }
 
   function handleSeekToNote(timeSec: number) {
@@ -2290,7 +2468,12 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     }
   }
 
-  const questionsList = discussionThreads;
+  // Q&A trong màn hình học thuộc về từng bài học, không phải toàn khóa học.
+  // API trả về các thảo luận của cả khóa để tái sử dụng cho trang quản lý của giáo viên,
+  // vì vậy chỉ hiển thị những câu hỏi gắn đúng với bài đang mở tại đây.
+  const questionsList = discussionThreads.filter(
+    thread => thread.lessonId === activeLesson?.id,
+  );
 
   return (
     <div className="h-screen bg-surface flex flex-col font-sans overflow-hidden">
@@ -2376,17 +2559,17 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
             ) : activeLesson?.type === 'video' && activeLesson?.url && activeLesson.url !== '#' ? (
               // Kiểm tra embed URL (YouTube/Vimeo) hay direct video
               activeLesson.url.includes('youtube.com') ||
-                activeLesson.url.includes('youtu.be') ||
-                activeLesson.url.includes('vimeo.com') ||
-                activeLesson.url.includes('/embed/') ? (
-                // iframe cho YouTube/Vimeo
-                <iframe
+              activeLesson.url.includes('youtu.be') ||
+              activeLesson.url.includes('vimeo.com') ||
+              activeLesson.url.includes('/embed/') ? (
+                <EmbeddedVideoPlayer
                   key={activeLesson.id}
-                  src={activeLesson.url}
-                  className="absolute inset-0 w-full h-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
+                  url={activeLesson.url}
                   title={activeLesson.title}
+                  initialPositionSec={resumePositionSec}
+                  onProgress={recordVideoProgress}
+                  onPause={() => persistCurrentVideoProgress()}
+                  onEnded={handleVideoEnded}
                 />
               ) : (
                 // <video> cho file upload (signed URL từ Supabase Storage, TTL 1 giờ)
@@ -2401,6 +2584,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                   onLoadedMetadata={handleVideoMetadataLoaded}
                   onTimeUpdate={handleVideoTimeUpdate}
                   onSeeking={handleVideoSeeking}
+                  onPause={() => persistCurrentVideoProgress()}
                   onEnded={handleVideoEnded}
                   onError={() => setVideoUrlExpired(true)}
                 />
@@ -2448,6 +2632,124 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
               // Thumbnail mặc định
               <SafeCourseImage course={course} alt="Thumbnail" className="absolute inset-0 w-full h-full object-cover opacity-40" />
             )}
+
+            {/* Ghi chú nổi trực tiếp trên video để học sinh không phải cuộn xuống dưới. */}
+            {user?.role === 'student' && activeLesson?.type === 'video' && !videoUrlExpired && (
+              <div className="absolute right-3 top-3 z-40 sm:right-5 sm:top-5">
+                {!videoNoteOverlayOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setVideoNoteOverlayOpen(true)}
+                    className="flex items-center gap-2 rounded-xl border border-white/20 bg-black/75 px-3 py-2 text-xs font-extrabold text-white shadow-xl backdrop-blur-md transition-colors hover:bg-black/90 sm:px-4 sm:py-2.5 sm:text-sm"
+                  >
+                    <Pencil className="h-4 w-4 text-amber-300" />
+                    Ghi chú
+                    {isDirectVideo && (
+                      <span className="rounded-md bg-white/15 px-1.5 py-0.5 font-mono text-[11px] text-white/90">
+                        {formatDurationSec(Math.floor(currentVideoTime))}
+                      </span>
+                    )}
+                  </button>
+                ) : (
+                  <div className="flex max-h-[calc(56.25vw-1.5rem)] w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-white/20 bg-slate-950/95 text-white shadow-2xl backdrop-blur-xl sm:max-h-[calc(56.25vw-2.5rem)]">
+                    <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-3">
+                      <div>
+                        <h3 className="flex items-center gap-2 text-sm font-extrabold">
+                          <Clock className="h-4 w-4 text-amber-300" />
+                          Ghi chú tại {formatDurationSec(Math.floor(currentVideoTime))}
+                        </h3>
+                        <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-emerald-300">
+                          <Lock className="h-3 w-3" />
+                          Chỉ mình bạn xem được
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setVideoNoteOverlayOpen(false)}
+                        className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
+                        aria-label="Đóng ghi chú"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-3 overflow-y-auto p-3 sm:p-4">
+                      {isDirectVideo ? (
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={timedNoteInput}
+                            onChange={event => setTimedNoteInput(event.target.value)}
+                            onKeyDown={event => {
+                              if (event.key === 'Enter') handleAddTimedNote();
+                            }}
+                            maxLength={2000}
+                            disabled={savingTimedNote}
+                            autoFocus
+                            placeholder="Điều bạn chưa hiểu hoặc còn thắc mắc..."
+                            className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white outline-none placeholder:text-white/45 focus:border-amber-300/70"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddTimedNote}
+                            disabled={!timedNoteInput.trim() || savingTimedNote}
+                            className="inline-flex shrink-0 items-center justify-center rounded-xl bg-amber-400 px-3 py-2 text-xs font-extrabold text-slate-950 hover:bg-amber-300 disabled:opacity-50"
+                            title="Lưu ghi chú tại thời điểm hiện tại"
+                          >
+                            {savingTimedNote
+                              ? <Loader2 className="h-4 w-4 animate-spin" />
+                              : <Send className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="rounded-xl bg-amber-400/10 px-3 py-2 text-xs leading-relaxed text-amber-200">
+                          Video nhúng chưa cung cấp mốc thời gian cho hệ thống. Hãy dùng video tải trực tiếp để ghi chú đúng giây đang phát.
+                        </p>
+                      )}
+
+                      {loadingTimedNotes ? (
+                        <div className="flex items-center justify-center gap-2 py-3 text-xs text-white/60">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Đang tải ghi chú...
+                        </div>
+                      ) : activeTimedNotes.length > 0 ? (
+                        <div className="space-y-2">
+                          {activeTimedNotes.map(note => (
+                            <div key={note.id} className="flex items-start gap-2 rounded-xl bg-white/8 p-2.5">
+                              <button
+                                type="button"
+                                onClick={() => handleSeekToNote(note.timeSec)}
+                                className="shrink-0 rounded-lg bg-amber-400/15 px-2 py-1 font-mono text-[10px] font-extrabold text-amber-200 hover:bg-amber-400/25"
+                              >
+                                {formatDurationSec(note.timeSec)}
+                              </button>
+                              <p className="min-w-0 flex-1 whitespace-pre-wrap text-xs leading-relaxed text-white/90">
+                                {note.content}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTimedNote(note.id)}
+                                disabled={deletingTimedNoteId === note.id}
+                                className="shrink-0 rounded-lg p-1 text-red-300 hover:bg-red-400/10 disabled:opacity-50"
+                                title="Xóa ghi chú"
+                              >
+                                {deletingTimedNoteId === note.id
+                                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  : <Trash2 className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="py-2 text-center text-xs text-white/50">
+                          Chưa có ghi chú nào trong bài học này.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Thông tin bài học + tabs (Overview / Q&A / Notes) */}
@@ -2469,7 +2771,9 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                 { id: 'qa', label: 'Hỏi đáp (Q&A)' },
                 { id: 'notes', label: 'Ghi chú của tôi' },
                 { id: 'reviews', label: 'Đánh giá khóa học' },
-              ] as const).map(tab => (
+              ] as const)
+                .filter(tab => tab.id !== 'notes' || user?.role === 'student')
+                .map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
@@ -2778,7 +3082,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                     </div>
                   </motion.div>
                 )}
-                {activeTab === 'notes' && (
+                {activeTab === 'notes' && user?.role === 'student' && (
                   <motion.div key="notes" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
                     <div className="rounded-2xl border border-outline-variant/40 bg-surface-container/40 p-4 space-y-3">
                       <div className="flex items-center justify-between gap-3">
@@ -2786,6 +3090,10 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                           <h3 className="font-extrabold text-on-surface">Ghi chú theo thời gian video</h3>
                           <p className="text-xs text-on-surface-variant mt-1">
                             Ghi lại nội dung tại đúng thời điểm video đang phát.
+                          </p>
+                          <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-primary">
+                            <Lock className="h-3 w-3" />
+                            Riêng tư — chỉ bạn mới xem được các ghi chú này.
                           </p>
                         </div>
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-bold text-primary">
@@ -2802,22 +3110,32 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                           onKeyDown={event => {
                             if (event.key === 'Enter') handleAddTimedNote();
                           }}
-                          disabled={!isDirectVideo}
+                          maxLength={2000}
+                          disabled={!isDirectVideo || savingTimedNote}
                           placeholder={isDirectVideo ? 'Nhập ghi chú cho mốc thời gian hiện tại...' : 'Chỉ hỗ trợ video tải trực tiếp'}
                           className="flex-1 rounded-xl border border-outline-variant/40 bg-surface px-3 py-2.5 text-sm text-on-surface outline-none focus:border-primary disabled:opacity-60"
                         />
                         <button
                           type="button"
                           onClick={handleAddTimedNote}
-                          disabled={!isDirectVideo || !timedNoteInput.trim()}
+                          disabled={!isDirectVideo || !timedNoteInput.trim() || savingTimedNote}
                           className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
                         >
-                          <Plus className="h-4 w-4" />
-                          Thêm tại {formatDurationSec(Math.floor(currentVideoTime))}
+                          {savingTimedNote
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <Plus className="h-4 w-4" />}
+                          {savingTimedNote
+                            ? 'Đang lưu...'
+                            : `Thêm tại ${formatDurationSec(Math.floor(currentVideoTime))}`}
                         </button>
                       </div>
 
-                      {activeTimedNotes.length > 0 ? (
+                      {loadingTimedNotes ? (
+                        <div className="flex items-center gap-2 py-3 text-sm text-on-surface-variant">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Đang tải ghi chú của bạn...
+                        </div>
+                      ) : activeTimedNotes.length > 0 ? (
                         <div className="space-y-2 pt-1">
                           {activeTimedNotes.map(note => (
                             <div key={note.id} className="flex items-start gap-3 rounded-xl bg-surface px-3 py-2.5 border border-outline-variant/30">
@@ -2832,11 +3150,14 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                               <p className="flex-1 text-sm text-on-surface whitespace-pre-wrap">{note.content}</p>
                               <button
                                 type="button"
-                                onClick={() => deleteTimedLessonNote(course.id, activeLesson.id, note.id)}
-                                className="shrink-0 rounded-lg p-1.5 text-red-500 hover:bg-red-500/10"
+                                onClick={() => handleDeleteTimedNote(note.id)}
+                                disabled={deletingTimedNoteId === note.id}
+                                className="shrink-0 rounded-lg p-1.5 text-red-500 hover:bg-red-500/10 disabled:opacity-50"
                                 title="Xóa ghi chú"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                {deletingTimedNoteId === note.id
+                                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                                  : <Trash2 className="h-4 w-4" />}
                               </button>
                             </div>
                           ))}
@@ -2846,24 +3167,6 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                       )}
                     </div>
 
-                    <div>
-                      <h3 className="font-extrabold text-on-surface mb-2">Ghi chú chung</h3>
-                      <textarea
-                        value={noteText}
-                        onChange={(e) => setNoteText(e.target.value)}
-                        onBlur={() => saveLessonNote(course.id, activeLesson.id, noteText)}
-                        placeholder="Ghi chú các kiến thức quan trọng của bài học này... (hệ thống sẽ tự động lưu khi bạn thoát nhấp chuột)"
-                        className="w-full min-h-[160px] p-4 rounded-2xl bg-surface-container border border-outline-variant/40 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none resize-none text-on-surface placeholder:text-on-surface-variant/50 transition-all font-medium"
-                      />
-                      <div className="flex justify-end">
-                        <button
-                          onClick={handleSaveNote}
-                          className="px-5 py-2.5 bg-primary text-on-primary rounded-xl font-bold text-sm shadow-md hover:bg-primary/90 transition-all"
-                        >
-                          Lưu ghi chú
-                        </button>
-                      </div>
-                    </div>
                   </motion.div>
                 )}
                 {activeTab === 'reviews' && (
