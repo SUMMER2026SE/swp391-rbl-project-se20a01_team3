@@ -8,6 +8,12 @@ export interface TimedLessonNote {
   createdAt: string;
 }
 
+export interface VideoPosition {
+  positionSec: number;
+  durationSec: number;
+  updatedAt: string;
+}
+
 interface CourseState {
   purchasedIds: string[];
   enrollCourses: (courseIds: string[]) => void;
@@ -25,6 +31,16 @@ interface CourseState {
   // Thời lượng video lấy từ metadata trình duyệt khi backend chưa lưu durationSec.
   lessonDurations: Record<string, Record<string, number>>;
   saveLessonDuration: (courseId: string, lessonId: string, durationSec: number) => void;
+
+  // Vị trí xem gần nhất được giữ cục bộ để khôi phục ngay cả khi mạng chập chờn.
+  videoPositions: Record<string, Record<string, VideoPosition>>;
+  saveVideoPosition: (
+    courseId: string,
+    lessonId: string,
+    positionSec: number,
+    durationSec: number,
+    updatedAt?: string,
+  ) => void;
 
   // Điểm số kiểm tra: mapping từ courseId -> lessonId -> điểm số cao nhất (%)
   quizScores: Record<string, Record<string, number>>;
@@ -112,6 +128,27 @@ export const useCourseStore = create<CourseState>()(
               [lessonId]: normalizedDuration,
             }
           }
+        };
+      }),
+
+      videoPositions: {},
+      saveVideoPosition: (courseId, lessonId, positionSec, durationSec, updatedAt) => set((state) => {
+        if (!Number.isFinite(positionSec) || !Number.isFinite(durationSec)) return state;
+        const normalizedPosition = Math.max(0, Math.floor(positionSec));
+        const normalizedDuration = Math.max(0, Math.floor(durationSec));
+        const coursePositions = state.videoPositions[courseId] ?? {};
+        return {
+          videoPositions: {
+            ...state.videoPositions,
+            [courseId]: {
+              ...coursePositions,
+              [lessonId]: {
+                positionSec: normalizedPosition,
+                durationSec: normalizedDuration,
+                updatedAt: updatedAt ?? new Date().toISOString(),
+              },
+            },
+          },
         };
       }),
 
