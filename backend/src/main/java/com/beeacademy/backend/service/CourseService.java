@@ -59,6 +59,7 @@ public class CourseService {
     private final CourseReviewRepository   courseReviewRepository;
     private final QuizConfigRepository     quizConfigRepository;
     private final SupabaseStorageClient    storageClient;
+    private final CourseProgressService    courseProgressService;
 
     // ========================================================================
     // UC06 - Tìm kiếm & lọc khoá học
@@ -276,6 +277,10 @@ public class CourseService {
         Set<UUID> previewCourseIds = findCoursesWithFreePreview(courses);
         Map<UUID, CourseReviewService.RatingSummary> ratingByCourseId = summarizeRatings(courses);
         Map<UUID, Integer> studentCounts = buildStudentCounts(courses);
+        Map<UUID, Integer> progressByCourse = courseProgressService.calculateProgressForCourses(
+                me.userId(),
+                courses.stream().map(Course::getId).toList()
+        );
         return courses
                 .stream()
                 .map(course -> {
@@ -288,7 +293,8 @@ public class CourseService {
                             previewCourseIds.contains(course.getId()),
                             rating.averageRating(),
                             rating.reviewCount(),
-                            studentCounts.getOrDefault(course.getId(), 0)
+                            studentCounts.getOrDefault(course.getId(), 0),
+                            progressByCourse.getOrDefault(course.getId(), 0)
                     );
                 })
                 .toList();

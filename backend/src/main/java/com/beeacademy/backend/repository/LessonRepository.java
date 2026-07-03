@@ -51,6 +51,9 @@ public interface LessonRepository extends JpaRepository<Lesson, UUID> {
     @Query("SELECT COUNT(l.id) FROM Lesson l WHERE l.chapter.course.id = :courseId")
     int countByCourseId(@Param("courseId") UUID courseId);
 
+    @Query("SELECT COUNT(l.id) > 0 FROM Lesson l WHERE l.id = :lessonId AND l.chapter.course.id = :courseId")
+    boolean existsByIdAndCourseId(@Param("lessonId") UUID lessonId, @Param("courseId") UUID courseId);
+
     @Query("""
            SELECT l.chapter.course.id AS courseId, COUNT(l.id) AS itemCount
            FROM Lesson l
