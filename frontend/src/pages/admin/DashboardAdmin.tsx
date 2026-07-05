@@ -15,6 +15,8 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useSystemStore } from '../../store/useSystemStore';
+import { getSystemSettings, updateSystemSettings } from '../../api/systemService';
 import { notify } from '../../lib/toast';
 import { apiClient, unwrap } from '../../api/client';
 import type { ApiResponse, PageResponse } from '../../types/api';
@@ -220,6 +222,8 @@ export default function DashboardAdmin() {
   const navigate = useNavigate();
   const location = useLocation();
   const logout = useAuthStore(state => state.logout);
+  const setGlobalMaintenanceMode = useSystemStore(state => state.setMaintenanceMode);
+  const setGlobalMaintenanceUntil = useSystemStore(state => state.setMaintenanceUntil);
 
   // Lấy tab hoạt động từ URL query (?tab=...), mặc định là 'overview'
   const activeTab = location.pathname === '/admin/complaints'
@@ -237,6 +241,8 @@ export default function DashboardAdmin() {
   // State cấu hình hệ thống
   const [platformFeePercent, setPlatformFeePercent] = useState(20);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   // ───────────────────────────────────────────────────────────────────────────
   // STATE CHO CÁC BIỂU MẪU & MODALS
@@ -353,9 +359,20 @@ export default function DashboardAdmin() {
     } catch {}
   }, []);
 
+  const loadSettings = useCallback(async () => {
+    setLoadingSettings(true);
+    try {
+      const data = await getSystemSettings();
+      setPlatformFeePercent(data.platformFeePercent);
+      setMaintenanceMode(data.maintenanceMode);
+    } catch { notify.error('Không tải được cấu hình hệ thống'); }
+    finally { setLoadingSettings(false); }
+  }, []);
+
   useEffect(() => { Promise.all([loadOverview(), loadUserStats(), loadPendingCourses(), loadComplaints()]); }, [loadOverview, loadUserStats, loadPendingCourses, loadComplaints]);
   useEffect(() => { if (activeTab === 'users') loadUsers(0); }, [activeTab, loadUsers]);
   useEffect(() => { if (activeTab === 'payouts') { loadPayouts(); loadPayoutStats(); } }, [activeTab, loadPayouts, loadPayoutStats]);
+  useEffect(() => { if (activeTab === 'settings') loadSettings(); }, [activeTab, loadSettings]);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchUser), 300);
     return () => clearTimeout(t);
@@ -1675,12 +1692,13 @@ export default function DashboardAdmin() {
                         <p className="text-xs text-on-surface-variant mt-0.5">Chặn tất cả lưu lượng của khách và học sinh để sửa lỗi phần cứng.</p>
                       </div>
                       <button
+                        disabled={loadingSettings}
                         onClick={() => {
                           const newState = !maintenanceMode;
                           setMaintenanceMode(newState);
-                          notify.info(`Đã ${newState ? 'Kích hoạt' : 'Tắt'} chế độ bảo trì hệ thống!`);
+                          notify.info(`Đã ${newState ? 'Bật' : 'Tắt'} chế độ bảo trì — bấm "Lưu thay đổi" để áp dụng.`);
                         }}
-                        className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 focus:outline-none ${
+                        className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
                           maintenanceMode ? 'bg-red-500' : 'bg-gray-300'
                         }`}
                       >
@@ -1691,10 +1709,25 @@ export default function DashboardAdmin() {
                     </div>
 
                     <button
-                      onClick={() => notify.success('Đã cập nhật các cấu hình hệ thống!')}
-                      className="px-6 py-2 bg-primary text-on-primary font-bold rounded-xl text-sm shadow-md hover:bg-primary-container transition-colors"
+                      disabled={savingSettings || loadingSettings}
+                      onClick={async () => {
+                        setSavingSettings(true);
+                        try {
+                          const updated = await updateSystemSettings({ maintenanceMode, platformFeePercent });
+                          setPlatformFeePercent(updated.platformFeePercent);
+                          setMaintenanceMode(updated.maintenanceMode);
+                          setGlobalMaintenanceMode(updated.maintenanceMode);
+                          setGlobalMaintenanceUntil(updated.maintenanceUntil);
+                          notify.success('Đã cập nhật các cấu hình hệ thống!');
+                        } catch (err: any) {
+                          notify.error(err?.message ?? 'Không thể cập nhật cấu hình hệ thống');
+                        } finally {
+                          setSavingSettings(false);
+                        }
+                      }}
+                      className="px-6 py-2 bg-primary text-on-primary font-bold rounded-xl text-sm shadow-md hover:bg-primary-container transition-colors disabled:opacity-50"
                     >
-                      Lưu thay đổi
+                      {savingSettings ? 'Đang lưu...' : 'Lưu thay đổi'}
                     </button>
                   </div>
                 </div>

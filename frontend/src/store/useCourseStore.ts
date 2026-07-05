@@ -8,6 +8,7 @@ export interface TimedLessonNote {
   createdAt: string;
 }
 
+// Vị trí xem video gần nhất của một bài học — dùng để phát tiếp từ chỗ đã dừng.
 export interface VideoPosition {
   positionSec: number;
   durationSec: number;
@@ -59,7 +60,6 @@ interface CourseState {
   timedLessonNotes: Record<string, Record<string, TimedLessonNote[]>>;
   addTimedLessonNote: (courseId: string, lessonId: string, timeSec: number, content: string) => void;
   deleteTimedLessonNote: (courseId: string, lessonId: string, noteId: string) => void;
-
 }
 
 export const useCourseStore = create<CourseState>()(

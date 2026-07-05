@@ -43,11 +43,14 @@ public class SecurityConfig {
      * @param corsSource  config CORS từ {@link CorsConfig}
      */
     private final JwtAuthenticationFilter jwtFilter;
+    private final MaintenanceModeFilter maintenanceModeFilter;
     private final UrlBasedCorsConfigurationSource corsSource;
 
     public SecurityConfig(JwtAuthenticationFilter jwtFilter,
+                          MaintenanceModeFilter maintenanceModeFilter,
                           UrlBasedCorsConfigurationSource corsSource) {
         this.jwtFilter = jwtFilter;
+        this.maintenanceModeFilter = maintenanceModeFilter;
         this.corsSource = corsSource;
     }
 
@@ -89,6 +92,7 @@ public class SecurityConfig {
                         // ----- Public endpoints -----
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/system/status").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/courses/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categories/**").permitAll()
 
@@ -137,7 +141,10 @@ public class SecurityConfig {
                 )
 
                 // Chèn filter verify JWT TRƯỚC filter username/password mặc định
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+
+                // Chặn bảo trì chạy SAU jwtFilter — role (nếu có) đã resolve xong
+                .addFilterAfter(maintenanceModeFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }

@@ -45,11 +45,13 @@ import ParentMessages from './pages/parents/ParentMessages';
 import ParentStudentLink from './pages/parents/ParentStudentLink';
 import ParentPayments from './pages/parents/ParentPayments';
 import ProtectedRoute from './components/ProtectedRoute';
+import MaintenanceGate from './components/MaintenanceGate';
 
 export default function App() {
   return (
     <BrowserRouter>
       <Toaster />
+      <MaintenanceGate>
       <Routes>
         {/* ── Public ── */}
         <Route path="/" element={<LandingPage />} />
@@ -116,6 +118,7 @@ export default function App() {
         <Route path="/admin/reports"    element={<ProtectedRoute role="admin"><ComingSoonPage title="Báo cáo & Thống kê"   subtitle="Phân tích dữ liệu và báo cáo tổng hợp" /></ProtectedRoute>} />
         <Route path="/admin/settings"   element={<ProtectedRoute role="admin"><ComingSoonPage title="Cài đặt hệ thống"     subtitle="Cấu hình và tuỳ chỉnh hệ thống" /></ProtectedRoute>} />
       </Routes>
+      </MaintenanceGate>
     </BrowserRouter>
   );
 }
