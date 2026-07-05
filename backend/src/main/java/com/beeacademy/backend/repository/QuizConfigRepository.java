@@ -34,6 +34,14 @@ public interface QuizConfigRepository extends JpaRepository<QuizConfig, UUID> {
 
     boolean existsByChapterId(UUID chapterId);
 
+    @Query("""
+           SELECT COUNT(q.id) > 0
+           FROM QuizConfig q
+           WHERE q.chapter.id = :chapterId
+             AND q.chapter.course.id = :courseId
+           """)
+    boolean existsByChapterIdAndCourseId(@Param("chapterId") UUID chapterId, @Param("courseId") UUID courseId);
+
     /**
      * Trả về tập chapterId đã có quiz config trong danh sách đầu vào.
      *

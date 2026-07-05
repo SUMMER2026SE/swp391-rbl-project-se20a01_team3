@@ -19,6 +19,7 @@ interface CourseState {
 
   // Tiến độ học tập: mapping từ courseId -> danh sách các lessonId đã học xong
   completedLessons: Record<string, string[]>;
+  hydrateCourseProgress: (courseId: string, lessonIds: string[], quizIds: string[]) => void;
   markLessonCompleted: (courseId: string, lessonId: string) => void;
   toggleLessonCompleted: (courseId: string, lessonId: string) => void;
 
@@ -70,6 +71,16 @@ export const useCourseStore = create<CourseState>()(
       }),
 
       completedLessons: {},
+      hydrateCourseProgress: (courseId, lessonIds, quizIds) => set((state) => ({
+        completedLessons: {
+          ...state.completedLessons,
+          [courseId]: Array.from(new Set(lessonIds)),
+        },
+        completedQuizzes: {
+          ...state.completedQuizzes,
+          [courseId]: Array.from(new Set(quizIds)),
+        },
+      })),
       markLessonCompleted: (courseId, lessonId) => set((state) => {
         const currentList = state.completedLessons[courseId] ?? [];
         if (currentList.includes(lessonId)) {

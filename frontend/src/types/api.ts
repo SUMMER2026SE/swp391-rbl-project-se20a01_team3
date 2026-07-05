@@ -119,6 +119,19 @@ export interface CourseSummary {
   totalChapters: number;
   totalLessons: number;
   totalDurationSec: number;
+  progressPct?: number | null;
+}
+
+export interface CourseProgress {
+  courseId: string;
+  progressPct: number;
+  completedLessonIds: string[];
+  completedQuizIds: string[];
+}
+
+export interface CompleteCourseProgressItemPayload {
+  itemId: string;
+  itemType: 'lesson' | 'quiz';
 }
 
 export interface LessonDocumentDto {
