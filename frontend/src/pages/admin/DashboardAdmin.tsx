@@ -223,6 +223,7 @@ export default function DashboardAdmin() {
   const location = useLocation();
   const logout = useAuthStore(state => state.logout);
   const setGlobalMaintenanceMode = useSystemStore(state => state.setMaintenanceMode);
+  const setGlobalMaintenanceUntil = useSystemStore(state => state.setMaintenanceUntil);
 
   // Lấy tab hoạt động từ URL query (?tab=...), mặc định là 'overview'
   const activeTab = location.pathname === '/admin/complaints'
@@ -1716,6 +1717,7 @@ export default function DashboardAdmin() {
                           setPlatformFeePercent(updated.platformFeePercent);
                           setMaintenanceMode(updated.maintenanceMode);
                           setGlobalMaintenanceMode(updated.maintenanceMode);
+                          setGlobalMaintenanceUntil(updated.maintenanceUntil);
                           notify.success('Đã cập nhật các cấu hình hệ thống!');
                         } catch (err: any) {
                           notify.error(err?.message ?? 'Không thể cập nhật cấu hình hệ thống');
