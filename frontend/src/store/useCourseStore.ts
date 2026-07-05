@@ -244,7 +244,6 @@ export const useCourseStore = create<CourseState>()(
           },
         };
       }),
-
     }),
     {
       name: 'bee-academy-course',
