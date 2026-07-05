@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
+export interface TimedLessonNote {
+  id: string;
+  timeSec: number;
+  content: string;
+  createdAt: string;
+}
+
 // Vị trí xem video gần nhất của một bài học — dùng để phát tiếp từ chỗ đã dừng.
 export interface VideoPosition {
   positionSec: number;
@@ -49,6 +56,10 @@ interface CourseState {
   lessonNotes: Record<string, Record<string, string>>;
   saveLessonNote: (courseId: string, lessonId: string, note: string) => void;
 
+  // Ghi chú gắn với mốc thời gian của video.
+  timedLessonNotes: Record<string, Record<string, TimedLessonNote[]>>;
+  addTimedLessonNote: (courseId: string, lessonId: string, timeSec: number, content: string) => void;
+  deleteTimedLessonNote: (courseId: string, lessonId: string, noteId: string) => void;
 }
 
 export const useCourseStore = create<CourseState>()(
@@ -197,6 +208,42 @@ export const useCourseStore = create<CourseState>()(
         };
       }),
 
+      timedLessonNotes: {},
+      addTimedLessonNote: (courseId, lessonId, timeSec, content) => set((state) => {
+        const courseNotes = state.timedLessonNotes[courseId] ?? {};
+        const lessonNotes = courseNotes[lessonId] ?? [];
+        const normalizedContent = content.trim();
+        if (!normalizedContent) return state;
+
+        const note: TimedLessonNote = {
+          id: crypto.randomUUID(),
+          timeSec: Math.max(0, Math.floor(timeSec)),
+          content: normalizedContent,
+          createdAt: new Date().toISOString(),
+        };
+        return {
+          timedLessonNotes: {
+            ...state.timedLessonNotes,
+            [courseId]: {
+              ...courseNotes,
+              [lessonId]: [...lessonNotes, note].sort((a, b) => a.timeSec - b.timeSec),
+            },
+          },
+        };
+      }),
+      deleteTimedLessonNote: (courseId, lessonId, noteId) => set((state) => {
+        const courseNotes = state.timedLessonNotes[courseId] ?? {};
+        const lessonNotes = courseNotes[lessonId] ?? [];
+        return {
+          timedLessonNotes: {
+            ...state.timedLessonNotes,
+            [courseId]: {
+              ...courseNotes,
+              [lessonId]: lessonNotes.filter(note => note.id !== noteId),
+            },
+          },
+        };
+      }),
     }),
     {
       name: 'bee-academy-course',
