@@ -134,6 +134,21 @@ export interface CompleteCourseProgressItemPayload {
   itemType: 'lesson' | 'quiz';
 }
 
+export interface SystemStatus {
+  maintenanceMode: boolean;
+}
+
+export interface SystemSettings {
+  maintenanceMode: boolean;
+  platformFeePercent: number;
+  updatedAt: string;
+}
+
+export interface UpdateSystemSettingsPayload {
+  maintenanceMode: boolean;
+  platformFeePercent: number;
+}
+
 export interface LessonDocumentDto {
   name: string;
   fileUrl: string;
