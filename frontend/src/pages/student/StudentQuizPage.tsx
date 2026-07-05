@@ -19,6 +19,7 @@ import { notify } from '../../lib/toast';
 import LatexText from '../../components/LatexText';
 import * as quizSvc from '../../api/quizService';
 import { getCourseDetail } from '../../api/courseService';
+import { completeCourseProgressItem, getCourseProgress } from '../../api/courseProgressService';
 import { useCourseStore } from '../../store/useCourseStore';
 import type {
   QuizAttemptStartResponse,
@@ -198,6 +199,7 @@ export default function StudentQuizPage() {
   const { courseId, chapterId } = useParams<{ courseId: string; chapterId: string }>();
   const navigate = useNavigate();
   const completedLessons = useCourseStore((state) => state.completedLessons);
+  const hydrateCourseProgress = useCourseStore((state) => state.hydrateCourseProgress);
   const markQuizCompleted = useCourseStore((state) => state.markQuizCompleted);
   const saveQuizScore = useCourseStore((state) => state.saveQuizScore);
 
@@ -234,7 +236,16 @@ export default function StudentQuizPage() {
           return;
         }
 
-        const progress = getChapterVideoProgress(chapter, completedLessons[courseId!] ?? []);
+        let completedLessonIds = completedLessons[courseId!] ?? [];
+        try {
+          const serverProgress = await getCourseProgress(courseId!);
+          completedLessonIds = serverProgress.completedLessonIds;
+          hydrateCourseProgress(courseId!, serverProgress.completedLessonIds, serverProgress.completedQuizIds);
+        } catch (progressError) {
+          console.error('Không tải được tiến độ khóa học:', progressError);
+        }
+
+        const progress = getChapterVideoProgress(chapter, completedLessonIds);
         if (progress.total > 0 && progress.completed < progress.total) {
           setErrorMsg(`Bạn cần hoàn thành ${progress.completed}/${progress.total} video trong chương này trước khi làm quiz.`);
           setPhase('error');
@@ -261,7 +272,7 @@ export default function StudentQuizPage() {
     return () => {
       cancelled = true;
     };
-  }, [chapterId, completedLessons, courseId]);
+  }, [chapterId, courseId, hydrateCourseProgress]);
 
   // Nộp bài — được gọi cả khi user tự nộp lẫn khi hết giờ
   const handleSubmit = useCallback(async () => {
@@ -272,6 +283,13 @@ export default function StudentQuizPage() {
       if (courseId && chapterId) {
         markQuizCompleted(courseId, chapterId);
         saveQuizScore(courseId, chapterId, res.score);
+        completeCourseProgressItem(courseId, { itemId: chapterId, itemType: 'quiz' })
+          .then(progress => {
+            hydrateCourseProgress(courseId, progress.completedLessonIds, progress.completedQuizIds);
+          })
+          .catch(error => {
+            console.error('Không lưu được tiến độ quiz:', error);
+          });
       }
       setResult(res);
       setPhase('results');
@@ -280,7 +298,7 @@ export default function StudentQuizPage() {
       notify.error(msg);
       setPhase('quiz');
     }
-  }, [attempt, answers, chapterId, courseId, markQuizCompleted, saveQuizScore]);
+  }, [attempt, answers, chapterId, courseId, hydrateCourseProgress, markQuizCompleted, saveQuizScore]);
 
   // Hết giờ → tự động nộp
   const handleTimeExpire = useCallback(() => {
@@ -303,7 +321,16 @@ export default function StudentQuizPage() {
         return;
       }
 
-      const progress = getChapterVideoProgress(chapter, completedLessons[courseId] ?? []);
+      let completedLessonIds = completedLessons[courseId] ?? [];
+      try {
+        const serverProgress = await getCourseProgress(courseId);
+        completedLessonIds = serverProgress.completedLessonIds;
+        hydrateCourseProgress(courseId, serverProgress.completedLessonIds, serverProgress.completedQuizIds);
+      } catch (progressError) {
+        console.error('Không tải được tiến độ khóa học:', progressError);
+      }
+
+      const progress = getChapterVideoProgress(chapter, completedLessonIds);
       if (progress.total > 0 && progress.completed < progress.total) {
         setErrorMsg(`Bạn cần hoàn thành ${progress.completed}/${progress.total} video trong chương này trước khi làm quiz.`);
         setPhase('error');

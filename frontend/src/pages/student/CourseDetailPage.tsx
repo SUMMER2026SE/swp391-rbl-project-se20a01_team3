@@ -28,9 +28,11 @@ import {
   ArrowLeft, Star, Users, PlayCircle, FileText, CheckCircle2,
   Lock, ShoppingCart, Video, Menu, X, MessageSquare, BookOpen,
   ClipboardList, XCircle, Award, RotateCcw, ChevronLeft, ChevronRight,
-  Trophy, Loader2, Send, AlertCircle, Plus, Minus,
+  Trophy, Loader2, Send, AlertCircle, Plus, Minus, Clock, Trash2, Pencil,
 } from 'lucide-react';
 import DashboardHeader from '../../components/DashboardHeader';
+import EmbeddedVideoPlayer from '../../components/EmbeddedVideoPlayer';
+import QaImagePicker from '../../components/QaImagePicker';
 import type { Course, Lesson, QuizQuestion } from '../../data/mockCourses';
 import { notify } from '../../lib/toast';
 import { useCartStore } from '../../store/useCartStore';
@@ -48,11 +50,27 @@ import { listOrders, verifyPayment } from '../../api/orderService';
 import {
   addCourseDiscussionReply,
   createCourseDiscussionThread,
+  deleteCourseDiscussionReply,
+  deleteCourseDiscussionThread,
   listCourseDiscussionThreads,
+  updateCourseDiscussionReply,
+  updateCourseDiscussionThread,
 } from '../../api/courseDiscussionService';
 import { listStudentCourseExams } from '../../api/examService';
+import { uploadQaImage } from '../../api/qaService';
+import { completeCourseProgressItem, getCourseProgress } from '../../api/courseProgressService';
+import {
+  createStudentLessonNote,
+  deleteStudentLessonNote,
+  listStudentLessonNotes,
+} from '../../api/studentLessonNoteService';
+import {
+  getStudentVideoProgress,
+  saveStudentVideoProgress,
+} from '../../api/studentVideoProgressService';
 import type { CourseDiscussionThread } from '../../api/courseDiscussionService';
 import type { StudentExamSummaryResponse } from '../../api/examService';
+import type { StudentLessonNote } from '../../api/studentLessonNoteService';
 import type { ChapterDetail, CourseReviewSummary, LessonDetail } from '../../types/api';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -208,15 +226,15 @@ function QuizModal({ lesson, prevScore, onClose, onComplete }: QuizModalProps) {
   // Label và màu kết quả theo ngưỡng điểm
   const gradeLabel =
     score >= 90 ? '🏆 Xuất sắc!' :
-    score >= 70 ? '🌟 Giỏi!' :
-    score >= 50 ? '👍 Khá!' :
-    '💪 Cần cố gắng thêm!';
+      score >= 70 ? '🌟 Giỏi!' :
+        score >= 50 ? '👍 Khá!' :
+          '💪 Cần cố gắng thêm!';
 
   const gradeColor =
     score >= 90 ? 'text-green-500' :
-    score >= 70 ? 'text-blue-500' :
-    score >= 50 ? 'text-amber-500' :
-    'text-red-500';
+      score >= 70 ? 'text-blue-500' :
+        score >= 50 ? 'text-amber-500' :
+          'text-red-500';
 
   const correctCount = answers.filter((a: number | null, i: number) => a === questions[i].correctIndex).length;
 
@@ -286,16 +304,14 @@ function QuizModal({ lesson, prevScore, onClose, onComplete }: QuizModalProps) {
                       initial={{ opacity: 0, x: -16 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.1 * i }}
-                      className={`rounded-2xl border-2 overflow-hidden ${
-                        isCorrect
+                      className={`rounded-2xl border-2 overflow-hidden ${isCorrect
                           ? 'border-green-500/30 bg-green-500/5'
                           : 'border-red-500/30 bg-red-500/5'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-start gap-3 p-4">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                          isCorrect ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-                        }`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${isCorrect ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                          }`}>
                           {isCorrect
                             ? <CheckCircle2 className="w-4.5 h-4.5" />
                             : <XCircle className="w-4.5 h-4.5" />
@@ -422,22 +438,19 @@ function QuizModal({ lesson, prevScore, onClose, onComplete }: QuizModalProps) {
                       whileHover={{ scale: 1.01 }}
                       whileTap={{ scale: 0.99 }}
                       onClick={() => handleSelect(i)}
-                      className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${
-                        isSelected
+                      className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${isSelected
                           ? 'border-primary bg-primary/10 shadow-sm shadow-primary/20'
                           : 'border-outline-variant/40 hover:border-primary/40 hover:bg-surface-container'
-                      }`}
+                        }`}
                     >
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center font-extrabold text-sm flex-shrink-0 transition-colors ${
-                        isSelected
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center font-extrabold text-sm flex-shrink-0 transition-colors ${isSelected
                           ? 'bg-primary text-on-primary'
                           : 'bg-surface-container-high text-on-surface-variant'
-                      }`}>
+                        }`}>
                         {letter}
                       </div>
-                      <span className={`font-medium text-sm leading-snug ${
-                        isSelected ? 'text-on-surface' : 'text-on-surface-variant'
-                      }`}>
+                      <span className={`font-medium text-sm leading-snug ${isSelected ? 'text-on-surface' : 'text-on-surface-variant'
+                        }`}>
                         {opt}
                       </span>
                       {isSelected && (
@@ -463,13 +476,12 @@ function QuizModal({ lesson, prevScore, onClose, onComplete }: QuizModalProps) {
                 key={i}
                 onClick={() => setCurrentIdx(i)}
                 title={`Câu ${i + 1}`}
-                className={`rounded-full transition-all duration-200 ${
-                  i === currentIdx
+                className={`rounded-full transition-all duration-200 ${i === currentIdx
                     ? 'w-6 h-3 bg-primary'
                     : answers[i] !== null
-                    ? 'w-3 h-3 bg-primary/50 hover:bg-primary/70'
-                    : 'w-3 h-3 bg-surface-container-high hover:bg-outline-variant'
-                }`}
+                      ? 'w-3 h-3 bg-primary/50 hover:bg-primary/70'
+                      : 'w-3 h-3 bg-surface-container-high hover:bg-outline-variant'
+                  }`}
               />
             ))}
           </div>
@@ -501,11 +513,10 @@ function QuizModal({ lesson, prevScore, onClose, onComplete }: QuizModalProps) {
               <button
                 onClick={handleSubmit}
                 disabled={!allAnswered}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${
-                  allAnswered
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${allAnswered
                     ? 'bg-green-500 text-white hover:bg-green-600 shadow-md shadow-green-500/30'
                     : 'bg-surface-container-high text-on-surface-variant cursor-not-allowed opacity-60'
-                }`}
+                  }`}
               >
                 <Trophy className="w-4 h-4" />
                 Nộp Bài
@@ -563,21 +574,21 @@ function MarketingView({
   const syllabusSections = useMemo<MarketingSyllabusSection[]>(() => (
     rawChapters.length > 0
       ? [...rawChapters]
-          .sort((a, b) => a.position - b.position)
-          .map(chapter => ({
-            ...chapter,
-            lessons: [...chapter.lessons]
-              .sort((a, b) => a.position - b.position)
-              .map(adaptLearningLesson),
-          }))
+        .sort((a, b) => a.position - b.position)
+        .map(chapter => ({
+          ...chapter,
+          lessons: [...chapter.lessons]
+            .sort((a, b) => a.position - b.position)
+            .map(adaptLearningLesson),
+        }))
       : [{
-          id: 'flat-lessons',
-          title: 'Nội dung khóa học',
-          description: null,
-          position: 1,
-          hasQuizConfig: false,
-          lessons: course.lessons ?? [],
-        }]
+        id: 'flat-lessons',
+        title: 'Nội dung khóa học',
+        description: null,
+        position: 1,
+        hasQuizConfig: false,
+        lessons: course.lessons ?? [],
+      }]
   ), [rawChapters, course.lessons]);
   const [expandedChapterIds, setExpandedChapterIds] = useState<Set<string>>(
     () => new Set(syllabusSections.slice(0, 2).map(chapter => chapter.id))
@@ -693,14 +704,14 @@ function MarketingView({
             {course.title}
           </h1>
           <p className="text-xl text-on-surface-variant mb-8 max-w-3xl leading-relaxed">{course.description}</p>
-              <div className="flex flex-wrap items-center gap-8 text-on-surface-variant font-medium">
-              <div className="flex items-center gap-2 text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-lg">
-                <Star className="w-5 h-5 fill-amber-500" />
-                <span className="text-lg font-bold">{course.rating > 0 ? course.rating.toFixed(1) : 'Mới'}</span>
-                <span className="text-sm text-amber-700/80">
-                  ({(course.reviewCount ?? 0).toLocaleString('vi-VN')} đánh giá)
-                </span>
-              </div>
+          <div className="flex flex-wrap items-center gap-8 text-on-surface-variant font-medium">
+            <div className="flex items-center gap-2 text-amber-500 bg-amber-500/10 px-3 py-1.5 rounded-lg">
+              <Star className="w-5 h-5 fill-amber-500" />
+              <span className="text-lg font-bold">{course.rating > 0 ? course.rating.toFixed(1) : 'Mới'}</span>
+              <span className="text-sm text-amber-700/80">
+                ({(course.reviewCount ?? 0).toLocaleString('vi-VN')} đánh giá)
+              </span>
+            </div>
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5" />
               <span>{course.students.toLocaleString('vi-VN')} học viên</span>
@@ -728,11 +739,10 @@ function MarketingView({
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex-1 py-3 px-6 rounded-2xl font-bold text-sm md:text-base whitespace-nowrap transition-all ${
-                    activeTab === tab.id
+                  className={`flex-1 py-3 px-6 rounded-2xl font-bold text-sm md:text-base whitespace-nowrap transition-all ${activeTab === tab.id
                       ? 'bg-primary text-on-primary shadow-md'
                       : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-                  }`}
+                    }`}
                 >
                   {tab.label}
                 </button>
@@ -1036,6 +1046,19 @@ function roleLabel(role: string): string {
   if (role === 'admin') return 'Admin';
   if (role === 'parent') return 'Phụ huynh';
   return 'Học viên';
+}
+
+function jwtSubject(token: string | null): string | null {
+  if (!token) return null;
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = JSON.parse(atob(normalized));
+    return typeof decoded.sub === 'string' ? decoded.sub : null;
+  } catch {
+    return null;
+  }
 }
 
 function toEmbeddableVideoUrl(url: string): string | null {
@@ -1652,31 +1675,29 @@ function MarketingSyllabusList({
                             }
                           }}
                           disabled={!canOpen}
-                          className={`w-full rounded-2xl border px-4 py-3 text-left transition-all disabled:cursor-default ${
-                            isLessonCompleted
+                          className={`w-full rounded-2xl border px-4 py-3 text-left transition-all disabled:cursor-default ${isLessonCompleted
                               ? 'border-green-500/25 bg-green-500/5 text-green-700'
                               : canPreviewLesson
-                              ? 'border-primary/30 bg-primary/5 text-primary hover:bg-primary/10'
-                              : 'border-transparent bg-surface hover:bg-surface-container disabled:hover:bg-surface'
-                          }`}
+                                ? 'border-primary/30 bg-primary/5 text-primary hover:bg-primary/10'
+                                : 'border-transparent bg-surface hover:bg-surface-container disabled:hover:bg-surface'
+                            }`}
                         >
                           <div className="flex items-start gap-3">
-                            <div className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
-                              isLessonCompleted
+                            <div className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${isLessonCompleted
                                 ? 'bg-green-500/15 text-green-600'
                                 : canPreviewLesson
-                                ? 'bg-primary/10 text-primary'
-                                : 'bg-surface-container-high text-on-surface-variant'
-                            }`}>
+                                  ? 'bg-primary/10 text-primary'
+                                  : 'bg-surface-container-high text-on-surface-variant'
+                              }`}>
                               {isLessonCompleted
                                 ? <CheckCircle2 className="h-4 w-4" />
                                 : !canOpen
-                                ? <Lock className="h-4 w-4" />
-                                : lesson.type === 'video'
-                                ? <PlayCircle className="h-4 w-4" />
-                                : lesson.type === 'pdf'
-                                ? <FileText className="h-4 w-4" />
-                                : <ClipboardList className="h-4 w-4" />
+                                  ? <Lock className="h-4 w-4" />
+                                  : lesson.type === 'video'
+                                    ? <PlayCircle className="h-4 w-4" />
+                                    : lesson.type === 'pdf'
+                                      ? <FileText className="h-4 w-4" />
+                                      : <ClipboardList className="h-4 w-4" />
                               }
                             </div>
                             <div className="min-w-0 flex-1">
@@ -1752,6 +1773,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const addToCart = useCartStore(state => state.addToCart);
   const isLoggedIn = useAuthStore(state => state.isLoggedIn);
   const user = useAuthStore(state => state.user);
+  const accessToken = useAuthStore(state => state.accessToken);
   const navigate = useNavigate();
 
   // BUG FIX: state báo hiệu signed video URL đã hết hạn (sau 1 giờ)
@@ -1763,51 +1785,69 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
 
   // Lấy dữ liệu và actions từ Zustand store
   const completedLessons = useCourseStore((state) => state.completedLessons);
+  const hydrateCourseProgress = useCourseStore((state) => state.hydrateCourseProgress);
   const markLessonCompleted = useCourseStore((state) => state.markLessonCompleted);
   const completedQuizzes = useCourseStore((state) => state.completedQuizzes);
   const markQuizCompleted = useCourseStore((state) => state.markQuizCompleted);
   const lessonDurations = useCourseStore((state) => state.lessonDurations);
   const saveLessonDuration = useCourseStore((state) => state.saveLessonDuration);
+  const videoPositions = useCourseStore((state) => state.videoPositions);
+  const saveVideoPosition = useCourseStore((state) => state.saveVideoPosition);
   const quizScores = useCourseStore((state) => state.quizScores);
   const saveQuizScore = useCourseStore((state) => state.saveQuizScore);
-  const lessonNotes = useCourseStore((state) => state.lessonNotes);
-  const saveLessonNote = useCourseStore((state) => state.saveLessonNote);
   const completedList = completedLessons[course.id] ?? [];
   const completedQuizList = completedQuizzes[course.id] ?? [];
 
   // State cục bộ cho ghi chú
-  const [noteText, setNoteText] = useState('');
+  const [timedNoteInput, setTimedNoteInput] = useState('');
+  const [activeTimedNotes, setActiveTimedNotes] = useState<StudentLessonNote[]>([]);
+  const [loadingTimedNotes, setLoadingTimedNotes] = useState(false);
+  const [savingTimedNote, setSavingTimedNote] = useState(false);
+  const [deletingTimedNoteId, setDeletingTimedNoteId] = useState<string | null>(null);
+  const [videoNoteOverlayOpen, setVideoNoteOverlayOpen] = useState(false);
+  const [currentVideoTime, setCurrentVideoTime] = useState(0);
 
   // State cục bộ cho Q&A
   const [qaInput, setQaInput] = useState('');
+  const [qaImageFile, setQaImageFile] = useState<File | null>(null);
   const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
   const [discussionThreads, setDiscussionThreads] = useState<CourseDiscussionThread[]>([]);
   const [loadingDiscussion, setLoadingDiscussion] = useState(false);
   const [postingQuestion, setPostingQuestion] = useState(false);
   const [postingReplyId, setPostingReplyId] = useState<string | null>(null);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [editingQuestionText, setEditingQuestionText] = useState('');
+  const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
+  const [editingReplyText, setEditingReplyText] = useState('');
+  const [savingDiscussionId, setSavingDiscussionId] = useState<string | null>(null);
   const [studentExams, setStudentExams] = useState<StudentExamSummaryResponse[]>([]);
   const watchedUntilRef = useRef(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const isResettingSeekRef = useRef(false);
   const lastSeekWarningAtRef = useRef(0);
+  const currentPositionRef = useRef(0);
+  const currentDurationRef = useRef(0);
+  const lastLocalProgressRef = useRef(-1);
+  const lastRemoteSaveAtRef = useRef(0);
 
   const chapterSections = useMemo(() => (
     rawChapters.length > 0
       ? [...rawChapters]
-          .sort((a, b) => a.position - b.position)
-          .map(chapter => ({
-            ...chapter,
-            lessons: [...chapter.lessons]
-              .sort((a, b) => a.position - b.position)
-              .map(adaptLearningLesson),
-          }))
+        .sort((a, b) => a.position - b.position)
+        .map(chapter => ({
+          ...chapter,
+          lessons: [...chapter.lessons]
+            .sort((a, b) => a.position - b.position)
+            .map(adaptLearningLesson),
+        }))
       : [{
-          id: 'flat-lessons',
-          title: 'Nội dung khóa học',
-          description: null,
-          position: 1,
-          hasQuizConfig: false,
-          lessons: course.lessons ?? [],
-        }]
+        id: 'flat-lessons',
+        title: 'Nội dung khóa học',
+        description: null,
+        position: 1,
+        hasQuizConfig: false,
+        lessons: course.lessons ?? [],
+      }]
   ), [rawChapters, course.lessons]);
   const orderedVideoLessons = useMemo(
     () => getOrderedVideoLessons(chapterSections),
@@ -1815,11 +1855,11 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   );
   const requestedLesson = initialLessonId
     ? course.lessons?.find((lesson) => {
-        if (lesson.id !== initialLessonId || lesson.type === 'quiz') {
-          return false;
-        }
-        return getLessonUnlockState(course, lesson, orderedVideoLessons, completedList).canOpen;
-      })
+      if (lesson.id !== initialLessonId || lesson.type === 'quiz') {
+        return false;
+      }
+      return getLessonUnlockState(course, lesson, orderedVideoLessons, completedList).canOpen;
+    })
     : null;
   const firstLesson = requestedLesson
     ?? course.lessons?.find((lesson) =>
@@ -1834,7 +1874,18 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     () => new Set(chapterSections.slice(0, 1).map(chapter => chapter.id))
   );
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(firstLesson);
+  const [resumePositionSec, setResumePositionSec] = useState(0);
+  const videoProgressStorageKey = `${user?.id ?? 'guest'}:${course.id}`;
   const [activeTab, setActiveTab] = useState<'overview' | 'qa' | 'notes' | 'reviews'>('overview');
+  const isDirectVideo = Boolean(
+    activeLesson?.type === 'video' &&
+    activeLesson.url &&
+    activeLesson.url !== '#' &&
+    !activeLesson.url.includes('youtube.com') &&
+    !activeLesson.url.includes('youtu.be') &&
+    !activeLesson.url.includes('vimeo.com') &&
+    !activeLesson.url.includes('/embed/')
+  );
   const canSubmitReview = course.isEnrolled && user?.role === 'student';
 
   useEffect(() => {
@@ -1846,19 +1897,75 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   }, [chapterSections, course.id, firstLesson]);
 
   useEffect(() => {
-    watchedUntilRef.current = 0;
+    const localProgress = activeLesson
+      ? videoPositions[videoProgressStorageKey]?.[activeLesson.id]
+      : undefined;
+    const localPosition = localProgress?.positionSec ?? 0;
+    watchedUntilRef.current = localPosition;
+    currentPositionRef.current = localPosition;
+    currentDurationRef.current = localProgress?.durationSec ?? 0;
+    lastLocalProgressRef.current = localPosition;
+    lastRemoteSaveAtRef.current = 0;
     isResettingSeekRef.current = false;
     lastSeekWarningAtRef.current = 0;
-  }, [activeLesson?.id]);
+    setCurrentVideoTime(localPosition);
+    setResumePositionSec(localPosition);
+    setTimedNoteInput('');
+    setVideoNoteOverlayOpen(false);
+  }, [activeLesson?.id, videoProgressStorageKey]);
 
-  // Cập nhật nội dung ghi chú khi chuyển bài học
   useEffect(() => {
-    if (activeLesson) {
-      const savedNote = lessonNotes[course.id]?.[activeLesson.id] ?? '';
-      setNoteText(savedNote);
-
+    if (!activeLesson || activeLesson.type !== 'video' || user?.role !== 'student' || !course.isEnrolled) {
+      return;
     }
-  }, [activeLesson, course.id, lessonNotes]);
+
+    let cancelled = false;
+    const lessonId = activeLesson.id;
+    const localProgress = videoPositions[videoProgressStorageKey]?.[lessonId];
+    getStudentVideoProgress(course.id, lessonId)
+      .then(remoteProgress => {
+        if (cancelled) return;
+        const localUpdatedAt = localProgress?.updatedAt
+          ? new Date(localProgress.updatedAt).getTime()
+          : 0;
+        const remoteUpdatedAt = remoteProgress.updatedAt
+          ? new Date(remoteProgress.updatedAt).getTime()
+          : 0;
+        if (localProgress && localUpdatedAt > remoteUpdatedAt) return;
+
+        currentPositionRef.current = remoteProgress.positionSec;
+        currentDurationRef.current = remoteProgress.durationSec;
+        watchedUntilRef.current = Math.max(watchedUntilRef.current, remoteProgress.positionSec);
+        setCurrentVideoTime(remoteProgress.positionSec);
+        setResumePositionSec(remoteProgress.positionSec);
+        saveVideoPosition(
+          videoProgressStorageKey,
+          lessonId,
+          remoteProgress.positionSec,
+          remoteProgress.durationSec,
+          remoteProgress.updatedAt ?? undefined,
+        );
+      })
+      .catch(() => {
+        // Mất mạng không chặn việc học; vị trí cục bộ vẫn được dùng để khôi phục.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLesson?.id, course.id, course.isEnrolled, user?.role, videoProgressStorageKey]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || resumePositionSec <= 0 || !Number.isFinite(video.duration)) return;
+    if (video.duration - resumePositionSec <= 5) return;
+    isResettingSeekRef.current = true;
+    video.currentTime = Math.min(resumePositionSec, video.duration);
+    watchedUntilRef.current = Math.max(watchedUntilRef.current, video.currentTime);
+    window.setTimeout(() => {
+      isResettingSeekRef.current = false;
+    }, 0);
+  }, [activeLesson?.id, resumePositionSec]);
 
   useEffect(() => {
     if (!activeLesson) return;
@@ -1875,6 +1982,34 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       return next;
     });
   }, [activeLesson, chapterSections]);
+
+  useEffect(() => {
+    const shouldLoadNotes = activeTab === 'notes' || videoNoteOverlayOpen;
+    if (!shouldLoadNotes || !activeLesson || user?.role !== 'student') {
+      setActiveTimedNotes([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingTimedNotes(true);
+    listStudentLessonNotes(course.id, activeLesson.id)
+      .then(notes => {
+        if (!cancelled) setActiveTimedNotes(notes);
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setActiveTimedNotes([]);
+          notify.error(error instanceof Error ? error.message : 'Không tải được ghi chú');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingTimedNotes(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLesson, activeTab, course.id, user?.role, videoNoteOverlayOpen]);
 
   useEffect(() => {
     if (activeTab !== 'qa') return;
@@ -1914,6 +2049,53 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     };
   }, [course.id]);
 
+  useEffect(() => {
+    if (!course.isEnrolled || !accessToken) return;
+
+    let cancelled = false;
+    getCourseProgress(course.id)
+      .then(async (progress) => {
+        const localLessonIds = completedLessons[course.id] ?? [];
+        const localQuizIds = completedQuizzes[course.id] ?? [];
+        const serverLessonIds = new Set(progress.completedLessonIds);
+        const serverQuizIds = new Set(progress.completedQuizIds);
+        const missingLessonIds = localLessonIds.filter(id => !serverLessonIds.has(id));
+        const missingQuizIds = localQuizIds.filter(id => !serverQuizIds.has(id));
+
+        if (missingLessonIds.length > 0 || missingQuizIds.length > 0) {
+          await Promise.allSettled([
+            ...missingLessonIds.map(itemId =>
+              completeCourseProgressItem(course.id, { itemId, itemType: 'lesson' as const }),
+            ),
+            ...missingQuizIds.map(itemId =>
+              completeCourseProgressItem(course.id, { itemId, itemType: 'quiz' as const }),
+            ),
+          ]);
+          progress = await getCourseProgress(course.id);
+        }
+
+        const nextLessonIds = progress.completedLessonIds;
+        const nextQuizIds = progress.completedQuizIds;
+        const hasSameLessons =
+          localLessonIds.length === nextLessonIds.length &&
+          localLessonIds.every(id => nextLessonIds.includes(id));
+        const hasSameQuizzes =
+          localQuizIds.length === nextQuizIds.length &&
+          localQuizIds.every(id => nextQuizIds.includes(id));
+
+        if (!cancelled && (!hasSameLessons || !hasSameQuizzes)) {
+          hydrateCourseProgress(course.id, progress.completedLessonIds, progress.completedQuizIds);
+        }
+      })
+      .catch(error => {
+        console.error('Không tải được tiến độ khóa học:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, completedLessons, completedQuizzes, course.id, course.isEnrolled, hydrateCourseProgress]);
+
   // Tính toán tiến độ học tập thực tế dựa trên completedLessons
   const progressStats = useMemo(
     () => getCourseProgressStats(chapterSections, completedList, completedQuizList),
@@ -1950,23 +2132,95 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     notify.success(`Đã thêm "${course.title}" vào giỏ hàng!`);
   }
 
-  // Callback từ QuizModal khi user nộp bài
-  function handleVideoEnded() {
-    if (!activeLesson || completedList.includes(activeLesson.id)) {
-      return;
+  function persistCurrentVideoProgress(positionOverride?: number) {
+    if (!activeLesson || activeLesson.type !== 'video') return;
+    const position = Math.max(0, Math.floor(positionOverride ?? currentPositionRef.current));
+    const duration = Math.max(0, Math.floor(currentDurationRef.current));
+    saveVideoPosition(videoProgressStorageKey, activeLesson.id, position, duration);
+
+    if (user?.role !== 'student' || !course.isEnrolled) return;
+    lastRemoteSaveAtRef.current = Date.now();
+    void saveStudentVideoProgress(course.id, activeLesson.id, {
+      positionSec: position,
+      durationSec: duration,
+    }).catch(() => {
+      // Bản cục bộ đã được lưu; lần cập nhật tiếp theo sẽ thử đồng bộ lại.
+    });
+  }
+
+  function recordVideoProgress(positionSec: number, durationSec: number) {
+    if (!Number.isFinite(positionSec) || !Number.isFinite(durationSec)) return;
+    const normalizedPosition = Math.max(0, positionSec);
+    const normalizedDuration = Math.max(0, durationSec);
+    currentPositionRef.current = normalizedPosition;
+    currentDurationRef.current = normalizedDuration;
+    watchedUntilRef.current = Math.max(watchedUntilRef.current, normalizedPosition);
+    setCurrentVideoTime(normalizedPosition);
+
+    const wholeSecond = Math.floor(normalizedPosition);
+    if (Math.abs(wholeSecond - lastLocalProgressRef.current) >= 2) {
+      lastLocalProgressRef.current = wholeSecond;
+      if (activeLesson) {
+        saveVideoPosition(videoProgressStorageKey, activeLesson.id, wholeSecond, normalizedDuration);
+      }
     }
-    markLessonCompleted(course.id, activeLesson.id);
-    notify.success('Đã hoàn thành video bài học!');
+    if (Date.now() - lastRemoteSaveAtRef.current >= 10_000) {
+      persistCurrentVideoProgress();
+    }
+  }
+
+  useEffect(() => {
+    function saveWhenLeavingPage() {
+      if (document.visibilityState === 'hidden') persistCurrentVideoProgress();
+    }
+    document.addEventListener('visibilitychange', saveWhenLeavingPage);
+    return () => {
+      document.removeEventListener('visibilitychange', saveWhenLeavingPage);
+      persistCurrentVideoProgress();
+    };
+  }, [activeLesson?.id, course.id, course.isEnrolled, user?.role, videoProgressStorageKey]);
+
+  // Callback từ QuizModal khi user nộp bài
+  async function syncCompletedProgressItem(itemId: string, itemType: 'lesson' | 'quiz') {
+    if (!course.isEnrolled || !accessToken) return;
+
+    try {
+      const progress = await completeCourseProgressItem(course.id, { itemId, itemType });
+      hydrateCourseProgress(course.id, progress.completedLessonIds, progress.completedQuizIds);
+    } catch (error) {
+      console.error('Không lưu được tiến độ khóa học:', error);
+    }
+  }
+
+  function handleVideoEnded() {
+    currentPositionRef.current = 0;
+    persistCurrentVideoProgress(0);
+    if (activeLesson && !completedList.includes(activeLesson.id)) {
+      markLessonCompleted(course.id, activeLesson.id);
+      void syncCompletedProgressItem(activeLesson.id, 'lesson');
+      notify.success('Đã hoàn thành video bài học!');
+    }
   }
 
   function handleVideoMetadataLoaded(event: SyntheticEvent<HTMLVideoElement>) {
     if (!activeLesson) {
       return;
     }
-    saveLessonDuration(course.id, activeLesson.id, event.currentTarget.duration);
+    const video = event.currentTarget;
+    saveLessonDuration(course.id, activeLesson.id, video.duration);
+    currentDurationRef.current = video.duration;
+    if (resumePositionSec > 0 && video.duration - resumePositionSec > 5) {
+      isResettingSeekRef.current = true;
+      video.currentTime = Math.min(resumePositionSec, video.duration);
+      watchedUntilRef.current = Math.max(watchedUntilRef.current, video.currentTime);
+      window.setTimeout(() => {
+        isResettingSeekRef.current = false;
+      }, 0);
+    }
   }
 
   function handleVideoTimeUpdate(event: SyntheticEvent<HTMLVideoElement>) {
+    recordVideoProgress(event.currentTarget.currentTime, event.currentTarget.duration);
     if (isResettingSeekRef.current) {
       return;
     }
@@ -1984,7 +2238,8 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       return;
     }
 
-    if (Math.abs(video.currentTime - watchedUntilRef.current) < 0.75) {
+    // Cho phép tua ngược (ví dụ bấm vào mốc ghi chú), chỉ chặn tua tới phần chưa xem.
+    if (video.currentTime <= watchedUntilRef.current + 0.75) {
       return;
     }
 
@@ -2016,12 +2271,64 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   function handleQuizComplete(lessonId: string, score: number) {
     saveQuizScore(course.id, lessonId, score);
     markQuizCompleted(course.id, lessonId);
+    void syncCompletedProgressItem(lessonId, 'quiz');
   }
 
-  const handleSaveNote = () => {
-    saveLessonNote(course.id, activeLesson.id, noteText);
-    notify.success('Đã lưu ghi chú thành công!');
-  };
+  async function handleAddTimedNote() {
+    if (!activeLesson || !isDirectVideo || !videoRef.current) {
+      notify.error('Ghi chú theo mốc thời gian hiện hỗ trợ video tải trực tiếp.');
+      return;
+    }
+    if (!timedNoteInput.trim()) {
+      notify.error('Vui lòng nhập nội dung ghi chú.');
+      return;
+    }
+    const timeSec = Math.max(0, Math.floor(videoRef.current.currentTime));
+    try {
+      setSavingTimedNote(true);
+      const note = await createStudentLessonNote(course.id, activeLesson.id, {
+        timeSec,
+        content: timedNoteInput.trim(),
+      });
+      setActiveTimedNotes(previous =>
+        [...previous, note].sort((a, b) => a.timeSec - b.timeSec),
+      );
+      setTimedNoteInput('');
+      notify.success(`Đã lưu ghi chú tại ${formatDurationSec(timeSec)}`);
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không lưu được ghi chú');
+    } finally {
+      setSavingTimedNote(false);
+    }
+  }
+
+  async function handleDeleteTimedNote(noteId: string) {
+    if (!activeLesson) return;
+    try {
+      setDeletingTimedNoteId(noteId);
+      await deleteStudentLessonNote(course.id, activeLesson.id, noteId);
+      setActiveTimedNotes(previous => previous.filter(note => note.id !== noteId));
+      notify.success('Đã xóa ghi chú');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không xóa được ghi chú');
+    } finally {
+      setDeletingTimedNoteId(null);
+    }
+  }
+
+  function handleSeekToNote(timeSec: number) {
+    const video = videoRef.current;
+    if (!video) {
+      notify.error('Không thể tua video nhúng YouTube/Vimeo từ ghi chú.');
+      return;
+    }
+    isResettingSeekRef.current = true;
+    video.currentTime = Math.min(timeSec, watchedUntilRef.current);
+    setCurrentVideoTime(video.currentTime);
+    window.setTimeout(() => {
+      isResettingSeekRef.current = false;
+    }, 0);
+  }
 
   function upsertDiscussionThread(thread: CourseDiscussionThread) {
     setDiscussionThreads(prev => {
@@ -2040,12 +2347,15 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     if (!content) return;
     try {
       setPostingQuestion(true);
+      const attachment = qaImageFile ? await uploadQaImage(qaImageFile) : undefined;
       const thread = await createCourseDiscussionThread(course.id, {
         lessonId: activeLesson?.id ?? null,
         content,
+        attachment,
       });
       upsertDiscussionThread(thread);
       setQaInput('');
+      setQaImageFile(null);
       notify.success('Đã đăng câu hỏi thảo luận thành công!');
     } catch (error) {
       notify.error(error instanceof Error ? error.message : 'Không đăng được câu hỏi');
@@ -2070,7 +2380,100 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     }
   };
 
-  const questionsList = discussionThreads;
+  const currentUserId = user?.id ?? jwtSubject(accessToken);
+
+  function canEditDiscussionItem(authorId: string) {
+    return Boolean(currentUserId && authorId === currentUserId);
+  }
+
+  function startEditQuestion(qa: CourseDiscussionThread) {
+    setEditingReplyId(null);
+    setEditingReplyText('');
+    setEditingQuestionId(qa.id);
+    setEditingQuestionText(qa.content);
+  }
+
+  async function handleUpdateQuestion(questionId: string) {
+    const content = editingQuestionText.trim();
+    if (!content) {
+      notify.error('Vui lòng nhập nội dung câu hỏi');
+      return;
+    }
+    try {
+      setSavingDiscussionId(questionId);
+      const updated = await updateCourseDiscussionThread(course.id, questionId, content);
+      upsertDiscussionThread(updated);
+      setEditingQuestionId(null);
+      setEditingQuestionText('');
+      notify.success('Đã cập nhật câu hỏi');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không cập nhật được câu hỏi');
+    } finally {
+      setSavingDiscussionId(null);
+    }
+  }
+
+  async function handleDeleteQuestion(questionId: string) {
+    if (!window.confirm('Xóa câu hỏi này và toàn bộ phản hồi bên dưới?')) return;
+    try {
+      setSavingDiscussionId(questionId);
+      await deleteCourseDiscussionThread(course.id, questionId);
+      setDiscussionThreads(prev => prev.filter(item => item.id !== questionId));
+      notify.success('Đã xóa câu hỏi');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không xóa được câu hỏi');
+    } finally {
+      setSavingDiscussionId(null);
+    }
+  }
+
+  function startEditReply(replyId: string, content: string) {
+    setEditingQuestionId(null);
+    setEditingQuestionText('');
+    setEditingReplyId(replyId);
+    setEditingReplyText(content);
+  }
+
+  async function handleUpdateReply(questionId: string, replyId: string) {
+    const content = editingReplyText.trim();
+    if (!content) {
+      notify.error('Vui lòng nhập nội dung phản hồi');
+      return;
+    }
+    try {
+      setSavingDiscussionId(replyId);
+      const updated = await updateCourseDiscussionReply(course.id, questionId, replyId, content);
+      upsertDiscussionThread(updated);
+      setEditingReplyId(null);
+      setEditingReplyText('');
+      notify.success('Đã cập nhật phản hồi');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không cập nhật được phản hồi');
+    } finally {
+      setSavingDiscussionId(null);
+    }
+  }
+
+  async function handleDeleteReply(questionId: string, replyId: string) {
+    if (!window.confirm('Xóa phản hồi này?')) return;
+    try {
+      setSavingDiscussionId(replyId);
+      const updated = await deleteCourseDiscussionReply(course.id, questionId, replyId);
+      upsertDiscussionThread(updated);
+      notify.success('Đã xóa phản hồi');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Không xóa được phản hồi');
+    } finally {
+      setSavingDiscussionId(null);
+    }
+  }
+
+  // Q&A trong màn hình học thuộc về từng bài học, không phải toàn khóa học.
+  // API trả về các thảo luận của cả khóa để tái sử dụng cho trang quản lý của giáo viên,
+  // vì vậy chỉ hiển thị những câu hỏi gắn đúng với bài đang mở tại đây.
+  const questionsList = discussionThreads.filter(
+    thread => thread.lessonId === activeLesson?.id,
+  );
 
   return (
     <div className="h-screen bg-surface flex flex-col font-sans overflow-hidden">
@@ -2159,18 +2562,19 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
               activeLesson.url.includes('youtu.be') ||
               activeLesson.url.includes('vimeo.com') ||
               activeLesson.url.includes('/embed/') ? (
-                // iframe cho YouTube/Vimeo
-                <iframe
+                <EmbeddedVideoPlayer
                   key={activeLesson.id}
-                  src={activeLesson.url}
-                  className="absolute inset-0 w-full h-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
+                  url={activeLesson.url}
                   title={activeLesson.title}
+                  initialPositionSec={resumePositionSec}
+                  onProgress={recordVideoProgress}
+                  onPause={() => persistCurrentVideoProgress()}
+                  onEnded={handleVideoEnded}
                 />
               ) : (
                 // <video> cho file upload (signed URL từ Supabase Storage, TTL 1 giờ)
                 <video
+                  ref={videoRef}
                   key={activeLesson.id}
                   src={activeLesson.url}
                   className="absolute inset-0 w-full h-full"
@@ -2180,6 +2584,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                   onLoadedMetadata={handleVideoMetadataLoaded}
                   onTimeUpdate={handleVideoTimeUpdate}
                   onSeeking={handleVideoSeeking}
+                  onPause={() => persistCurrentVideoProgress()}
                   onEnded={handleVideoEnded}
                   onError={() => setVideoUrlExpired(true)}
                 />
@@ -2227,6 +2632,124 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
               // Thumbnail mặc định
               <SafeCourseImage course={course} alt="Thumbnail" className="absolute inset-0 w-full h-full object-cover opacity-40" />
             )}
+
+            {/* Ghi chú nổi trực tiếp trên video để học sinh không phải cuộn xuống dưới. */}
+            {user?.role === 'student' && activeLesson?.type === 'video' && !videoUrlExpired && (
+              <div className="absolute right-3 top-3 z-40 sm:right-5 sm:top-5">
+                {!videoNoteOverlayOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setVideoNoteOverlayOpen(true)}
+                    className="flex items-center gap-2 rounded-xl border border-white/20 bg-black/75 px-3 py-2 text-xs font-extrabold text-white shadow-xl backdrop-blur-md transition-colors hover:bg-black/90 sm:px-4 sm:py-2.5 sm:text-sm"
+                  >
+                    <Pencil className="h-4 w-4 text-amber-300" />
+                    Ghi chú
+                    {isDirectVideo && (
+                      <span className="rounded-md bg-white/15 px-1.5 py-0.5 font-mono text-[11px] text-white/90">
+                        {formatDurationSec(Math.floor(currentVideoTime))}
+                      </span>
+                    )}
+                  </button>
+                ) : (
+                  <div className="flex max-h-[calc(56.25vw-1.5rem)] w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-white/20 bg-slate-950/95 text-white shadow-2xl backdrop-blur-xl sm:max-h-[calc(56.25vw-2.5rem)]">
+                    <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-3">
+                      <div>
+                        <h3 className="flex items-center gap-2 text-sm font-extrabold">
+                          <Clock className="h-4 w-4 text-amber-300" />
+                          Ghi chú tại {formatDurationSec(Math.floor(currentVideoTime))}
+                        </h3>
+                        <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-emerald-300">
+                          <Lock className="h-3 w-3" />
+                          Chỉ mình bạn xem được
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setVideoNoteOverlayOpen(false)}
+                        className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
+                        aria-label="Đóng ghi chú"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-3 overflow-y-auto p-3 sm:p-4">
+                      {isDirectVideo ? (
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={timedNoteInput}
+                            onChange={event => setTimedNoteInput(event.target.value)}
+                            onKeyDown={event => {
+                              if (event.key === 'Enter') handleAddTimedNote();
+                            }}
+                            maxLength={2000}
+                            disabled={savingTimedNote}
+                            autoFocus
+                            placeholder="Điều bạn chưa hiểu hoặc còn thắc mắc..."
+                            className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white outline-none placeholder:text-white/45 focus:border-amber-300/70"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddTimedNote}
+                            disabled={!timedNoteInput.trim() || savingTimedNote}
+                            className="inline-flex shrink-0 items-center justify-center rounded-xl bg-amber-400 px-3 py-2 text-xs font-extrabold text-slate-950 hover:bg-amber-300 disabled:opacity-50"
+                            title="Lưu ghi chú tại thời điểm hiện tại"
+                          >
+                            {savingTimedNote
+                              ? <Loader2 className="h-4 w-4 animate-spin" />
+                              : <Send className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="rounded-xl bg-amber-400/10 px-3 py-2 text-xs leading-relaxed text-amber-200">
+                          Video nhúng chưa cung cấp mốc thời gian cho hệ thống. Hãy dùng video tải trực tiếp để ghi chú đúng giây đang phát.
+                        </p>
+                      )}
+
+                      {loadingTimedNotes ? (
+                        <div className="flex items-center justify-center gap-2 py-3 text-xs text-white/60">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Đang tải ghi chú...
+                        </div>
+                      ) : activeTimedNotes.length > 0 ? (
+                        <div className="space-y-2">
+                          {activeTimedNotes.map(note => (
+                            <div key={note.id} className="flex items-start gap-2 rounded-xl bg-white/8 p-2.5">
+                              <button
+                                type="button"
+                                onClick={() => handleSeekToNote(note.timeSec)}
+                                className="shrink-0 rounded-lg bg-amber-400/15 px-2 py-1 font-mono text-[10px] font-extrabold text-amber-200 hover:bg-amber-400/25"
+                              >
+                                {formatDurationSec(note.timeSec)}
+                              </button>
+                              <p className="min-w-0 flex-1 whitespace-pre-wrap text-xs leading-relaxed text-white/90">
+                                {note.content}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTimedNote(note.id)}
+                                disabled={deletingTimedNoteId === note.id}
+                                className="shrink-0 rounded-lg p-1 text-red-300 hover:bg-red-400/10 disabled:opacity-50"
+                                title="Xóa ghi chú"
+                              >
+                                {deletingTimedNoteId === note.id
+                                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  : <Trash2 className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="py-2 text-center text-xs text-white/50">
+                          Chưa có ghi chú nào trong bài học này.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Thông tin bài học + tabs (Overview / Q&A / Notes) */}
@@ -2248,13 +2771,14 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                 { id: 'qa', label: 'Hỏi đáp (Q&A)' },
                 { id: 'notes', label: 'Ghi chú của tôi' },
                 { id: 'reviews', label: 'Đánh giá khóa học' },
-              ] as const).map(tab => (
+              ] as const)
+                .filter(tab => tab.id !== 'notes' || user?.role === 'student')
+                .map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`pb-4 font-bold text-sm md:text-base transition-colors relative ${
-                    activeTab === tab.id ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
+                  className={`pb-4 font-bold text-sm md:text-base transition-colors relative ${activeTab === tab.id ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
                 >
                   {tab.label}
                   {activeTab === tab.id && (
@@ -2327,6 +2851,11 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                           className="flex-grow min-h-[90px] p-4 text-sm rounded-2xl bg-surface border border-outline-variant/40 focus:border-primary outline-none resize-none text-on-surface transition-all placeholder:text-on-surface-variant/40"
                         />
                       </div>
+                      <QaImagePicker
+                        file={qaImageFile}
+                        onChange={setQaImageFile}
+                        disabled={postingQuestion}
+                      />
                       <div className="flex justify-end">
                         <button
                           onClick={handleAddQuestion}
@@ -2372,9 +2901,69 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                                   )}
                                   <span className="text-[10px] text-on-surface-variant/60">{formatDiscussionDate(qa.createdAt)}</span>
                                 </div>
-                                <p className="text-on-surface text-sm mt-2 leading-relaxed font-semibold">
-                                  {qa.content}
-                                </p>
+                                {editingQuestionId === qa.id ? (
+                                  <div className="mt-2 space-y-2">
+                                    <textarea
+                                      value={editingQuestionText}
+                                      onChange={(event) => setEditingQuestionText(event.target.value)}
+                                      className="w-full min-h-[86px] rounded-xl border border-outline-variant/40 bg-surface-container/40 px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
+                                    />
+                                    <div className="flex justify-end gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingQuestionId(null);
+                                          setEditingQuestionText('');
+                                        }}
+                                        className="rounded-lg px-3 py-1.5 text-xs font-bold text-on-surface-variant hover:bg-surface-container"
+                                      >
+                                        Hủy
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateQuestion(qa.id)}
+                                        disabled={savingDiscussionId === qa.id}
+                                        className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-on-primary disabled:opacity-60"
+                                      >
+                                        {savingDiscussionId === qa.id ? 'Đang lưu...' : 'Lưu'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="text-on-surface text-sm mt-2 leading-relaxed font-semibold">
+                                    {qa.content}
+                                  </p>
+                                )}
+                                {qa.attachmentUrl && qa.attachmentType?.startsWith('image/') && (
+                                  <a href={qa.attachmentUrl} target="_blank" rel="noreferrer" className="block mt-3">
+                                    <img
+                                      src={qa.attachmentUrl}
+                                      alt={qa.attachmentName ?? 'Ảnh câu hỏi'}
+                                      className="max-h-80 max-w-full rounded-xl border border-outline-variant/30 object-contain bg-black/5"
+                                    />
+                                  </a>
+                                )}
+                                {canEditDiscussionItem(qa.authorId) && editingQuestionId !== qa.id && (
+                                  <div className="mt-3 flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => startEditQuestion(qa)}
+                                      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold text-on-surface-variant hover:bg-surface-container"
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                      Sửa
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteQuestion(qa.id)}
+                                      disabled={savingDiscussionId === qa.id}
+                                      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-60"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                      Xóa
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -2396,9 +2985,69 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                                         </span>
                                         <span className="text-[9px] text-on-surface-variant/50">{formatDiscussionDate(reply.createdAt)}</span>
                                       </div>
-                                      <p className="text-xs text-on-surface-variant mt-1 leading-relaxed font-medium">
-                                        {reply.content}
-                                      </p>
+                                      {editingReplyId === reply.id ? (
+                                        <div className="mt-2 space-y-2">
+                                          <textarea
+                                            value={editingReplyText}
+                                            onChange={(event) => setEditingReplyText(event.target.value)}
+                                            className="w-full min-h-[70px] rounded-lg border border-outline-variant/40 bg-surface px-3 py-2 text-xs text-on-surface outline-none focus:border-primary"
+                                          />
+                                          <div className="flex justify-end gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setEditingReplyId(null);
+                                                setEditingReplyText('');
+                                              }}
+                                              className="rounded-lg px-2.5 py-1 text-[11px] font-bold text-on-surface-variant hover:bg-surface-container"
+                                            >
+                                              Hủy
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleUpdateReply(qa.id, reply.id)}
+                                              disabled={savingDiscussionId === reply.id}
+                                              className="rounded-lg bg-primary px-2.5 py-1 text-[11px] font-bold text-on-primary disabled:opacity-60"
+                                            >
+                                              {savingDiscussionId === reply.id ? 'Đang lưu...' : 'Lưu'}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <p className="text-xs text-on-surface-variant mt-1 leading-relaxed font-medium">
+                                          {reply.content}
+                                        </p>
+                                      )}
+                                      {reply.attachmentUrl && reply.attachmentType?.startsWith('image/') && (
+                                        <a href={reply.attachmentUrl} target="_blank" rel="noreferrer" className="block mt-2">
+                                          <img
+                                            src={reply.attachmentUrl}
+                                            alt={reply.attachmentName ?? 'Ảnh phản hồi'}
+                                            className="max-h-64 max-w-full rounded-lg object-contain bg-black/5"
+                                          />
+                                        </a>
+                                      )}
+                                      {canEditDiscussionItem(reply.authorId) && editingReplyId !== reply.id && (
+                                        <div className="mt-2 flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => startEditReply(reply.id, reply.content)}
+                                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold text-on-surface-variant hover:bg-surface"
+                                          >
+                                            <Pencil className="h-3 w-3" />
+                                            Sửa
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteReply(qa.id, reply.id)}
+                                            disabled={savingDiscussionId === reply.id}
+                                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold text-red-600 hover:bg-red-50 disabled:opacity-60"
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                            Xóa
+                                          </button>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 ))}
@@ -2433,23 +3082,91 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                     </div>
                   </motion.div>
                 )}
-                {activeTab === 'notes' && (
+                {activeTab === 'notes' && user?.role === 'student' && (
                   <motion.div key="notes" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-                    <textarea
-                      value={noteText}
-                      onChange={(e) => setNoteText(e.target.value)}
-                      onBlur={() => saveLessonNote(course.id, activeLesson.id, noteText)}
-                      placeholder="Ghi chú các kiến thức quan trọng của bài học này... (hệ thống sẽ tự động lưu khi bạn thoát nhấp chuột)"
-                      className="w-full min-h-[160px] p-4 rounded-2xl bg-surface-container border border-outline-variant/40 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none resize-none text-on-surface placeholder:text-on-surface-variant/50 transition-all font-medium"
-                    />
-                    <div className="flex justify-end">
-                      <button
-                        onClick={handleSaveNote}
-                        className="px-5 py-2.5 bg-primary text-on-primary rounded-xl font-bold text-sm shadow-md hover:bg-primary/90 transition-all"
-                      >
-                        Lưu ghi chú
-                      </button>
+                    <div className="rounded-2xl border border-outline-variant/40 bg-surface-container/40 p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="font-extrabold text-on-surface">Ghi chú theo thời gian video</h3>
+                          <p className="text-xs text-on-surface-variant mt-1">
+                            Ghi lại nội dung tại đúng thời điểm video đang phát.
+                          </p>
+                          <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-primary">
+                            <Lock className="h-3 w-3" />
+                            Riêng tư — chỉ bạn mới xem được các ghi chú này.
+                          </p>
+                        </div>
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-bold text-primary">
+                          <Clock className="h-4 w-4" />
+                          {formatDurationSec(Math.floor(currentVideoTime))}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={timedNoteInput}
+                          onChange={event => setTimedNoteInput(event.target.value)}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter') handleAddTimedNote();
+                          }}
+                          maxLength={2000}
+                          disabled={!isDirectVideo || savingTimedNote}
+                          placeholder={isDirectVideo ? 'Nhập ghi chú cho mốc thời gian hiện tại...' : 'Chỉ hỗ trợ video tải trực tiếp'}
+                          className="flex-1 rounded-xl border border-outline-variant/40 bg-surface px-3 py-2.5 text-sm text-on-surface outline-none focus:border-primary disabled:opacity-60"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddTimedNote}
+                          disabled={!isDirectVideo || !timedNoteInput.trim() || savingTimedNote}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
+                        >
+                          {savingTimedNote
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <Plus className="h-4 w-4" />}
+                          {savingTimedNote
+                            ? 'Đang lưu...'
+                            : `Thêm tại ${formatDurationSec(Math.floor(currentVideoTime))}`}
+                        </button>
+                      </div>
+
+                      {loadingTimedNotes ? (
+                        <div className="flex items-center gap-2 py-3 text-sm text-on-surface-variant">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Đang tải ghi chú của bạn...
+                        </div>
+                      ) : activeTimedNotes.length > 0 ? (
+                        <div className="space-y-2 pt-1">
+                          {activeTimedNotes.map(note => (
+                            <div key={note.id} className="flex items-start gap-3 rounded-xl bg-surface px-3 py-2.5 border border-outline-variant/30">
+                              <button
+                                type="button"
+                                onClick={() => handleSeekToNote(note.timeSec)}
+                                className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-extrabold text-primary hover:bg-primary/20"
+                                title="Tua video đến mốc này"
+                              >
+                                {formatDurationSec(note.timeSec)}
+                              </button>
+                              <p className="flex-1 text-sm text-on-surface whitespace-pre-wrap">{note.content}</p>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTimedNote(note.id)}
+                                disabled={deletingTimedNoteId === note.id}
+                                className="shrink-0 rounded-lg p-1.5 text-red-500 hover:bg-red-500/10 disabled:opacity-50"
+                                title="Xóa ghi chú"
+                              >
+                                {deletingTimedNoteId === note.id
+                                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                                  : <Trash2 className="h-4 w-4" />}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-on-surface-variant">Chưa có ghi chú theo mốc thời gian cho video này.</p>
+                      )}
                     </div>
+
                   </motion.div>
                 )}
                 {activeTab === 'reviews' && (
@@ -2489,9 +3206,8 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
               <div className="flex-grow overflow-y-auto px-3 py-4 space-y-4">
                 {chapterSections.map((chapter, chapterIndex) => {
                   const isExpanded = expandedChapterIds.has(chapter.id);
-                  const examSlotIndex = Math.floor(chapterIndex / 3);
-                  const exam = studentExams.find(item => item.slotIndex === examSlotIndex);
-                  const shouldShowExam = (chapterIndex + 1) % 3 === 0 && exam;
+                  const examsAfterChapter = studentExams.filter(item => item.placementChapterId === chapter.id);
+                  const shouldShowExam = examsAfterChapter.length > 0;
                   const videoLessonsInChapter = chapter.lessons.filter(lesson => lesson.type === 'video');
                   const completedVideoCount = videoLessonsInChapter.filter(lesson =>
                     completedList.includes(lesson.id)
@@ -2502,186 +3218,186 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
 
                   return (
                     <div key={chapter.id} className="space-y-2">
-                    <section className="border-b border-outline-variant/30 last:border-b-0 pb-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleChapter(chapter.id)}
-                        aria-expanded={isExpanded}
-                        className="w-full rounded-xl px-2.5 py-2 flex items-start justify-between gap-3 text-left hover:bg-surface-container transition-colors"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-xs font-extrabold uppercase tracking-wide text-on-surface-variant">
-                            Chương {chapterIndex + 1}
-                          </p>
-                          <h4 className="text-sm font-extrabold text-on-surface leading-snug line-clamp-2">
-                            {chapter.title}
-                          </h4>
-                        </div>
-                        <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-on-surface hover:bg-surface-container-high">
-                          {isExpanded ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                        </span>
-                      </button>
+                      <section className="border-b border-outline-variant/30 last:border-b-0 pb-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleChapter(chapter.id)}
+                          aria-expanded={isExpanded}
+                          className="w-full rounded-xl px-2.5 py-2 flex items-start justify-between gap-3 text-left hover:bg-surface-container transition-colors"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-extrabold uppercase tracking-wide text-on-surface-variant">
+                              Chương {chapterIndex + 1}
+                            </p>
+                            <h4 className="text-sm font-extrabold text-on-surface leading-snug line-clamp-2">
+                              {chapter.title}
+                            </h4>
+                          </div>
+                          <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-on-surface hover:bg-surface-container-high">
+                            {isExpanded ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                          </span>
+                        </button>
 
-                      <AnimatePresence initial={false}>
-                        {isExpanded && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2, ease: 'easeInOut' }}
-                            className="overflow-hidden"
-                          >
-                            <div className="space-y-1 pl-3 pt-1">
-                              {chapter.lessons.map((lesson, lessonIndex) => {
-                                const isActive = activeLesson?.id === lesson.id;
-                                const isCompleted = lesson.type === 'quiz'
-                                  ? completedQuizList.includes(lesson.id)
-                                  : completedList.includes(lesson.id);
-                                const unlockState = getLessonUnlockState(course, lesson, orderedVideoLessons, completedList);
-                                const isLocked = !unlockState.canOpen;
-                                const lockLabel = unlockState.lockedByPrerequisite
-                                  ? 'Hoàn thành bài trước'
-                                  : 'Cần mua khóa';
+                        <AnimatePresence initial={false}>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2, ease: 'easeInOut' }}
+                              className="overflow-hidden"
+                            >
+                              <div className="space-y-1 pl-3 pt-1">
+                                {chapter.lessons.map((lesson, lessonIndex) => {
+                                  const isActive = activeLesson?.id === lesson.id;
+                                  const isCompleted = lesson.type === 'quiz'
+                                    ? completedQuizList.includes(lesson.id)
+                                    : completedList.includes(lesson.id);
+                                  const unlockState = getLessonUnlockState(course, lesson, orderedVideoLessons, completedList);
+                                  const isLocked = !unlockState.canOpen;
+                                  const lockLabel = unlockState.lockedByPrerequisite
+                                    ? 'Hoàn thành bài trước'
+                                    : 'Cần mua khóa';
 
-                                return (
-                                  <button
-                                    key={lesson.id}
-                                    onClick={() => handleLessonClick(lesson)}
-                                    className={`w-full text-left rounded-xl border px-3 py-2.5 flex gap-3 transition-all ${
-                                      isLocked
-                                        ? 'bg-surface-container/40 border-transparent opacity-75 hover:opacity-100'
-                                        : isActive
-                                        ? 'bg-primary/10 border-primary/30 shadow-sm'
-                                        : 'bg-surface hover:bg-surface-container border-transparent'
-                                    }`}
-                                  >
-                                    <div className="mt-0.5 flex-shrink-0">
-                                      {isLocked
-                                        ? <Lock className="w-4.5 h-4.5 text-on-surface-variant" />
-                                        : isCompleted
-                                        ? <CheckCircle2 className="w-4.5 h-4.5 text-green-500" />
-                                        : lesson.type === 'video'
-                                        ? <PlayCircle className={`w-4.5 h-4.5 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`} />
-                                        : <FileText className={`w-4.5 h-4.5 ${isActive ? 'text-blue-500' : 'text-on-surface-variant'}`} />
-                                      }
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <p className={`text-sm font-semibold leading-snug line-clamp-2 ${isActive ? 'text-primary' : 'text-on-surface'}`}>
-                                        Bài {lessonIndex + 1}: {lesson.title.replace(/^Bài\s*\d+\s*[:.-]?\s*/i, '')}
-                                      </p>
-                                      <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                                        <span className="text-xs text-on-surface-variant">
-                                          {getLessonDisplayDuration(course.id, lesson, lessonDurations)}
-                                        </span>
-                                        {lesson.isFree && isPreviewMode && (
-                                          <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-extrabold text-amber-600">
-                                            Học thử
+                                  return (
+                                    <button
+                                      key={lesson.id}
+                                      onClick={() => handleLessonClick(lesson)}
+                                      className={`w-full text-left rounded-xl border px-3 py-2.5 flex gap-3 transition-all ${isLocked
+                                          ? 'bg-surface-container/40 border-transparent opacity-75 hover:opacity-100'
+                                          : isActive
+                                            ? 'bg-primary/10 border-primary/30 shadow-sm'
+                                            : 'bg-surface hover:bg-surface-container border-transparent'
+                                        }`}
+                                    >
+                                      <div className="mt-0.5 flex-shrink-0">
+                                        {isLocked
+                                          ? <Lock className="w-4.5 h-4.5 text-on-surface-variant" />
+                                          : isCompleted
+                                            ? <CheckCircle2 className="w-4.5 h-4.5 text-green-500" />
+                                            : lesson.type === 'video'
+                                              ? <PlayCircle className={`w-4.5 h-4.5 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`} />
+                                              : <FileText className={`w-4.5 h-4.5 ${isActive ? 'text-blue-500' : 'text-on-surface-variant'}`} />
+                                        }
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <p className={`text-sm font-semibold leading-snug line-clamp-2 ${isActive ? 'text-primary' : 'text-on-surface'}`}>
+                                          Bài {lessonIndex + 1}: {lesson.title.replace(/^Bài\s*\d+\s*[:.-]?\s*/i, '')}
+                                        </p>
+                                        <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                                          <span className="text-xs text-on-surface-variant">
+                                            {getLessonDisplayDuration(course.id, lesson, lessonDurations)}
                                           </span>
-                                        )}
-                                        {isLocked && (
-                                          <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[10px] font-extrabold text-on-surface-variant">
-                                            {lockLabel}
-                                          </span>
+                                          {lesson.isFree && isPreviewMode && (
+                                            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-extrabold text-amber-600">
+                                              Học thử
+                                            </span>
+                                          )}
+                                          {isLocked && (
+                                            <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[10px] font-extrabold text-on-surface-variant">
+                                              {lockLabel}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {isLocked && unlockState.reason && (
+                                          <p className="mt-1 text-xs text-on-surface-variant">
+                                            {unlockState.reason}
+                                          </p>
                                         )}
                                       </div>
-                                      {isLocked && unlockState.reason && (
-                                        <p className="mt-1 text-xs text-on-surface-variant">
-                                          {unlockState.reason}
+                                    </button>
+                                  );
+                                })}
+
+                                {chapter.hasQuizConfig && chapter.id !== 'flat-lessons' && (
+                                  course.isEnrolled && isChapterVideoCompleted ? (
+                                    <Link
+                                      to={`/courses/${courseId}/chapters/${chapter.id}/quiz`}
+                                      className="w-full text-left rounded-xl border border-transparent px-3 py-2.5 flex items-center gap-3 bg-surface hover:bg-amber-500/5 hover:border-amber-500/20 transition-all group"
+                                    >
+                                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isChapterQuizCompleted
+                                          ? 'bg-green-500/10 text-green-600'
+                                          : 'bg-amber-500/10 text-amber-500 group-hover:bg-amber-500/20'
+                                        }`}>
+                                        {isChapterQuizCompleted
+                                          ? <CheckCircle2 className="w-4 h-4" />
+                                          : <ClipboardList className="w-4 h-4" />
+                                        }
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-semibold text-on-surface line-clamp-1">Quiz chương {chapterIndex + 1}</p>
+                                        <p className={`text-xs font-medium ${isChapterQuizCompleted ? 'text-green-600' : 'text-amber-600'}`}>
+                                          {isChapterQuizCompleted ? 'Đã hoàn thành quiz' : 'Làm quiz ngay'}
                                         </p>
-                                      )}
+                                      </div>
+                                    </Link>
+                                  ) : (
+                                    <div className="w-full text-left rounded-xl border border-transparent px-3 py-2.5 flex items-center gap-3 bg-surface-container/40 opacity-75">
+                                      <div className="w-7 h-7 rounded-lg bg-surface-container-high text-on-surface-variant flex items-center justify-center flex-shrink-0">
+                                        <Lock className="w-4 h-4" />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-semibold text-on-surface line-clamp-1">Quiz chương {chapterIndex + 1}</p>
+                                        <p className="text-xs text-on-surface-variant font-medium">
+                                          {course.isEnrolled
+                                            ? `Hoàn thành ${completedVideoCount}/${videoLessonsInChapter.length} video để mở quiz`
+                                            : 'Cần mua khóa để làm quiz'}
+                                        </p>
+                                      </div>
                                     </div>
-                                  </button>
-                                );
-                              })}
+                                  )
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </section>
 
-                              {chapter.hasQuizConfig && chapter.id !== 'flat-lessons' && (
-                                course.isEnrolled && isChapterVideoCompleted ? (
-                                  <Link
-                                    to={`/courses/${courseId}/chapters/${chapter.id}/quiz`}
-                                    className="w-full text-left rounded-xl border border-transparent px-3 py-2.5 flex items-center gap-3 bg-surface hover:bg-amber-500/5 hover:border-amber-500/20 transition-all group"
-                                  >
-                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                      isChapterQuizCompleted
-                                        ? 'bg-green-500/10 text-green-600'
-                                        : 'bg-amber-500/10 text-amber-500 group-hover:bg-amber-500/20'
-                                    }`}>
-                                      {isChapterQuizCompleted
-                                        ? <CheckCircle2 className="w-4 h-4" />
-                                        : <ClipboardList className="w-4 h-4" />
-                                      }
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-semibold text-on-surface line-clamp-1">Quiz chương {chapterIndex + 1}</p>
-                                      <p className={`text-xs font-medium ${isChapterQuizCompleted ? 'text-green-600' : 'text-amber-600'}`}>
-                                        {isChapterQuizCompleted ? 'Đã hoàn thành quiz' : 'Làm quiz ngay'}
-                                      </p>
-                                    </div>
-                                  </Link>
-                                ) : (
-                                  <div className="w-full text-left rounded-xl border border-transparent px-3 py-2.5 flex items-center gap-3 bg-surface-container/40 opacity-75">
-                                    <div className="w-7 h-7 rounded-lg bg-surface-container-high text-on-surface-variant flex items-center justify-center flex-shrink-0">
-                                      <Lock className="w-4 h-4" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-semibold text-on-surface line-clamp-1">Quiz chương {chapterIndex + 1}</p>
-                                      <p className="text-xs text-on-surface-variant font-medium">
-                                        {course.isEnrolled
-                                          ? `Hoàn thành ${completedVideoCount}/${videoLessonsInChapter.length} video để mở quiz`
-                                          : 'Cần mua khóa để làm quiz'}
-                                      </p>
-                                    </div>
-                                  </div>
-                                )
-                              )}
+                      {shouldShowExam && examsAfterChapter.map(exam => (
+                        exam.unlocked ? (
+                          <Link
+                            key={exam.slotIndex}
+                            to={`/courses/${courseId}/exams/${exam.slotIndex}`}
+                            className={`w-full text-left rounded-2xl border px-3 py-3 flex items-start gap-3 transition-all ${exam.passed
+                                ? 'bg-green-500/5 border-green-500/25 hover:bg-green-500/10'
+                                : 'bg-primary/5 border-primary/25 hover:bg-primary/10'
+                              }`}
+                          >
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${exam.passed ? 'bg-green-500/15 text-green-600' : 'bg-primary/15 text-primary'
+                              }`}>
+                              {exam.passed ? <CheckCircle2 className="w-4.5 h-4.5" /> : <ClipboardList className="w-4.5 h-4.5" />}
                             </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </section>
-
-                    {shouldShowExam && (
-                      exam.unlocked ? (
-                        <Link
-                          to={`/courses/${courseId}/exams/${exam.slotIndex}`}
-                          className={`w-full text-left rounded-2xl border px-3 py-3 flex items-start gap-3 transition-all ${
-                            exam.passed
-                              ? 'bg-green-500/5 border-green-500/25 hover:bg-green-500/10'
-                              : 'bg-primary/5 border-primary/25 hover:bg-primary/10'
-                          }`}
-                        >
-                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                            exam.passed ? 'bg-green-500/15 text-green-600' : 'bg-primary/15 text-primary'
-                          }`}>
-                            {exam.passed ? <CheckCircle2 className="w-4.5 h-4.5" /> : <ClipboardList className="w-4.5 h-4.5" />}
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-sm font-extrabold line-clamp-2 ${exam.passed ? 'text-green-700' : 'text-primary'}`}>
+                                {exam.name}
+                              </p>
+                              <p className="mt-0.5 text-xs font-medium text-on-surface-variant">
+                                {exam.passed
+                                  ? `Đã đạt ${exam.latestScorePercent ?? 0}%`
+                                  : `Mở khóa sau ${exam.passedQuizCount}/${exam.requiredQuizCount} quiz · Làm bài ngay`}
+                              </p>
+                            </div>
+                          </Link>
+                        ) : (
+                          <div
+                            key={exam.slotIndex}
+                            className="w-full rounded-2xl border border-outline-variant/40 bg-surface-container/50 px-3 py-3 flex items-start gap-3 opacity-90"
+                          >
+                            <div className="w-8 h-8 rounded-xl bg-surface-container-high text-on-surface-variant flex items-center justify-center flex-shrink-0">
+                              <Lock className="w-4.5 h-4.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-extrabold text-on-surface line-clamp-2">{exam.name}</p>
+                              <p className="mt-0.5 text-xs font-medium text-on-surface-variant">
+                                {exam.lockedReason ?? `Cần pass ${exam.requiredQuizCount} quiz chương`}
+                              </p>
+                              <p className="mt-1 text-[11px] font-bold text-on-surface-variant">
+                                Đã pass {exam.passedQuizCount}/{exam.requiredQuizCount} quiz
+                              </p>
+                            </div>
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <p className={`text-sm font-extrabold line-clamp-2 ${exam.passed ? 'text-green-700' : 'text-primary'}`}>
-                              {exam.name}
-                            </p>
-                            <p className="mt-0.5 text-xs font-medium text-on-surface-variant">
-                              {exam.passed
-                                ? `Đã đạt ${exam.latestScorePercent ?? 0}%`
-                                : `Mở khóa sau ${exam.passedQuizCount}/${exam.requiredQuizCount} quiz · Làm bài ngay`}
-                            </p>
-                          </div>
-                        </Link>
-                      ) : (
-                        <div className="w-full rounded-2xl border border-outline-variant/40 bg-surface-container/50 px-3 py-3 flex items-start gap-3 opacity-90">
-                          <div className="w-8 h-8 rounded-xl bg-surface-container-high text-on-surface-variant flex items-center justify-center flex-shrink-0">
-                            <Lock className="w-4.5 h-4.5" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-extrabold text-on-surface line-clamp-2">{exam.name}</p>
-                            <p className="mt-0.5 text-xs font-medium text-on-surface-variant">
-                              {exam.lockedReason ?? `Cần pass ${exam.requiredQuizCount} quiz chương`}
-                            </p>
-                            <p className="mt-1 text-[11px] font-bold text-on-surface-variant">
-                              Đã pass {exam.passedQuizCount}/{exam.requiredQuizCount} quiz
-                            </p>
-                          </div>
-                        </div>
-                      )
-                    )}
+                        )
+                      ))}
                     </div>
                   );
                 })}
@@ -2732,30 +3448,42 @@ export default function CourseDetailPage() {
   const [rawChapters, setRawChapters] = useState<ChapterDetail[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [notFound, setNotFound] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   // ── Fetch course detail mỗi khi id thay đổi ─────────────────────────────
   useEffect(() => {
     if (!id) return;
+    let active = true;
     setLoading(true);
     setNotFound(false);
+    setLoadError(null);
 
     courseServiceGetDetail(id)
       .then(async (detail) => {
+        if (!active) return;
         setCourse(adaptCourseDetail(detail));
         setRawChapters(detail.chapters);
       })
       .catch((err) => {
-        // 404 từ BE → hiển thị empty state. Lỗi khác → toast.
+        if (!active) return;
+        // Chỉ 404 mới là không tìm thấy. Lỗi mạng/5xx cần cho phép người dùng thử lại.
         if (isApiError(err) && err.status === 404) {
           setNotFound(true);
         } else {
           const message = isApiError(err) ? err.message : 'Không thể tải khóa học';
           notify.error(message);
-          setNotFound(true);
+          setLoadError(message);
         }
       })
-      .finally(() => setLoading(false));
-  }, [id, purchasedIds]);
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [id, purchasedIds, retryKey]);
 
   // ── Loading state ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -2792,6 +3520,29 @@ export default function CourseDetailPage() {
       <div className="min-h-screen bg-surface flex flex-col items-center justify-center">
         <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
         <p className="text-on-surface-variant">Đang tải khóa học...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-surface flex flex-col items-center justify-center px-4 text-center">
+        <AlertCircle className="w-12 h-12 text-error mb-4" />
+        <h1 className="text-2xl font-bold text-on-surface mb-2">Không thể tải khóa học</h1>
+        <p className="text-on-surface-variant mb-5 max-w-md">{loadError}</p>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setRetryKey((value) => value + 1)}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 font-bold text-on-primary hover:bg-primary/90"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Thử lại
+          </button>
+          <Link to="/courses" className="text-primary hover:underline font-bold">
+            Quay lại danh sách
+          </Link>
+        </div>
       </div>
     );
   }

@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
+// Vị trí xem video gần nhất của một bài học — dùng để phát tiếp từ chỗ đã dừng.
+export interface VideoPosition {
+  positionSec: number;
+  durationSec: number;
+  updatedAt: string;
+}
+
 interface CourseState {
   purchasedIds: string[];
   enrollCourses: (courseIds: string[]) => void;
@@ -12,12 +19,23 @@ interface CourseState {
 
   // Tiến độ học tập: mapping từ courseId -> danh sách các lessonId đã học xong
   completedLessons: Record<string, string[]>;
+  hydrateCourseProgress: (courseId: string, lessonIds: string[], quizIds: string[]) => void;
   markLessonCompleted: (courseId: string, lessonId: string) => void;
   toggleLessonCompleted: (courseId: string, lessonId: string) => void;
 
   // Thời lượng video lấy từ metadata trình duyệt khi backend chưa lưu durationSec.
   lessonDurations: Record<string, Record<string, number>>;
   saveLessonDuration: (courseId: string, lessonId: string, durationSec: number) => void;
+
+  // Vị trí xem gần nhất được giữ cục bộ để khôi phục ngay cả khi mạng chập chờn.
+  videoPositions: Record<string, Record<string, VideoPosition>>;
+  saveVideoPosition: (
+    courseId: string,
+    lessonId: string,
+    positionSec: number,
+    durationSec: number,
+    updatedAt?: string,
+  ) => void;
 
   // Điểm số kiểm tra: mapping từ courseId -> lessonId -> điểm số cao nhất (%)
   quizScores: Record<string, Record<string, number>>;
@@ -53,6 +71,16 @@ export const useCourseStore = create<CourseState>()(
       }),
 
       completedLessons: {},
+      hydrateCourseProgress: (courseId, lessonIds, quizIds) => set((state) => ({
+        completedLessons: {
+          ...state.completedLessons,
+          [courseId]: Array.from(new Set(lessonIds)),
+        },
+        completedQuizzes: {
+          ...state.completedQuizzes,
+          [courseId]: Array.from(new Set(quizIds)),
+        },
+      })),
       markLessonCompleted: (courseId, lessonId) => set((state) => {
         const currentList = state.completedLessons[courseId] ?? [];
         if (currentList.includes(lessonId)) {
@@ -100,6 +128,27 @@ export const useCourseStore = create<CourseState>()(
               [lessonId]: normalizedDuration,
             }
           }
+        };
+      }),
+
+      videoPositions: {},
+      saveVideoPosition: (courseId, lessonId, positionSec, durationSec, updatedAt) => set((state) => {
+        if (!Number.isFinite(positionSec) || !Number.isFinite(durationSec)) return state;
+        const normalizedPosition = Math.max(0, Math.floor(positionSec));
+        const normalizedDuration = Math.max(0, Math.floor(durationSec));
+        const coursePositions = state.videoPositions[courseId] ?? {};
+        return {
+          videoPositions: {
+            ...state.videoPositions,
+            [courseId]: {
+              ...coursePositions,
+              [lessonId]: {
+                positionSec: normalizedPosition,
+                durationSec: normalizedDuration,
+                updatedAt: updatedAt ?? new Date().toISOString(),
+              },
+            },
+          },
         };
       }),
 

@@ -83,19 +83,12 @@ public class QuestionService {
         validateCategoryMatchesChapter(req.categoryId(), chapter);
         validateGradeMatchesChapter(req.categoryId(), req.grade(), chapter);
 
-        // Validate: đúng 1 đáp án đúng
-        long correctCount = req.choices().stream()
-                .filter(CreateQuestionRequest.ChoiceRequest::isCorrect).count();
-        if (correctCount != 1) {
-            throw new BusinessException("INVALID_CHOICES",
-                    "Câu hỏi phải có đúng 1 đáp án đúng (hiện có: " + correctCount + ").");
-        }
-
         Question question = Question.create(teacher, category, req.grade(), chapter,
                 req.content(), req.explanation(), req.difficulty(), req.type());
 
         // Tạo choices và gắn vào question trước khi save (cascade sẽ insert cùng)
-        List<CreateQuestionRequest.ChoiceRequest> choiceReqs = req.choices();
+        List<CreateQuestionRequest.ChoiceRequest> choiceReqs =
+                req.choices() != null ? req.choices() : List.of();
         for (int i = 0; i < choiceReqs.size(); i++) {
             CreateQuestionRequest.ChoiceRequest cr = choiceReqs.get(i);
             QuestionChoice choice = QuestionChoice.create(question, cr.content(), cr.isCorrect(), i + 1);
@@ -156,13 +149,6 @@ public class QuestionService {
 
         Question question = loadAndVerifyOwner(questionId, me.userId());
 
-        long correctCount = req.choices().stream()
-                .filter(CreateQuestionRequest.ChoiceRequest::isCorrect).count();
-        if (correctCount != 1) {
-            throw new BusinessException("INVALID_CHOICES",
-                    "Câu hỏi phải có đúng 1 đáp án đúng.");
-        }
-
         // Validate: category phải khớp với course chứa chapter mới (nếu có đổi chapter)
         Category category = loadCategory(req.categoryId());
         Chapter chapter = req.chapterId() != null ? loadChapter(req.chapterId()) : null;
@@ -170,13 +156,14 @@ public class QuestionService {
         validateGradeMatchesChapter(req.categoryId(), req.grade(), chapter);
 
         question.update(category, req.grade(), chapter,
-                req.content(), req.explanation(), req.difficulty());
+                req.content(), req.explanation(), req.difficulty(), req.type());
 
         // Xóa toàn bộ choices cũ — orphanRemoval=true sẽ DELETE các bản ghi cũ khi flush
         question.clearChoices();
 
         // Tạo lại choices từ request
-        List<CreateQuestionRequest.ChoiceRequest> choiceReqs = req.choices();
+        List<CreateQuestionRequest.ChoiceRequest> choiceReqs =
+                req.choices() != null ? req.choices() : List.of();
         for (int i = 0; i < choiceReqs.size(); i++) {
             CreateQuestionRequest.ChoiceRequest cr = choiceReqs.get(i);
             QuestionChoice choice = QuestionChoice.create(question, cr.content(), cr.isCorrect(), i + 1);
@@ -318,8 +305,11 @@ public class QuestionService {
         if (!List.of("easy", "medium", "hard").contains(req.difficulty())) {
             throw new BusinessException("INVALID_DIFFICULTY", "Độ khó phải là easy, medium hoặc hard.");
         }
-        if (!List.of("multiple_choice", "true_false").contains(req.type())) {
+        if (!List.of("multiple_choice", "true_false", "essay").contains(req.type())) {
             throw new BusinessException("INVALID_TYPE", "Loại câu hỏi không hợp lệ.");
+        }
+        if ("essay".equals(req.type())) {
+            return;
         }
         if (req.choices() == null || req.choices().size() < 2 || req.choices().size() > 4) {
             throw new BusinessException("INVALID_CHOICES", "Câu hỏi phải có 2-4 đáp án.");

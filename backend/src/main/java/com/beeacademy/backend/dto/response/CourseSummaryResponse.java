@@ -61,7 +61,8 @@ public record CourseSummaryResponse(
         int studentCount,
         Integer totalChapters,
         Integer totalLessons,
-        Integer totalDurationSec
+        Integer totalDurationSec,
+        Integer progressPct
 ) {
 
     /**
@@ -96,6 +97,17 @@ public record CourseSummaryResponse(
             long reviewCount,
             int studentCount
     ) {
+        return fromEntity(course, hasFreePreview, averageRating, reviewCount, studentCount, null);
+    }
+
+    public static CourseSummaryResponse fromEntity(
+            Course course,
+            boolean hasFreePreview,
+            double averageRating,
+            long reviewCount,
+            int studentCount,
+            Integer progressPct
+    ) {
         // Boxing int[] → List<Integer> để JSON ra mảng JSON chuẩn
         List<Integer> grades = Arrays.stream(course.getGrades()).boxed().collect(Collectors.toList());
 
@@ -127,7 +139,8 @@ public record CourseSummaryResponse(
                 studentCount,
                 course.getTotalChapters(),
                 course.getTotalLessons(),
-                course.getTotalDurationSec()
+                course.getTotalDurationSec(),
+                progressPct
         );
     }
 }

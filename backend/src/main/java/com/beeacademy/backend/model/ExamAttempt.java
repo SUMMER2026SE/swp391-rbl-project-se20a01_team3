@@ -80,7 +80,7 @@ public class ExamAttempt {
         return attempt;
     }
 
-    public void submit(String answersJson, double scorePercent, boolean passed) {
+    public void submit(String answersJson, double scorePercent, Boolean passed) {
         this.answers = answersJson;
         this.scorePercent = BigDecimal.valueOf(scorePercent)
                 .setScale(1, java.math.RoundingMode.HALF_UP);

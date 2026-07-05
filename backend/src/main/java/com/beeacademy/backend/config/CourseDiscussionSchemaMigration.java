@@ -36,10 +36,21 @@ public class CourseDiscussionSchemaMigration implements ApplicationRunner {
                     lesson_id UUID NULL REFERENCES public.lessons(id) ON DELETE SET NULL,
                     author_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
                     content TEXT NOT NULL,
+                    attachment_url TEXT NULL,
+                    attachment_name VARCHAR(255) NULL,
+                    attachment_type VARCHAR(100) NULL,
+                    attachment_size_bytes BIGINT NULL,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.course_discussion_threads
+                    ADD COLUMN IF NOT EXISTS attachment_url TEXT NULL,
+                    ADD COLUMN IF NOT EXISTS attachment_name VARCHAR(255) NULL,
+                    ADD COLUMN IF NOT EXISTS attachment_type VARCHAR(100) NULL,
+                    ADD COLUMN IF NOT EXISTS attachment_size_bytes BIGINT NULL
                 """);
         jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_course_discussion_threads_course
@@ -60,8 +71,19 @@ public class CourseDiscussionSchemaMigration implements ApplicationRunner {
                     thread_id UUID NOT NULL REFERENCES public.course_discussion_threads(id) ON DELETE CASCADE,
                     author_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
                     content TEXT NOT NULL,
+                    attachment_url TEXT NULL,
+                    attachment_name VARCHAR(255) NULL,
+                    attachment_type VARCHAR(100) NULL,
+                    attachment_size_bytes BIGINT NULL,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.course_discussion_replies
+                    ADD COLUMN IF NOT EXISTS attachment_url TEXT NULL,
+                    ADD COLUMN IF NOT EXISTS attachment_name VARCHAR(255) NULL,
+                    ADD COLUMN IF NOT EXISTS attachment_type VARCHAR(100) NULL,
+                    ADD COLUMN IF NOT EXISTS attachment_size_bytes BIGINT NULL
                 """);
         jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_course_discussion_replies_thread

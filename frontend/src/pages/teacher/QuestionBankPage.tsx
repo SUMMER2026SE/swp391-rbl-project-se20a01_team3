@@ -18,7 +18,7 @@ import {
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, Megaphone, RefreshCcw, Filter,
   ChevronDown, Zap, TrendingUp, Minus, Database,
-  Save, Loader2, CheckCircle2, Circle, FileSpreadsheet, Sparkles, Lock, UserCircle,
+  Save, Loader2, CheckCircle2, Circle, FileSpreadsheet, Sparkles, Lock, UserCircle, Star,
 } from 'lucide-react';
 import ExcelImportModal from './ExcelImportModal';
 import AIScanModal from './AIScanModal';
@@ -30,6 +30,7 @@ import AIScanModal from './AIScanModal';
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Tổng quan',         path: '/teacher'            },
   { icon: BookOpen,        label: 'Khóa học của tôi',  path: '/teacher/courses'    },
+  { icon: Star,            label: 'Đánh giá khóa học', path: '/teacher/reviews'    },
   { icon: FileText,        label: 'Bài giảng',          path: '/teacher/content'    },
   { icon: PenSquare,       label: 'Quiz chương',        path: '/teacher/quiz'       },
   { icon: Database,        label: 'Ngân hàng câu hỏi', path: '/teacher/questions'  },
@@ -74,8 +75,10 @@ function formatDate(iso: string) {
 // ═══════════════════════════════════════════════════════════════════
 
 interface ChoiceRow { content: string; isCorrect: boolean }
+type BankQuestionType = 'multiple_choice' | 'true_false' | 'essay';
 
-function emptyChoices(type: 'multiple_choice' | 'true_false'): ChoiceRow[] {
+function emptyChoices(type: BankQuestionType): ChoiceRow[] {
+  if (type === 'essay') return [];
   if (type === 'true_false') return [
     { content: 'Đúng', isCorrect: true },
     { content: 'Sai',  isCorrect: false },
@@ -94,7 +97,7 @@ interface FormState {
   content: string;
   explanation: string;
   difficulty: Difficulty;
-  type: 'multiple_choice' | 'true_false';
+  type: BankQuestionType;
   choices: ChoiceRow[];
 }
 
@@ -179,7 +182,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
     }));
   }
 
-  function handleTypeChange(type: 'multiple_choice' | 'true_false') {
+  function handleTypeChange(type: BankQuestionType) {
     setForm(f => ({ ...f, type, choices: emptyChoices(type) }));
   }
 
@@ -218,8 +221,8 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
     if (!form.categoryId) { notify.error('Vui lòng chọn môn học'); return; }
     if (!form.grade) { notify.error('Vui lòng chọn lớp'); return; }
     if (!form.content.trim()) { notify.error('Vui lòng nhập nội dung câu hỏi'); return; }
-    if (form.choices.some(c => !c.content.trim())) { notify.error('Vui lòng điền đầy đủ nội dung các đáp án'); return; }
-    if (!form.choices.some(c => c.isCorrect)) { notify.error('Vui lòng chọn đáp án đúng'); return; }
+    if (form.type !== 'essay' && form.choices.some(c => !c.content.trim())) { notify.error('Vui lòng điền đầy đủ nội dung các đáp án'); return; }
+    if (form.type !== 'essay' && !form.choices.some(c => c.isCorrect)) { notify.error('Vui lòng chọn đáp án đúng'); return; }
 
     const req: CreateQuestionRequest = {
       categoryId:  form.categoryId,
@@ -229,7 +232,9 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
       explanation: form.explanation.trim() || undefined,
       difficulty:  form.difficulty,
       type:        form.type,
-      choices:     form.choices.map(c => ({ content: c.content.trim(), isCorrect: c.isCorrect })),
+      choices:     form.type === 'essay'
+        ? []
+        : form.choices.map(c => ({ content: c.content.trim(), isCorrect: c.isCorrect })),
     };
 
     setSaving(true);
@@ -378,7 +383,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
               <div>
                 <label className="block text-sm font-bold text-on-surface mb-1.5">Loại câu hỏi</label>
                 <div className="flex rounded-xl overflow-hidden border border-outline-variant">
-                  {(['multiple_choice', 'true_false'] as const).map(t => (
+                  {(['multiple_choice', 'true_false', 'essay'] as const).map(t => (
                     <button
                       key={t}
                       type="button"
@@ -389,7 +394,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                           : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
                       }`}
                     >
-                      {t === 'multiple_choice' ? 'Trắc nghiệm' : 'Đúng / Sai'}
+                      {t === 'multiple_choice' ? 'Trắc nghiệm' : t === 'true_false' ? 'Đúng / Sai' : 'Tự luận'}
                     </button>
                   ))}
                 </div>
@@ -437,9 +442,12 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
               {/* Đáp án */}
               <div>
                 <label className="block text-sm font-bold text-on-surface mb-1.5">
-                  Đáp án <span className="text-red-500">*</span>
+                  {form.type === 'essay' ? 'Đáp án' : 'Đáp án'}
+                  {form.type !== 'essay' && <span className="text-red-500"> *</span>}
                   <span className="ml-1 text-xs font-normal text-on-surface-variant">
-                    (click vòng tròn để chọn đáp án đúng)
+                    {form.type === 'essay'
+                      ? '(tự luận không cần đáp án trong ngân hàng)'
+                      : '(click vòng tròn để chọn đáp án đúng)'}
                   </span>
                 </label>
                 <div className="space-y-2">
@@ -1144,7 +1152,7 @@ export default function QuestionBankPage() {
                             <td className="px-5 py-3">
                               <p className="text-on-surface font-medium leading-snug">{truncate(q.content, 100)}</p>
                               <p className="text-xs text-on-surface-variant mt-0.5">
-                                {q.type === 'multiple_choice' ? 'Trắc nghiệm' : 'Đúng / Sai'}
+                                {q.type === 'multiple_choice' ? 'Trắc nghiệm' : q.type === 'true_false' ? 'Đúng / Sai' : 'Tự luận'}
                                 {q.choices.length > 0 && ` · ${q.choices.length} đáp án`}
                               </p>
                             </td>

@@ -120,4 +120,21 @@ public interface CourseRepository extends JpaRepository<Course, UUID>,
            "GROUP BY c.id, c.title, t.fullName, cat.name " +
            "ORDER BY COUNT(e) DESC")
     List<Object[]> findTopByEnrollments(@Param("status") CourseStatus status, Pageable pageable);
+
+    @Query("""
+           SELECT c.id,
+                  (SELECT COUNT(l.id) FROM Lesson l WHERE l.chapter.course.id = c.id) +
+                  (SELECT COUNT(q.id) FROM QuizConfig q WHERE q.chapter.course.id = c.id)
+           FROM Course c
+           WHERE c.id IN :courseIds
+           """)
+    List<Object[]> countProgressItemsByCourseIds(@Param("courseIds") Collection<UUID> courseIds);
+
+    @Query("""
+           SELECT (SELECT COUNT(l.id) FROM Lesson l WHERE l.chapter.course.id = c.id) +
+                  (SELECT COUNT(q.id) FROM QuizConfig q WHERE q.chapter.course.id = c.id)
+           FROM Course c
+           WHERE c.id = :courseId
+           """)
+    long countProgressItemsByCourseId(@Param("courseId") UUID courseId);
 }
