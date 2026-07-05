@@ -15,6 +15,7 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.Set;
 
 /**
@@ -65,9 +66,11 @@ public class MaintenanceModeFilter extends OncePerRequestFilter {
 
         response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
         response.setContentType("application/json;charset=UTF-8");
+        Instant until = settingsService.getMaintenanceUntil();
         response.getWriter().write(
                 "{\"success\":false,\"code\":\"MAINTENANCE_MODE\"," +
-                "\"message\":\"Hệ thống đang bảo trì, vui lòng quay lại sau.\"}");
+                "\"message\":\"Hệ thống đang bảo trì, vui lòng quay lại sau.\"," +
+                "\"maintenanceUntil\":" + (until != null ? "\"" + until + "\"" : "null") + "}");
     }
 
     private boolean isAllowlisted(String servletPath) {

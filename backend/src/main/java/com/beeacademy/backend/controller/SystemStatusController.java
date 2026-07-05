@@ -20,6 +20,9 @@ public class SystemStatusController {
 
     @GetMapping("/status")
     public ApiResponse<SystemStatusResponse> getStatus() {
-        return ApiResponse.ok(new SystemStatusResponse(settingsService.isMaintenanceModeOn()));
+        return ApiResponse.ok(new SystemStatusResponse(
+                settingsService.isMaintenanceModeOn(),
+                settingsService.getMaintenanceUntil()
+        ));
     }
 }

@@ -9,7 +9,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Cấu hình hệ thống single-row (phí nền tảng, chế độ bảo trì).
@@ -22,17 +25,27 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @RequiredArgsConstructor
 public class SystemSettingsService {
 
+    /** Thời gian dự kiến bảo trì kể từ lúc Admin bật - cố định, không phụ thuộc client. */
+    private static final long MAINTENANCE_DURATION_HOURS = 7;
+
     private final SystemSettingsRepository settingsRepository;
 
     private final AtomicBoolean maintenanceModeCache = new AtomicBoolean(false);
+    private final AtomicReference<Instant> maintenanceUntilCache = new AtomicReference<>();
 
     @PostConstruct
     void init() {
-        maintenanceModeCache.set(getOrCreate().isMaintenanceMode());
+        SystemSettings settings = getOrCreate();
+        maintenanceModeCache.set(settings.isMaintenanceMode());
+        maintenanceUntilCache.set(computeUntil(settings));
     }
 
     public boolean isMaintenanceModeOn() {
         return maintenanceModeCache.get();
+    }
+
+    public Instant getMaintenanceUntil() {
+        return maintenanceUntilCache.get();
     }
 
     @Transactional(readOnly = true)
@@ -43,10 +56,23 @@ public class SystemSettingsService {
     @Transactional
     public SystemSettingsResponse updateSettings(UpdateSystemSettingsRequest request) {
         SystemSettings settings = getOrCreate();
+        boolean turningOn = request.maintenanceMode() && !settings.isMaintenanceMode();
+
         settings.setMaintenanceMode(request.maintenanceMode());
         settings.setPlatformFeePercent(request.platformFeePercent());
+
+        // Mốc đếm ngược chỉ đổi khi Admin thực sự BẬT bảo trì (off -> on).
+        // Lưu ở đây (không phải trên client) để mọi role đều thấy cùng một
+        // deadline, không bị reset lại mỗi lần load trang.
+        if (turningOn) {
+            settings.setMaintenanceStartedAt(Instant.now());
+        } else if (!request.maintenanceMode()) {
+            settings.setMaintenanceStartedAt(null);
+        }
+
         settings = settingsRepository.save(settings);
         maintenanceModeCache.set(settings.isMaintenanceMode());
+        maintenanceUntilCache.set(computeUntil(settings));
         return toResponse(settings);
     }
 
@@ -55,11 +81,19 @@ public class SystemSettingsService {
                 .orElseGet(() -> settingsRepository.save(new SystemSettings()));
     }
 
+    private Instant computeUntil(SystemSettings settings) {
+        if (!settings.isMaintenanceMode() || settings.getMaintenanceStartedAt() == null) {
+            return null;
+        }
+        return settings.getMaintenanceStartedAt().plus(MAINTENANCE_DURATION_HOURS, ChronoUnit.HOURS);
+    }
+
     private SystemSettingsResponse toResponse(SystemSettings settings) {
         return new SystemSettingsResponse(
                 settings.isMaintenanceMode(),
                 settings.getPlatformFeePercent(),
-                settings.getUpdatedAt()
+                settings.getUpdatedAt(),
+                computeUntil(settings)
         );
     }
 }

@@ -180,6 +180,7 @@ apiClient.interceptors.response.use(
     // trên client thay vì chờ MaintenanceGate poll lại theo chu kỳ.
     if (status === 503 && code === 'MAINTENANCE_MODE') {
       useSystemStore.getState().setMaintenanceMode(true);
+      useSystemStore.getState().setMaintenanceUntil(body?.maintenanceUntil ?? null);
     }
 
     if (status === 401 && error.config && !isPublicAuthRequest(error.config.url)) {

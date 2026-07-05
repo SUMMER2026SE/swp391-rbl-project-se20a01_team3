@@ -26,6 +26,7 @@ interface Props {
 export default function MaintenanceGate({ children }: Props) {
   const maintenanceMode = useSystemStore((s) => s.maintenanceMode);
   const setMaintenanceMode = useSystemStore((s) => s.setMaintenanceMode);
+  const setMaintenanceUntil = useSystemStore((s) => s.setMaintenanceUntil);
   const role = useAuthStore((s) => s.user?.role);
   const location = useLocation();
 
@@ -35,7 +36,10 @@ export default function MaintenanceGate({ children }: Props) {
     async function poll() {
       try {
         const status = await getSystemStatus();
-        if (!cancelled) setMaintenanceMode(status.maintenanceMode);
+        if (!cancelled) {
+          setMaintenanceMode(status.maintenanceMode);
+          setMaintenanceUntil(status.maintenanceUntil);
+        }
       } catch {
         // Lỗi mạng khi poll status không nên tự ý khoá app - giữ nguyên state hiện tại.
       }
@@ -47,7 +51,7 @@ export default function MaintenanceGate({ children }: Props) {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [setMaintenanceMode]);
+  }, [setMaintenanceMode, setMaintenanceUntil]);
 
   const isAllowedPath = ALWAYS_ALLOWED_PATHS.includes(location.pathname);
 

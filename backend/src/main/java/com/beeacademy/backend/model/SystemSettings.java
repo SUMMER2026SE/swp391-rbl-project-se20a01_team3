@@ -31,6 +31,10 @@ public class SystemSettings {
     @Column(name = "platform_fee_percent", nullable = false)
     private int platformFeePercent = 20;
 
+    /** Thời điểm Admin bật bảo trì lần gần nhất - null khi đang tắt. */
+    @Column(name = "maintenance_started_at")
+    private Instant maintenanceStartedAt;
+
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;

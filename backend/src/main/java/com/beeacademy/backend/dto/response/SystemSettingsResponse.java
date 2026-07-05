@@ -5,6 +5,7 @@ import java.time.Instant;
 public record SystemSettingsResponse(
         boolean maintenanceMode,
         int platformFeePercent,
-        Instant updatedAt
+        Instant updatedAt,
+        Instant maintenanceUntil
 ) {
 }
