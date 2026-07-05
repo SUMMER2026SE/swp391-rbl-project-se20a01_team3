@@ -141,9 +141,10 @@ export default function CoursesPage() {
       const normalizedCompleted = totalLessons > 0
         ? Math.min(completedList.length, totalLessons)
         : 0;
-      const progress = totalLessons > 0
+      const localProgress = totalLessons > 0
         ? Math.round((normalizedCompleted / totalLessons) * 100)
         : 0;
+      const progress = summary.progressPct ?? localProgress;
       return { ...course, progress };
     }),
     [completedLessons, enrolledCourseSummaries],

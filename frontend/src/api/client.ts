@@ -20,6 +20,7 @@ import axios, {
   InternalAxiosRequestConfig,
 } from 'axios';
 import { useAuthStore } from '../store/useAuthStore';
+import { useSystemStore } from '../store/useSystemStore';
 import { notify } from '../lib/toast';
 import type {
   ApiErrorResponse,
@@ -174,6 +175,13 @@ apiClient.interceptors.response.use(
     const body = error.response.data;
     const message = body?.message ?? 'Đã xảy ra lỗi không xác định';
     const code = body?.code ?? 'UNKNOWN';
+
+    // Backend đang bảo trì và request này không phải admin - chặn ngay
+    // trên client thay vì chờ MaintenanceGate poll lại theo chu kỳ.
+    if (status === 503 && code === 'MAINTENANCE_MODE') {
+      useSystemStore.getState().setMaintenanceMode(true);
+      useSystemStore.getState().setMaintenanceUntil(body?.maintenanceUntil ?? null);
+    }
 
     if (status === 401 && error.config && !isPublicAuthRequest(error.config.url)) {
       const originalRequest = error.config as RetryableRequestConfig;

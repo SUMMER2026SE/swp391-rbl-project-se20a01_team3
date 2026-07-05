@@ -4,13 +4,13 @@
  *
  * Định dạng Excel (hàng 1 = header, dữ liệu từ hàng 2):
  *   A: Nội dung câu hỏi   (bắt buộc)
- *   B: Loại               TN = trắc nghiệm | DS = đúng/sai
+ *   B: Loại               TN = trắc nghiệm | DS = đúng/sai | TL = tự luận
  *   C: Độ khó             D = dễ | TB = trung bình | K = khó
  *   D: Đáp án A           (bắt buộc)
  *   E: Đáp án B           (bắt buộc)
  *   F: Đáp án C           (tùy chọn)
  *   G: Đáp án D           (tùy chọn)
- *   H: Đáp án đúng        A / B / C / D
+ *   H: Đáp án đúng        A / B / C / D, bỏ trống nếu TL
  *   I: Giải thích         (tùy chọn)
  */
 
@@ -38,7 +38,7 @@ type Difficulty = 'easy' | 'medium' | 'hard';
 interface ParsedRow {
   rowNum: number;
   content: string;
-  type: 'multiple_choice' | 'true_false';
+  type: 'multiple_choice' | 'true_false' | 'essay';
   difficulty: Difficulty;
   choices: Array<{ content: string; isCorrect: boolean }>;
   explanation: string;
@@ -60,8 +60,9 @@ function token(value: unknown): string {
     .toUpperCase();
 }
 
-function parseQuestionType(value: unknown): 'multiple_choice' | 'true_false' {
+function parseQuestionType(value: unknown): 'multiple_choice' | 'true_false' | 'essay' {
   const t = token(value);
+  if (['TL', 'TU_LUAN', 'TULUAN', 'ESSAY'].includes(t)) return 'essay';
   return ['DS', 'DUNG/SAI', 'TRUE_FALSE', 'TRUEFALSE', 'TF'].includes(t)
     ? 'true_false'
     : 'multiple_choice';
@@ -128,7 +129,9 @@ function parseExcel(file: File): Promise<ParsedRow[]> {
           let choices: Array<{ content: string; isCorrect: boolean }>;
           let error: string | undefined;
 
-          if (type === 'true_false') {
+          if (type === 'essay') {
+            choices = [];
+          } else if (type === 'true_false') {
             const correctIdx = trueFalseCorrectIndex(r[7] || 'A');
             choices = [
               { content: 'Đúng', isCorrect: correctIdx === 0 },
@@ -168,19 +171,20 @@ function parseExcel(file: File): Promise<ParsedRow[]> {
 function downloadTemplate() {
   const header = [
     'Nội dung câu hỏi',
-    'Loại (TN/DS)',
+    'Loại (TN/DS/TL)',
     'Độ khó (D/TB/K)',
     'Đáp án A',
     'Đáp án B',
     'Đáp án C',
     'Đáp án D',
-    'Đáp án đúng (A/B/C/D)',
+    'Đáp án đúng (A/B/C/D, bỏ trống nếu TL)',
     'Giải thích (tùy chọn)',
   ];
   const examples = [
     ['Phương trình bậc hai ax²+bx+c=0 có tối đa bao nhiêu nghiệm thực?', 'TN', 'D', '1 nghiệm', '2 nghiệm', '3 nghiệm', '0 nghiệm', 'B', 'Theo định lý cơ bản đại số'],
     ['Trái đất quay quanh Mặt Trời.', 'DS', 'D', '', '', '', '', 'A', ''],
     ['Nguyên tố nào có số hiệu nguyên tử bằng 1?', 'TN', 'TB', 'Heli', 'Oxy', 'Hydro', 'Carbon', 'C', 'H có Z=1 trong bảng tuần hoàn'],
+    ['Trình bày các bước giải phương trình bậc hai bằng công thức nghiệm.', 'TL', 'K', '', '', '', '', '', 'Câu tự luận không cần đáp án trong ngân hàng'],
   ];
 
   const ws = XLSX.utils.aoa_to_sheet([header, ...examples]);
@@ -402,7 +406,7 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-blue-800">Bước 1 — Tải file mẫu</p>
                   <p className="text-xs text-blue-600 mt-0.5">
-                    File mẫu có 3 câu hỏi ví dụ giúp bạn điền đúng định dạng.
+                    File mẫu có ví dụ trắc nghiệm, đúng/sai và tự luận không đáp án.
                   </p>
                 </div>
                 <button
@@ -588,7 +592,7 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
                                 <p className="truncate">{row.content || <span className="text-red-400 italic">Trống</span>}</p>
                               </td>
                               <td className="px-3 py-2 whitespace-nowrap text-on-surface-variant">
-                                {row.type === 'multiple_choice' ? 'Trắc nghiệm' : 'Đúng/Sai'}
+                                {row.type === 'essay' ? 'Tự luận' : row.type === 'multiple_choice' ? 'Trắc nghiệm' : 'Đúng/Sai'}
                               </td>
                               <td className="px-3 py-2">
                                 <DiffBadge d={row.difficulty} />

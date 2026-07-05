@@ -35,6 +35,8 @@ public class ExamConfigSchemaMigration implements ApplicationRunner {
                     course_id UUID NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
                     teacher_id UUID NOT NULL REFERENCES public.profiles(id),
                     slot_index INTEGER NOT NULL,
+                    scope_start_chapter_id UUID REFERENCES public.chapters(id) ON DELETE SET NULL,
+                    placement_chapter_id UUID REFERENCES public.chapters(id) ON DELETE SET NULL,
                     name TEXT NOT NULL,
                     description TEXT,
                     duration_minutes INTEGER NOT NULL,
@@ -56,6 +58,22 @@ public class ExamConfigSchemaMigration implements ApplicationRunner {
         jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_exam_configs_teacher
                 ON public.exam_configs (teacher_id)
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.exam_configs
+                ADD COLUMN IF NOT EXISTS scope_start_chapter_id UUID REFERENCES public.chapters(id) ON DELETE SET NULL
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.exam_configs
+                ADD COLUMN IF NOT EXISTS placement_chapter_id UUID REFERENCES public.chapters(id) ON DELETE SET NULL
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exam_configs_scope_start_chapter
+                ON public.exam_configs (scope_start_chapter_id)
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exam_configs_placement_chapter
+                ON public.exam_configs (placement_chapter_id)
                 """);
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS public.exam_attempts (

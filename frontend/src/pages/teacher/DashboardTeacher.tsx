@@ -15,7 +15,7 @@ import {
   CheckCircle2, PlusCircle,
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, Megaphone, Database, Loader2, PackageOpen,
-  UserCircle, Lock,
+  UserCircle, Lock, Star,
 } from 'lucide-react';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -68,6 +68,7 @@ function courseStatusMeta(status: TeacherCourseResponse['status']) {
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Tổng quan',        path: '/teacher'           },
   { icon: BookOpen,        label: 'Khóa học của tôi', path: '/teacher/courses'   },
+  { icon: Star,            label: 'Đánh giá khóa học', path: '/teacher/reviews'  },
   { icon: FileText,        label: 'Bài giảng',         path: '/teacher/content'   },
   { icon: PenSquare,       label: 'Quiz chương',       path: '/teacher/quiz'      },
   { icon: Database,        label: 'Ngân hàng câu hỏi', path: '/teacher/questions' },

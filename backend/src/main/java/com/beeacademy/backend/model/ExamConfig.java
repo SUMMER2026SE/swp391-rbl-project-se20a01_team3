@@ -46,6 +46,14 @@ public class ExamConfig {
     @Column(name = "slot_index", nullable = false)
     private Integer slotIndex;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "scope_start_chapter_id")
+    private Chapter scopeStartChapter;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "placement_chapter_id")
+    private Chapter placementChapter;
+
     @Column(name = "name", nullable = false)
     private String name;
 
@@ -83,6 +91,8 @@ public class ExamConfig {
     private Instant updatedAt;
 
     public static ExamConfig create(Course course, Profile teacher, Integer slotIndex,
+                                    Chapter scopeStartChapter,
+                                    Chapter placementChapter,
                                     String name, String description,
                                     Integer durationMinutes, Integer passScorePercent,
                                     Integer maxAttempts, Boolean shuffleQuestions,
@@ -93,16 +103,20 @@ public class ExamConfig {
         config.course = course;
         config.teacher = teacher;
         config.slotIndex = slotIndex;
-        config.update(name, description, durationMinutes, passScorePercent, maxAttempts,
+        config.update(scopeStartChapter, placementChapter, name, description,
+                durationMinutes, passScorePercent, maxAttempts,
                 shuffleQuestions, shuffleOptions, showAnswerAfterSubmit, questionsJson);
         return config;
     }
 
-    public void update(String name, String description,
+    public void update(Chapter scopeStartChapter, Chapter placementChapter,
+                       String name, String description,
                        Integer durationMinutes, Integer passScorePercent,
                        Integer maxAttempts, Boolean shuffleQuestions,
                        Boolean shuffleOptions, Boolean showAnswerAfterSubmit,
                        String questionsJson) {
+        this.scopeStartChapter = scopeStartChapter;
+        this.placementChapter = placementChapter;
         this.name = name;
         this.description = description;
         this.durationMinutes = durationMinutes;

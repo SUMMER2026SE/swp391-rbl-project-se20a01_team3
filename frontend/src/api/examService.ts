@@ -1,7 +1,7 @@
 import { apiClient, unwrap } from './client';
 import type { ApiResponse } from '../types/api';
 
-export type ExamQuestionType = 'single' | 'multiple';
+export type ExamQuestionType = 'single' | 'multiple' | 'essay';
 export type ExamDifficulty = 'easy' | 'medium' | 'hard';
 
 export interface ExamQuestionPayload {
@@ -17,6 +17,8 @@ export interface ExamQuestionPayload {
 
 export interface ExamConfigRequest {
   name: string;
+  scopeStartChapterId: string;
+  placementChapterId: string;
   description?: string | null;
   durationMinutes: number;
   passScorePercent: number;
@@ -31,6 +33,8 @@ export interface ExamConfigResponse extends ExamConfigRequest {
   id: string;
   courseId: string;
   slotIndex: number;
+  scopeStartChapterTitle?: string | null;
+  placementChapterTitle?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -47,9 +51,13 @@ export interface ExamQuestionRandomRequest {
   mediumCount: number;
   hardCount: number;
   pointsPerQuestion: number;
+  objectivePoints?: number;
+  essayPoints?: number;
   chapterConfigs?: Array<{
     chapterId: string;
     totalCount: number;
+    objectiveCount?: number;
+    essayCount?: number;
   }>;
 }
 
@@ -63,6 +71,10 @@ export interface StudentExamRequiredChapter {
 export interface StudentExamSummaryResponse {
   examId: string | null;
   slotIndex: number;
+  scopeStartChapterId: string | null;
+  scopeStartChapterTitle: string | null;
+  placementChapterId: string | null;
+  placementChapterTitle: string | null;
   name: string;
   description: string | null;
   durationMinutes: number | null;
@@ -102,9 +114,12 @@ export interface StudentExamStartResponse {
 export interface StudentExamResultDetail {
   questionId: string;
   text: string;
+  type: ExamQuestionType;
   studentAnswers: number[];
+  textAnswer: string | null;
+  imageUrls: string[];
   correctAnswers: number[];
-  isCorrect: boolean;
+  isCorrect: boolean | null;
   explanation: string | null;
   points: number;
 }
@@ -114,7 +129,7 @@ export interface StudentExamResultResponse {
   examId: string;
   slotIndex: number;
   scorePercent: number;
-  passed: boolean;
+  passed: boolean | null;
   earnedPoints: number;
   totalPoints: number;
   attemptNumber: number;
@@ -127,8 +142,10 @@ export interface TeacherExamQuestionReview {
   type: ExamQuestionType;
   options: string[];
   studentAnswers: number[];
+  textAnswer: string | null;
+  imageUrls: string[];
   correctAnswers: number[];
-  correct: boolean;
+  correct: boolean | null;
   points: number;
   earnedPoints: number;
   explanation: string | null;
@@ -150,7 +167,7 @@ export interface TeacherExamAttemptResponse {
   manualScorePercent: number | null;
   effectiveScorePercent: number | null;
   passScorePercent: number;
-  passed: boolean;
+  passed: boolean | null;
   feedback: string | null;
   gradedAt: string | null;
   status: 'pending' | 'graded';
@@ -227,12 +244,35 @@ export async function startStudentExam(
 
 export async function submitStudentExam(
     attemptId: string,
-    answers: Record<string, number[]>,
+    answers: Record<string, {
+      selectedIndices?: number[];
+      textAnswer?: string;
+      imageUrls?: string[];
+    }>,
 ): Promise<StudentExamResultResponse> {
   const res = await apiClient.post<ApiResponse<StudentExamResultResponse>>(
     `/api/student/exam-attempts/${attemptId}/submit`,
     { answers },
   );
+  return unwrap(res.data);
+}
+
+export async function uploadExamAnswerImage(attemptId: string, file: File): Promise<{
+  storagePath: string;
+  publicUrl: string | null;
+  fileType: string;
+  fileSizeBytes: number;
+}> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await apiClient.post<ApiResponse<{
+    storagePath: string;
+    publicUrl: string | null;
+    fileType: string;
+    fileSizeBytes: number;
+  }>>(`/api/student/exam-attempts/${attemptId}/images`, formData, {
+    timeout: 60000,
+  });
   return unwrap(res.data);
 }
 

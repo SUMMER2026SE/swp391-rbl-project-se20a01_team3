@@ -6,6 +6,7 @@ import com.beeacademy.backend.security.CurrentUser;
 import com.beeacademy.backend.service.ContentUploadService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -60,11 +61,22 @@ public class UploadController {
     public ApiResponse<UploadResponse> uploadDocument(
             @PathVariable UUID lessonId,
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "name", required = false) String displayName) {
+            @RequestParam(value = "name", required = false) String displayName,
+            @RequestParam(value = "slot", required = false) String documentSlot) {
         String name = displayName != null ? displayName : file.getOriginalFilename();
         UploadResponse result = uploadService.uploadDocument(
-                lessonId, CurrentUser.required().userId(), name, file);
+                lessonId, CurrentUser.required().userId(), name, documentSlot, file);
         return ApiResponse.ok(result, "Upload tài liệu thành công");
+    }
+
+    /** Xóa một tài liệu/slide đã đính kèm khỏi bài giảng. */
+    @DeleteMapping("/document/{lessonId}/{documentId}")
+    public ApiResponse<Void> deleteDocument(
+            @PathVariable UUID lessonId,
+            @PathVariable UUID documentId) {
+        uploadService.deleteDocument(
+                lessonId, documentId, CurrentUser.required().userId());
+        return ApiResponse.ok(null, "Xóa tài liệu thành công");
     }
 
     /**

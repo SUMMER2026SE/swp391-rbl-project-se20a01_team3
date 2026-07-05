@@ -60,6 +60,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Nghiệp vụ quản lý khóa học phía Giáo viên (Phase 1 — CRUD, không upload).
@@ -192,8 +193,15 @@ public class TeacherCourseService {
                 approvalHistoryRepository.findByCourseIdOrderByCreatedAtAsc(courseId);
         List<CourseVersion> versions =
                 courseVersionRepository.findByCourseIdOrderByVersionNoDesc(courseId);
+        List<Lesson> lessons = chapters.stream()
+                .flatMap(chapter -> chapter.getLessons().stream())
+                .toList();
+        Map<UUID, List<CourseDocument>> documentsByLessonId = loadDocumentsForLessons(lessons)
+                .stream()
+                .collect(Collectors.groupingBy(document -> document.getLesson().getId()));
         return TeacherCourseDetailResponse.fromEntity(
-                course, history, enrollmentRepository.countByCourseId(courseId), chapters, versions);
+                course, history, enrollmentRepository.countByCourseId(courseId), chapters, versions,
+                documentsByLessonId);
     }
 
     /** Cập nhật thông tin cơ bản (chỉ khi DRAFT/NEEDS_REVISION). */

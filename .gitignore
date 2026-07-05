@@ -41,6 +41,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# ── Postman ──────────────────────────────────────────────
+# Giữ collection + guide để team dùng chung, nhưng bỏ qua environment files
+# vì chúng chứa token/refreshToken thật sau khi chạy test (không commit secret).
+backend/postman/*.postman_environment.json
+
 # ── OS ───────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
@@ -72,3 +77,18 @@ frontend/.env
 frontend/.env.local
 frontend/.env.*
 frontend/.evn.local
+
+# RBL SWT301 - project rieng, push len GitHub khac, khong commit vao repo nay
+/RBL_SWT301_Week4/
+
+# Clone team3 (develop) de tham khao - khong commit vao repo nay
+/team3-develop/
+
+# ── File/thu muc cuc bo, khong thuoc project (chi commit backend/ + frontend/) ──
+/team_split/
+/samples/
+/team-rules/
+/Week04/
+/gen_sheet.py
+/PHAN_CONG_NHIEM_VU.md
+/TEAM_TASK_DIVISION.md

@@ -36,6 +36,29 @@ public class QuestionBankSchemaMigration implements ApplicationRunner {
             return;
         }
 
+        jdbcTemplate.execute("""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1
+                        FROM pg_type t
+                        JOIN pg_namespace n ON n.oid = t.typnamespace
+                        WHERE n.nspname = 'public'
+                          AND t.typname = 'question_type'
+                    ) AND NOT EXISTS (
+                        SELECT 1
+                        FROM pg_enum e
+                        JOIN pg_type t ON t.oid = e.enumtypid
+                        JOIN pg_namespace n ON n.oid = t.typnamespace
+                        WHERE n.nspname = 'public'
+                          AND t.typname = 'question_type'
+                          AND e.enumlabel = 'essay'
+                    ) THEN
+                        ALTER TYPE public.question_type ADD VALUE 'essay';
+                    END IF;
+                END $$;
+                """);
+
         Boolean hasGradeColumn = jdbcTemplate.queryForObject("""
                 SELECT EXISTS (
                     SELECT 1
@@ -46,9 +69,7 @@ public class QuestionBankSchemaMigration implements ApplicationRunner {
                 )
                 """, Boolean.class);
 
-        if (Boolean.TRUE.equals(hasGradeColumn)) {
-            return;
-        }
+        if (Boolean.TRUE.equals(hasGradeColumn)) return;
 
         log.info("Applying compatibility migration: add questions.grade");
         jdbcTemplate.execute("ALTER TABLE public.questions ADD COLUMN grade INTEGER");

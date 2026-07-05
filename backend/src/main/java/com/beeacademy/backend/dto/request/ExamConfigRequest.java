@@ -11,11 +11,18 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
+import java.util.UUID;
 
 public record ExamConfigRequest(
         @NotBlank
         @Size(max = 255)
         String name,
+
+        @NotNull
+        UUID scopeStartChapterId,
+
+        @NotNull
+        UUID placementChapterId,
 
         @Size(max = 2000)
         String description,
@@ -45,13 +52,13 @@ public record ExamConfigRequest(
             String text,
 
             @NotNull
-            @Pattern(regexp = "single|multiple")
+            @Pattern(regexp = "single|multiple|essay")
             String type,
 
-            @NotNull @Size(min = 2, max = 6)
+            @Size(max = 6)
             List<@NotBlank String> options,
 
-            @NotNull @Size(min = 1, max = 6)
+            @Size(max = 6)
             List<@Min(0) Integer> correctIndices,
 
             @Size(max = 2000)

@@ -31,6 +31,7 @@ import TeacherQAPage from './pages/teacher/QAPage';
 import TeacherRevenuePage from './pages/teacher/RevenuePage';
 import TeacherBankPage from './pages/teacher/BankPage';
 import TeacherComplaintsPage from './pages/teacher/ComplaintsPage';
+import TeacherReviewsPage from './pages/teacher/ReviewsPage';
 import QuestionBankPage from './pages/teacher/QuestionBankPage';
 import TeacherProfilePage from './pages/teacher/ProfilePage';
 import TeacherAccountPage from './pages/teacher/AccountPage';
@@ -44,11 +45,13 @@ import ParentMessages from './pages/parents/ParentMessages';
 import ParentStudentLink from './pages/parents/ParentStudentLink';
 import ParentPayments from './pages/parents/ParentPayments';
 import ProtectedRoute from './components/ProtectedRoute';
+import MaintenanceGate from './components/MaintenanceGate';
 
 export default function App() {
   return (
     <BrowserRouter>
       <Toaster />
+      <MaintenanceGate>
       <Routes>
         {/* ── Public ── */}
         <Route path="/" element={<LandingPage />} />
@@ -90,6 +93,8 @@ export default function App() {
         {/* ── Teacher (chỉ role=teacher) ── */}
         <Route path="/teacher"            element={<ProtectedRoute role="teacher"><DashboardTeacher /></ProtectedRoute>} />
         <Route path="/teacher/courses"    element={<ProtectedRoute role="teacher"><TeacherCoursesPage /></ProtectedRoute>} />
+        <Route path="/teacher/reviews"    element={<ProtectedRoute role="teacher"><TeacherReviewsPage /></ProtectedRoute>} />
+        <Route path="/teacher/courses/:courseId/reviews" element={<ProtectedRoute role="teacher"><TeacherReviewsPage /></ProtectedRoute>} />
         <Route path="/teacher/content"    element={<ProtectedRoute role="teacher"><TeacherContentPage /></ProtectedRoute>} />
         <Route path="/teacher/quiz"       element={<ProtectedRoute role="teacher"><TeacherQuizChapterPage /></ProtectedRoute>} />
         <Route path="/teacher/exam"       element={<ProtectedRoute role="teacher"><TeacherExamPage /></ProtectedRoute>} />
@@ -113,6 +118,7 @@ export default function App() {
         <Route path="/admin/reports"    element={<ProtectedRoute role="admin"><ComingSoonPage title="Báo cáo & Thống kê"   subtitle="Phân tích dữ liệu và báo cáo tổng hợp" /></ProtectedRoute>} />
         <Route path="/admin/settings"   element={<ProtectedRoute role="admin"><ComingSoonPage title="Cài đặt hệ thống"     subtitle="Cấu hình và tuỳ chỉnh hệ thống" /></ProtectedRoute>} />
       </Routes>
+      </MaintenanceGate>
     </BrowserRouter>
   );
 }

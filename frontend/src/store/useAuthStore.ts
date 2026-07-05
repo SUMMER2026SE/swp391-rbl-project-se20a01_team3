@@ -50,6 +50,7 @@ export interface LinkedStudent {
  * ui-avatars.com khi BE chưa trả URL.
  */
 export interface User {
+  id: string;
   name: string;
   email: string;
   avatar?: string;
@@ -94,6 +95,7 @@ interface AuthState {
 function toUiUser(summary: UserSummary | null): User | null {
   if (!summary) return null;
   return {
+    id: summary.id,
     name: summary.fullName ?? summary.email,
     email: summary.email,
     avatar: summary.avatarUrl ?? undefined,

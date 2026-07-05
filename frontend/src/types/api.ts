@@ -28,6 +28,8 @@ export interface ApiErrorResponse {
   message: string;
   fieldErrors?: Array<{ field: string; message: string }>;
   timestamp: string;
+  /** Chỉ có khi code = MAINTENANCE_MODE - mốc dự kiến hoàn tất bảo trì. */
+  maintenanceUntil?: string | null;
 }
 
 /** Phân trang chuẩn (mirror PageResponse.java). */
@@ -119,6 +121,37 @@ export interface CourseSummary {
   totalChapters: number;
   totalLessons: number;
   totalDurationSec: number;
+  progressPct?: number | null;
+}
+
+export interface CourseProgress {
+  courseId: string;
+  progressPct: number;
+  completedLessonIds: string[];
+  completedQuizIds: string[];
+}
+
+export interface CompleteCourseProgressItemPayload {
+  itemId: string;
+  itemType: 'lesson' | 'quiz';
+}
+
+export interface SystemStatus {
+  maintenanceMode: boolean;
+  /** Mốc dự kiến hoàn tất bảo trì - do BE tính từ lúc Admin bật, null khi tắt. */
+  maintenanceUntil: string | null;
+}
+
+export interface SystemSettings {
+  maintenanceMode: boolean;
+  platformFeePercent: number;
+  updatedAt: string;
+  maintenanceUntil: string | null;
+}
+
+export interface UpdateSystemSettingsPayload {
+  maintenanceMode: boolean;
+  platformFeePercent: number;
 }
 
 export interface LessonDocumentDto {

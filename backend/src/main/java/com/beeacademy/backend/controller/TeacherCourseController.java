@@ -9,12 +9,14 @@ import com.beeacademy.backend.dto.request.UpdateChapterRequest;
 import com.beeacademy.backend.dto.request.UpdateCourseRequest;
 import com.beeacademy.backend.dto.request.UpdateLessonRequest;
 import com.beeacademy.backend.dto.response.ApiResponse;
+import com.beeacademy.backend.dto.response.CourseReviewSummaryResponse;
 import com.beeacademy.backend.dto.response.PageResponse;
 import com.beeacademy.backend.dto.response.TeacherChapterResponse;
 import com.beeacademy.backend.dto.response.TeacherCourseDetailResponse;
 import com.beeacademy.backend.dto.response.TeacherCourseResponse;
 import com.beeacademy.backend.dto.response.TeacherLessonResponse;
 import com.beeacademy.backend.security.CurrentUser;
+import com.beeacademy.backend.service.CourseReviewService;
 import com.beeacademy.backend.service.TeacherCourseService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +51,7 @@ import java.util.UUID;
 public class TeacherCourseController {
 
     private final TeacherCourseService courseService;
+    private final CourseReviewService courseReviewService;
 
     // ── Course ────────────────────────────────────────────────────────────────
 
@@ -70,6 +73,13 @@ public class TeacherCourseController {
     public ApiResponse<TeacherCourseDetailResponse> getCourseDetail(
             @PathVariable UUID courseId) {
         return ApiResponse.ok(courseService.getCourseDetail(courseId, CurrentUser.required()));
+    }
+
+    @GetMapping("/courses/{courseId}/reviews")
+    public ApiResponse<CourseReviewSummaryResponse> getCourseReviews(
+            @PathVariable UUID courseId) {
+        return ApiResponse.ok(
+                courseReviewService.getTeacherCourseReviews(courseId, CurrentUser.required()));
     }
 
     @PutMapping("/courses/{courseId}")
