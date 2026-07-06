@@ -27,6 +27,15 @@ export async function getStudentVideoProgress(
   return unwrap(response.data);
 }
 
+export async function getLatestStudentVideoProgress(
+  courseId: string,
+): Promise<StudentVideoProgress | null> {
+  const response = await apiClient.get<ApiResponse<StudentVideoProgress | null>>(
+    `/api/student/courses/${encodeURIComponent(courseId)}/video-progress/latest`,
+  );
+  return unwrap(response.data);
+}
+
 export async function saveStudentVideoProgress(
   courseId: string,
   lessonId: string,

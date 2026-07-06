@@ -11,4 +11,9 @@ import java.util.UUID;
 public interface StudentVideoProgressRepository extends JpaRepository<StudentVideoProgress, UUID> {
 
     Optional<StudentVideoProgress> findByStudent_IdAndLesson_Id(UUID studentId, UUID lessonId);
+
+    Optional<StudentVideoProgress> findFirstByStudent_IdAndLesson_Chapter_Course_IdOrderByUpdatedAtDesc(
+            UUID studentId,
+            UUID courseId
+    );
 }

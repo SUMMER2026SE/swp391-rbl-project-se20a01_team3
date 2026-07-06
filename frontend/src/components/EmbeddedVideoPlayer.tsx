@@ -82,6 +82,9 @@ function VimeoPlayer(props: EmbeddedVideoPlayerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const playerId = useMemo(() => `bee-vimeo-${crypto.randomUUID()}`, []);
   const callbackRef = useRef(props);
+  const allowedPositionRef = useRef(Math.max(0, props.initialPositionSec));
+  const lastProgressAtRef = useRef(Date.now());
+  const isPlayingRef = useRef(false);
   callbackRef.current = props;
 
   const source = useMemo(() => {
@@ -103,14 +106,36 @@ function VimeoPlayer(props: EmbeddedVideoPlayerProps) {
       }
       if (message?.event === 'ready') {
         send('addEventListener', 'timeupdate');
+        send('addEventListener', 'play');
         send('addEventListener', 'pause');
         send('addEventListener', 'ended');
         if (props.initialPositionSec > 0) send('setCurrentTime', props.initialPositionSec);
       } else if (message?.event === 'timeupdate') {
-        callbackRef.current.onProgress(message.data?.seconds ?? 0, message.data?.duration ?? 0);
+        const position = Number(message.data?.seconds ?? 0);
+        const duration = Number(message.data?.duration ?? 0);
+        const now = Date.now();
+        const elapsedSec = isPlayingRef.current
+          ? Math.max(0, (now - lastProgressAtRef.current) / 1000)
+          : 0;
+        const allowedPosition = allowedPositionRef.current;
+        const wasSeeked = position < allowedPosition - 0.75
+          || position > allowedPosition + elapsedSec + 1.25;
+        lastProgressAtRef.current = now;
+        if (wasSeeked) {
+          send('setCurrentTime', allowedPosition);
+          return;
+        }
+        allowedPositionRef.current = position;
+        callbackRef.current.onProgress(position, duration);
+      } else if (message?.event === 'play') {
+        isPlayingRef.current = true;
+        lastProgressAtRef.current = Date.now();
       } else if (message?.event === 'pause') {
+        isPlayingRef.current = false;
+        lastProgressAtRef.current = Date.now();
         callbackRef.current.onPause();
       } else if (message?.event === 'ended') {
+        isPlayingRef.current = false;
         callbackRef.current.onEnded();
       }
     }
@@ -134,6 +159,9 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const callbackRef = useRef(props);
+  const allowedPositionRef = useRef(Math.max(0, props.initialPositionSec));
+  const lastProgressAtRef = useRef(Date.now());
+  const isPlayingRef = useRef(false);
   callbackRef.current = props;
 
   useEffect(() => {
@@ -150,6 +178,7 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
         playerVars: {
           playsinline: 1,
           rel: 0,
+          disablekb: 1,
           start: Math.max(0, Math.floor(props.initialPositionSec)),
         },
         events: {
@@ -161,19 +190,41 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
               const position = target.getCurrentTime();
               const duration = target.getDuration();
               if (Number.isFinite(position) && Number.isFinite(duration)) {
+                const now = Date.now();
+                const elapsedSec = isPlayingRef.current
+                  ? Math.max(0, (now - lastProgressAtRef.current) / 1000)
+                  : 0;
+                const allowedPosition = allowedPositionRef.current;
+                const wasSeeked = position < allowedPosition - 0.75
+                  || position > allowedPosition + elapsedSec + 1.25;
+                lastProgressAtRef.current = now;
+                if (wasSeeked) {
+                  target.seekTo(allowedPosition, false);
+                  return;
+                }
+                allowedPositionRef.current = position;
                 callbackRef.current.onProgress(position, duration);
               }
-            }, 1000);
+            }, 500);
           },
           onStateChange: ({ data }) => {
+            if (data === 1) {
+              isPlayingRef.current = true;
+              lastProgressAtRef.current = Date.now();
+            }
             if (data === 0) {
+              isPlayingRef.current = false;
               if (progressTimer !== null) {
                 window.clearInterval(progressTimer);
                 progressTimer = null;
               }
               callbackRef.current.onEnded();
             }
-            if (data === 2) callbackRef.current.onPause();
+            if (data === 2) {
+              isPlayingRef.current = false;
+              lastProgressAtRef.current = Date.now();
+              callbackRef.current.onPause();
+            }
           },
         },
       });
@@ -190,6 +241,7 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
 
   useEffect(() => {
     if (props.initialPositionSec > 0) {
+      allowedPositionRef.current = props.initialPositionSec;
       playerRef.current?.seekTo(props.initialPositionSec, true);
     }
   }, [props.initialPositionSec]);

@@ -37,6 +37,15 @@ public class StudentVideoProgressService {
                 .orElseGet(() -> StudentVideoProgressResponse.empty(lessonId));
     }
 
+    @Transactional(readOnly = true)
+    public StudentVideoProgressResponse getLatestProgress(UUID courseId, AuthenticatedUser me) {
+        verifyStudentCourseAccess(courseId, me);
+        return progressRepository
+                .findFirstByStudent_IdAndLesson_Chapter_Course_IdOrderByUpdatedAtDesc(me.userId(), courseId)
+                .map(StudentVideoProgressResponse::fromEntity)
+                .orElse(null);
+    }
+
     @Transactional
     public StudentVideoProgressResponse saveProgress(UUID courseId, UUID lessonId,
                                                      AuthenticatedUser me,
@@ -55,13 +64,7 @@ public class StudentVideoProgressService {
     }
 
     private Lesson verifyStudentLessonAccess(UUID courseId, UUID lessonId, AuthenticatedUser me) {
-        if (me == null || !"student".equalsIgnoreCase(me.role())) {
-            throw new BusinessException(
-                    "STUDENT_VIDEO_PROGRESS_ROLE_FORBIDDEN",
-                    "Chi hoc sinh moi co the luu tien do xem video.",
-                    HttpStatus.FORBIDDEN
-            );
-        }
+        verifyStudentCourseAccess(courseId, me);
         Lesson lesson = lessonRepository.findWithChapterAndCourseById(lessonId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lesson", lessonId));
         if (!lesson.getChapter().getCourse().getId().equals(courseId)) {
@@ -71,6 +74,17 @@ public class StudentVideoProgressService {
                     HttpStatus.BAD_REQUEST
             );
         }
+        return lesson;
+    }
+
+    private void verifyStudentCourseAccess(UUID courseId, AuthenticatedUser me) {
+        if (me == null || !"student".equalsIgnoreCase(me.role())) {
+            throw new BusinessException(
+                    "STUDENT_VIDEO_PROGRESS_ROLE_FORBIDDEN",
+                    "Chi hoc sinh moi co the luu tien do xem video.",
+                    HttpStatus.FORBIDDEN
+            );
+        }
         if (!enrollmentRepository.existsByStudentIdAndCourseId(me.userId(), courseId)) {
             throw new BusinessException(
                     "STUDENT_VIDEO_PROGRESS_COURSE_FORBIDDEN",
@@ -78,6 +92,5 @@ public class StudentVideoProgressService {
                     HttpStatus.FORBIDDEN
             );
         }
-        return lesson;
     }
 }
