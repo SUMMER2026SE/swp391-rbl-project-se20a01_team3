@@ -1,492 +1,590 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { motion } from 'motion/react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  AlertCircle, ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight,
-  Clock, FileText, Loader2, RotateCcw, Trophy, XCircle,
-  Image as ImageIcon,
+  AlertCircle,
+  ArrowLeft,
+  CheckSquare,
+  Clock,
+  FileText,
+  ImagePlus,
+  Loader2,
+  Send,
+  Square,
+  X,
 } from 'lucide-react';
-import { notify } from '../../lib/toast';
+import DashboardHeader from '../../components/DashboardHeader';
 import LatexText from '../../components/LatexText';
+import { isApiError } from '../../api/client';
+import { notify } from '../../lib/toast';
 import {
-  startStudentExam,
+  getStudentExam,
   submitStudentExam,
-  uploadExamAnswerImage,
+  type StudentExam,
+  type StudentExamAnswerImageUpload,
   type StudentExamQuestion,
-  type StudentExamResultResponse,
-  type StudentExamStartResponse,
-} from '../../api/examService';
+  type StudentExamSubmissionResponse,
+  type SubmitExamAnswer,
+  uploadStudentExamAnswerImage,
+} from '../../api/studentExamService';
 
-type PagePhase = 'loading' | 'error' | 'exam' | 'submitting' | 'results';
-type ExamAnswerDraft = {
-  selectedIndices: number[];
-  textAnswer: string;
-  imageUrls: string[];
-  uploading?: boolean;
-};
+const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F'];
+const MAX_ANSWER_IMAGE_BYTES = 5 * 1024 * 1024;
+const ACCEPTED_ANSWER_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const MAX_ANSWER_IMAGE_COUNT = 10;
 
-function ScoreCircle({ score }: { score: number }) {
-  const circumference = 2 * Math.PI * 15.9;
-  const dash = (score / 100) * circumference;
-  const color = score >= 80 ? '#22c55e' : score >= 60 ? '#3b82f6' : '#ef4444';
-  return (
-    <div className="relative h-36 w-36">
-      <svg viewBox="0 0 36 36" className="h-36 w-36 -rotate-90">
-        <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-surface-container-high" />
-        <motion.circle
-          cx="18"
-          cy="18"
-          r="15.9"
-          fill="none"
-          stroke={color}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          initial={{ strokeDasharray: `0 ${circumference}` }}
-          animate={{ strokeDasharray: `${dash} ${circumference}` }}
-          transition={{ duration: 1, ease: 'easeOut' }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-3xl font-extrabold" style={{ color }}>{score}%</span>
-      </div>
-    </div>
-  );
+function formatPoints(value: number | null | undefined) {
+  if (value == null) return '0';
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
-function CountdownTimer({ totalSeconds, onExpire }: { totalSeconds: number; onExpire: () => void }) {
-  const [remaining, setRemaining] = useState(totalSeconds);
+function questionTypeLabel(type: string) {
+  if (type === 'essay') return 'Tu luan';
+  if (type === 'multiple') return 'Nhieu dap an';
+  return 'Mot dap an';
+}
 
-  useEffect(() => {
-    if (remaining <= 0) {
-      onExpire();
-      return;
-    }
-    const timeout = window.setTimeout(() => setRemaining(value => value - 1), 1000);
-    return () => window.clearTimeout(timeout);
-  }, [onExpire, remaining]);
+function orderQuestionsObjectiveFirst(questions: StudentExamQuestion[]) {
+  return [
+    ...questions.filter(question => question.type !== 'essay'),
+    ...questions.filter(question => question.type === 'essay'),
+  ];
+}
 
-  const mins = Math.floor(remaining / 60);
-  const secs = remaining % 60;
-  return (
-    <div className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold ${
-      remaining <= 60 ? 'bg-red-500/10 text-red-500' : 'bg-surface-container text-on-surface'
-    }`}>
-      <Clock className="h-4 w-4" />
-      {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
-    </div>
-  );
+function formatRemainingTime(totalSeconds: number) {
+  const safeSeconds = Math.max(0, totalSeconds);
+  const mins = Math.floor(safeSeconds / 60);
+  const secs = safeSeconds % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
 export default function StudentExamPage() {
   const { courseId, slotIndex } = useParams<{ courseId: string; slotIndex: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [phase, setPhase] = useState<PagePhase>('loading');
-  const [errorMsg, setErrorMsg] = useState('');
-  const [attempt, setAttempt] = useState<StudentExamStartResponse | null>(null);
-  const [result, setResult] = useState<StudentExamResultResponse | null>(null);
-  const [answers, setAnswers] = useState<Record<string, ExamAnswerDraft>>({});
-  const [currentIdx, setCurrentIdx] = useState(0);
+  const returnTo = searchParams.get('returnTo') || (courseId ? `/courses/${courseId}?learn=1` : '/courses');
+  const parsedSlotIndex = Number(slotIndex);
 
-  const startExam = useCallback(async () => {
-    if (!courseId || slotIndex === undefined) {
-      setErrorMsg('Không tìm thấy bài kiểm tra.');
-      setPhase('error');
-      return;
-    }
-    setPhase('loading');
-    setResult(null);
-    setCurrentIdx(0);
-    try {
-      const data = await startStudentExam(courseId, Number(slotIndex));
-      const init: Record<string, ExamAnswerDraft> = {};
-      data.questions.forEach(question => {
-        init[question.id] = { selectedIndices: [], textAnswer: '', imageUrls: [] };
-      });
-      setAttempt(data);
-      setAnswers(init);
-      setPhase('exam');
-    } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : 'Không thể bắt đầu bài kiểm tra.');
-      setPhase('error');
-    }
-  }, [courseId, slotIndex]);
+  const [exam, setExam] = useState<StudentExam | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number[]>>({});
+  const [essayAnswers, setEssayAnswers] = useState<Record<string, string>>({});
+  const [essayImages, setEssayImages] = useState<Record<string, StudentExamAnswerImageUpload[]>>({});
+  const [uploadingImages, setUploadingImages] = useState<Record<string, boolean>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [submission, setSubmission] = useState<StudentExamSubmissionResponse | null>(null);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const orderedQuestions = useMemo(
+    () => orderQuestionsObjectiveFirst(exam?.questions ?? []),
+    [exam],
+  );
 
   useEffect(() => {
-    startExam();
-  }, [startExam]);
-
-  const handleSubmit = useCallback(async () => {
-    if (!attempt) return;
-    setPhase('submitting');
-    try {
-      const payload = Object.fromEntries(Object.entries(answers).map(([id, answer]) => [
-        id,
-        {
-          selectedIndices: answer.selectedIndices,
-          textAnswer: answer.textAnswer,
-          imageUrls: answer.imageUrls,
-        },
-      ]));
-      const data = await submitStudentExam(attempt.attemptId, payload);
-      setResult(data);
-      setPhase('results');
-    } catch (error) {
-      notify.error(error instanceof Error ? error.message : 'Nộp bài thất bại.');
-      setPhase('exam');
+    if (!courseId || !Number.isInteger(parsedSlotIndex)) {
+      setErrorMsg('Duong dan bai kiem tra khong hop le.');
+      setLoading(false);
+      return;
     }
-  }, [answers, attempt]);
 
-  const handleTimeExpire = useCallback(() => {
-    notify.error('Hết giờ, hệ thống tự động nộp bài.');
-    handleSubmit();
-  }, [handleSubmit]);
+    let cancelled = false;
+    setLoading(true);
+    setErrorMsg('');
+    getStudentExam(courseId, parsedSlotIndex)
+      .then(data => {
+        if (cancelled) return;
+        setExam(data);
+        setSelectedAnswers({});
+        setEssayAnswers({});
+        setEssayImages({});
+        setUploadingImages({});
+        setSubmitError('');
+        setSubmission(null);
+        setRemainingSeconds(Math.max(0, data.durationMinutes * 60));
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setErrorMsg(err instanceof Error ? err.message : 'Khong tai duoc bai kiem tra.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
-  function toggleOption(question: StudentExamQuestion, optionIndex: number) {
-    setAnswers(prev => {
-      const current = prev[question.id]?.selectedIndices ?? [];
-      if (question.type === 'single') {
-        return {
-          ...prev,
-          [question.id]: { ...prev[question.id], selectedIndices: [optionIndex] },
-        };
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId, parsedSlotIndex]);
+
+  const answeredCount = useMemo(() => {
+    if (!exam) return 0;
+    return orderedQuestions.filter(question => {
+      if (question.type === 'essay') {
+        return Boolean(essayAnswers[question.id]?.trim()) || (essayImages[question.id]?.length ?? 0) > 0;
       }
-      const next = current.includes(optionIndex)
-        ? current.filter(item => item !== optionIndex)
-        : [...current, optionIndex];
+      return (selectedAnswers[question.id] ?? []).length > 0;
+    }).length;
+  }, [essayAnswers, essayImages, exam, orderedQuestions, selectedAnswers]);
+
+  const hasUploadingImages = useMemo(
+    () => Object.values(uploadingImages).some(Boolean),
+    [uploadingImages],
+  );
+
+  useEffect(() => {
+    if (!exam || loading || submission) return;
+    setRemainingSeconds(prev => prev ?? Math.max(0, exam.durationMinutes * 60));
+  }, [exam, loading, submission]);
+
+  function toggleChoice(questionId: string, optionIndex: number, multiple: boolean) {
+    if (submission) return;
+    setSelectedAnswers(prev => {
+      const current = prev[questionId] ?? [];
+      if (!multiple) {
+        return { ...prev, [questionId]: [optionIndex] };
+      }
+      const exists = current.includes(optionIndex);
       return {
         ...prev,
-        [question.id]: { ...prev[question.id], selectedIndices: next },
+        [questionId]: exists
+          ? current.filter(value => value !== optionIndex)
+          : [...current, optionIndex].sort((a, b) => a - b),
       };
     });
   }
 
-  function updateEssayText(questionId: string, textAnswer: string) {
-    setAnswers(prev => ({
-      ...prev,
-      [questionId]: { ...prev[questionId], textAnswer },
-    }));
-  }
+  async function handleAddEssayImage(questionId: string, files: FileList | null) {
+    if (!courseId || submission || !files?.length) return;
 
-  async function handleEssayImages(questionId: string, files: FileList | null) {
-    if (!attempt || !files?.length) return;
-    setAnswers(prev => ({
-      ...prev,
-      [questionId]: { ...prev[questionId], uploading: true },
-    }));
-    try {
-      const uploaded: string[] = [];
-      for (const file of Array.from(files)) {
-        const res = await uploadExamAnswerImage(attempt.attemptId, file);
-        if (res.publicUrl) uploaded.push(res.publicUrl);
+    const selectedFiles = Array.from(files);
+    const currentCount = essayImages[questionId]?.length ?? 0;
+    if (currentCount + selectedFiles.length > MAX_ANSWER_IMAGE_COUNT) {
+      notify.error(`Moi cau tu luan toi da ${MAX_ANSWER_IMAGE_COUNT} anh dap an.`);
+      return;
+    }
+
+    for (const file of selectedFiles) {
+      if (!ACCEPTED_ANSWER_IMAGE_TYPES.includes(file.type)) {
+        notify.error('Chi ho tro anh PNG, JPG hoac WEBP.');
+        return;
       }
-      setAnswers(prev => ({
+      if (file.size > MAX_ANSWER_IMAGE_BYTES) {
+        notify.error('Moi anh dap an toi da 5 MB.');
+        return;
+      }
+    }
+
+    setUploadingImages(prev => ({ ...prev, [questionId]: true }));
+    try {
+      const uploadedImages: StudentExamAnswerImageUpload[] = [];
+      for (const file of selectedFiles) {
+        uploadedImages.push(await uploadStudentExamAnswerImage(courseId, file));
+      }
+      setEssayImages(prev => ({
         ...prev,
-        [questionId]: {
-          ...prev[questionId],
-          imageUrls: [...(prev[questionId]?.imageUrls ?? []), ...uploaded],
-          uploading: false,
-        },
+        [questionId]: [...(prev[questionId] ?? []), ...uploadedImages],
       }));
-    } catch (error) {
-      notify.error(error instanceof Error ? error.message : 'Không tải được ảnh bài làm.');
-      setAnswers(prev => ({
-        ...prev,
-        [questionId]: { ...prev[questionId], uploading: false },
-      }));
+      setSubmitError('');
+      notify.success(`Da tai len ${uploadedImages.length} anh dap an.`);
+    } catch (err) {
+      notify.error(isApiError(err) ? err.message : 'Khong the tai anh dap an.');
+    } finally {
+      setUploadingImages(prev => ({ ...prev, [questionId]: false }));
     }
   }
 
-  if (phase === 'loading') {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-surface">
-        <div className="text-center">
-          <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
-          <p className="font-semibold text-on-surface-variant">Đang chuẩn bị bài kiểm tra...</p>
-        </div>
-      </div>
-    );
+  function removeEssayImage(questionId: string, imageUrl: string) {
+    if (submission) return;
+    setEssayImages(prev => ({
+      ...prev,
+      [questionId]: (prev[questionId] ?? []).filter(image => image.url !== imageUrl),
+    }));
   }
 
-  if (phase === 'error') {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-surface p-4">
-        <div className="max-w-sm text-center">
-          <AlertCircle className="mx-auto mb-4 h-16 w-16 text-red-500" />
-          <h1 className="mb-2 text-xl font-extrabold text-on-surface">Không thể mở bài kiểm tra</h1>
-          <p className="mb-6 text-on-surface-variant">{errorMsg}</p>
-          <button
-            onClick={() => navigate(-1)}
-            className="rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-on-primary hover:bg-primary/90"
-          >
-            Quay lại
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (phase === 'results' && result && attempt) {
-    return (
-      <div className="min-h-screen bg-surface font-sans">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-outline-variant/30 bg-surface-container-lowest px-4 md:px-8">
-          <Link to={courseId ? `/courses/${courseId}` : '/courses'} className="flex items-center gap-2 text-sm font-semibold text-on-surface-variant hover:text-primary">
-            <ArrowLeft className="h-4 w-4" /> Quay lại khóa học
-          </Link>
-          <div className="flex items-center gap-2 text-sm font-bold text-on-surface">
-            <FileText className="h-4 w-4" />
-            Kết quả bài kiểm tra
-          </div>
-        </header>
-
-        <main className="mx-auto max-w-3xl px-4 py-8">
-          <div className="overflow-hidden rounded-3xl border border-outline-variant/40 bg-surface-container-lowest shadow-lg">
-            <div className={`border-b border-outline-variant/30 p-8 text-center ${result.passed === null ? 'bg-primary/5' : result.passed ? 'bg-green-500/5' : 'bg-red-500/5'}`}>
-              <div className="mb-4 flex justify-center">
-                <ScoreCircle score={result.scorePercent} />
-              </div>
-              <h1 className={`text-2xl font-extrabold ${result.passed === null ? 'text-primary' : result.passed ? 'text-green-600' : 'text-red-500'}`}>
-                {result.passed === null ? 'Đã nộp, chờ giáo viên chấm tự luận' : result.passed ? 'Đạt bài kiểm tra' : 'Chưa đạt bài kiểm tra'}
-              </h1>
-              <p className="mt-2 text-sm font-semibold text-on-surface-variant">
-                {result.earnedPoints}/{result.totalPoints} điểm · Lần {result.attemptNumber}
-              </p>
-            </div>
-
-            <div className="space-y-3 p-5">
-              {result.details.map((detail, index) => (
-                <div key={detail.questionId} className={`rounded-2xl border p-4 ${
-                  detail.isCorrect === null
-                    ? 'border-primary/30 bg-primary/5'
-                    : detail.isCorrect
-                    ? 'border-green-500/30 bg-green-500/5'
-                    : 'border-red-500/30 bg-red-500/5'
-                }`}>
-                  <div className="flex gap-3">
-                    {detail.isCorrect === null
-                      ? <FileText className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
-                      : detail.isCorrect
-                      ? <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-500" />
-                      : <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
-                    }
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-on-surface">Câu {index + 1}: <LatexText content={detail.text} /></p>
-                      {detail.correctAnswers.length > 0 && (
-                        <p className="mt-2 text-xs font-semibold text-on-surface-variant">
-                          Đáp án đúng: {detail.correctAnswers.map(i => i + 1).join(', ')}
-                        </p>
-                      )}
-                      {detail.explanation && (
-                        <p className="mt-2 rounded-xl bg-surface-container p-3 text-sm text-on-surface-variant">
-                          <LatexText content={detail.explanation} />
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex justify-center gap-3 px-5 pb-5">
-              <button
-                onClick={startExam}
-                className="flex items-center gap-2 rounded-xl border border-outline-variant px-5 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container"
-              >
-                <RotateCcw className="h-4 w-4" />
-                Làm lại
-              </button>
-              <Link
-                to={courseId ? `/courses/${courseId}` : '/courses'}
-                className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-on-primary hover:bg-primary/90"
-              >
-                <Trophy className="h-4 w-4" />
-                Tiếp tục học
-              </Link>
-            </div>
-          </div>
-        </main>
-      </div>
-    );
-  }
-
-  const questions = attempt?.questions ?? [];
-  const currentQuestion = questions[currentIdx];
-  const answeredCount = questions.filter(question => {
-    const answer = answers[question.id];
-    if (!answer) return false;
-    if (question.type === 'essay') {
-      return Boolean(answer.textAnswer.trim()) || answer.imageUrls.length > 0;
+  async function handleSubmitExam(forceSubmit = false) {
+    if (!courseId || !exam || submitting || submission) return;
+    if (hasUploadingImages) {
+      setSubmitError('Vui long doi tai anh dap an xong roi nop bai.');
+      return;
     }
-    return answer.selectedIndices.length > 0;
-  }).length;
-  const allAnswered = answeredCount === questions.length;
+    if (!forceSubmit && answeredCount < exam.questionCount) {
+      setSubmitError('Vui long tra loi day du cac cau truoc khi nop bai.');
+      return;
+    }
+
+    const answers = orderedQuestions.reduce<Record<string, SubmitExamAnswer>>((acc, question) => {
+      if (question.type === 'essay') {
+        acc[question.id] = {
+          selectedIndices: [],
+          textAnswer: essayAnswers[question.id]?.trim() ?? '',
+          imageUrls: (essayImages[question.id] ?? []).map(image => image.url),
+        };
+      } else {
+        acc[question.id] = {
+          selectedIndices: selectedAnswers[question.id] ?? [],
+          textAnswer: '',
+          imageUrls: [],
+        };
+      }
+      return acc;
+    }, {});
+
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      const result = await submitStudentExam(courseId, parsedSlotIndex, answers);
+      setSubmission(result);
+      setRemainingSeconds(0);
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Khong the nop bai kiem tra.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!exam || loading || submitting || submission || remainingSeconds == null) return;
+    if (remainingSeconds <= 0) {
+      handleSubmitExam(true);
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setRemainingSeconds(current => (current == null ? current : Math.max(0, current - 1)));
+    }, 1000);
+
+    return () => window.clearTimeout(timerId);
+  }, [
+    answeredCount,
+    courseId,
+    essayAnswers,
+    essayImages,
+    exam,
+    hasUploadingImages,
+    loading,
+    parsedSlotIndex,
+    remainingSeconds,
+    selectedAnswers,
+    submission,
+    submitting,
+  ]);
+
+  const isTimeUrgent = remainingSeconds != null && remainingSeconds <= 300;
+  const displayTime = remainingSeconds == null
+    ? exam
+      ? `${exam.durationMinutes} phut`
+      : '--:--'
+    : formatRemainingTime(remainingSeconds);
 
   return (
-    <div className="flex min-h-screen flex-col bg-surface font-sans">
-      <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-outline-variant/30 bg-surface-container-lowest px-4 md:px-8">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm font-semibold text-on-surface-variant hover:text-primary">
-          <ArrowLeft className="h-4 w-4" /> Thoát
-        </button>
-        <div className="flex items-center gap-4">
-          <span className="hidden text-sm font-semibold text-on-surface-variant sm:inline">
-            {answeredCount}/{questions.length} câu
-          </span>
-          {attempt?.durationMinutes && phase === 'exam' && (
-            <CountdownTimer totalSeconds={attempt.durationMinutes * 60} onExpire={handleTimeExpire} />
+    <div className="min-h-screen bg-surface font-sans">
+      <DashboardHeader />
+
+      <header className="border-b border-outline-variant/30 bg-surface-container">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4">
+          <button
+            type="button"
+            onClick={() => navigate(returnTo)}
+            className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface hover:text-primary"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Quay lai chuong trinh hoc
+          </button>
+          {exam && (
+            <div className={`hidden items-center gap-2 text-xs font-bold sm:flex ${
+              isTimeUrgent ? 'text-red-500' : 'text-on-surface-variant'
+            }`}>
+              <Clock className="h-4 w-4" />
+              {displayTime}
+            </div>
           )}
         </div>
       </header>
 
-      <div className="h-1 bg-surface-container">
-        <div className="h-full bg-primary transition-all" style={{ width: `${questions.length ? ((currentIdx + 1) / questions.length) * 100 : 0}%` }} />
-      </div>
+      <main className="mx-auto max-w-6xl px-4 py-8">
+        {loading && (
+          <div className="flex min-h-[50vh] items-center justify-center">
+            <div className="text-center">
+              <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-primary" />
+              <p className="font-semibold text-on-surface-variant">Dang tai bai kiem tra...</p>
+            </div>
+          </div>
+        )}
 
-      <main className="mx-auto grid w-full max-w-6xl flex-1 grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[1fr_280px]">
-        <section className="rounded-3xl border border-outline-variant/40 bg-surface-container-lowest p-5 shadow-lg md:p-7">
-          {currentQuestion && (
-            <>
-              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-bold uppercase text-primary">Câu {currentIdx + 1}/{questions.length}</p>
-                  <h1 className="mt-2 text-xl font-extrabold text-on-surface">{attempt?.name}</h1>
-                </div>
-                <span className="rounded-full bg-secondary-container px-3 py-1 text-xs font-bold text-on-secondary-container">
-                  {currentQuestion.type === 'essay'
-                    ? 'Tự luận'
-                    : currentQuestion.type === 'multiple'
-                    ? 'Nhiều đáp án'
-                    : 'Một đáp án'}
-                </span>
+        {!loading && errorMsg && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+              <div>
+                <h1 className="font-extrabold">Khong the mo bai kiem tra</h1>
+                <p className="mt-1 text-sm font-medium">{errorMsg}</p>
+                <Link
+                  to={returnTo}
+                  className="mt-4 inline-flex rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
+                >
+                  Ve chuong trinh hoc
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!loading && exam && (
+          <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+            <section className="min-w-0 space-y-5">
+              <div>
+                <p className="text-sm font-bold uppercase text-primary">
+                  Bai kiem tra sau {exam.placementChapterTitle ?? 'chuong da chon'}
+                </p>
+                <h1 className="mt-1 text-3xl font-extrabold text-on-surface">{exam.name}</h1>
+                {exam.description && (
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-on-surface-variant">
+                    {exam.description}
+                  </p>
+                )}
               </div>
 
-              <p className="mb-6 rounded-2xl bg-surface-container p-4 text-base font-semibold leading-relaxed text-on-surface">
-                <LatexText content={currentQuestion.text} />
-              </p>
-
-              {currentQuestion.type === 'essay' ? (
-                <div className="space-y-4">
-                  <textarea
-                    value={answers[currentQuestion.id]?.textAnswer ?? ''}
-                    onChange={event => updateEssayText(currentQuestion.id, event.target.value)}
-                    rows={10}
-                    disabled={phase !== 'exam'}
-                    placeholder="Nhập bài làm tự luận..."
-                    className="w-full rounded-2xl border border-outline-variant/40 bg-surface p-4 text-sm leading-7 outline-none focus:border-primary disabled:opacity-60"
-                  />
-                  <label className="flex cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-outline-variant/50 bg-surface p-4 text-sm font-bold text-on-surface-variant hover:border-primary/50 hover:text-primary">
-                    <ImageIcon className="h-4 w-4" />
-                    {answers[currentQuestion.id]?.uploading ? 'Đang tải ảnh...' : 'Tải ảnh bài làm'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      disabled={phase !== 'exam' || answers[currentQuestion.id]?.uploading}
-                      onChange={event => handleEssayImages(currentQuestion.id, event.target.files)}
-                    />
-                  </label>
-                  {(answers[currentQuestion.id]?.imageUrls ?? []).length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {answers[currentQuestion.id].imageUrls.map((url, index) => (
-                        <a key={url} href={url} target="_blank" rel="noreferrer" className="rounded-xl bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary">
-                          Ảnh {index + 1}
-                        </a>
-                      ))}
-                    </div>
-                  )}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-outline-variant/40 bg-surface-container-lowest p-4">
+                  <Clock className={`mb-2 h-5 w-5 ${isTimeUrgent ? 'text-red-500' : 'text-primary'}`} />
+                  <p className="text-xs font-bold uppercase text-on-surface-variant">Thoi gian</p>
+                  <p className={`mt-1 text-xl font-extrabold ${isTimeUrgent ? 'text-red-500' : 'text-on-surface'}`}>
+                    {displayTime}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-on-surface-variant">
+                    Thoi luong tong: {exam.durationMinutes} phut
+                  </p>
                 </div>
-              ) : (
-              <div className="space-y-3">
-                {currentQuestion.options.map((option, index) => {
-                  const selected = (answers[currentQuestion.id]?.selectedIndices ?? []).includes(index);
+                <div className="rounded-2xl border border-outline-variant/40 bg-surface-container-lowest p-4">
+                  <FileText className="mb-2 h-5 w-5 text-primary" />
+                  <p className="text-xs font-bold uppercase text-on-surface-variant">So cau</p>
+                  <p className="mt-1 text-xl font-extrabold text-on-surface">{exam.questionCount}</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {orderedQuestions.map((question, questionIndex) => {
+                  const selected = selectedAnswers[question.id] ?? [];
+                  const uploadedImages = essayImages[question.id] ?? [];
+                  const isUploading = Boolean(uploadingImages[question.id]);
+
                   return (
-                    <button
-                      key={`${currentQuestion.id}-${index}`}
-                      type="button"
-                      onClick={() => toggleOption(currentQuestion, index)}
-                      disabled={phase !== 'exam'}
-                      className={`flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-all ${
-                        selected
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-outline-variant/40 bg-surface hover:border-primary/40 hover:bg-surface-container'
-                      }`}
+                    <article
+                      key={question.id}
+                      className="rounded-2xl border border-outline-variant/40 bg-surface p-5"
                     >
-                      <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-sm font-extrabold ${
-                        selected ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'
-                      }`}>
-                        {index + 1}
-                      </span>
-                      <span className="font-semibold"><LatexText content={option} /></span>
-                    </button>
+                      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-extrabold text-primary">
+                              Cau {questionIndex + 1}
+                            </span>
+                            <span className="rounded-full bg-surface-container px-2.5 py-1 text-xs font-bold text-on-surface-variant">
+                              {questionTypeLabel(question.type)}
+                            </span>
+                          </div>
+                          <div className="text-base font-semibold leading-relaxed text-on-surface">
+                            <LatexText content={question.text} />
+                          </div>
+                        </div>
+                        <span className="flex-shrink-0 rounded-xl bg-amber-500/10 px-3 py-1.5 text-xs font-extrabold text-amber-600">
+                          {formatPoints(question.points)} diem
+                        </span>
+                      </div>
+
+                      {question.type === 'essay' ? (
+                        <div className="space-y-3">
+                          <textarea
+                            value={essayAnswers[question.id] ?? ''}
+                            onChange={event => setEssayAnswers(prev => ({
+                              ...prev,
+                              [question.id]: event.target.value,
+                            }))}
+                            disabled={Boolean(submission)}
+                            rows={5}
+                            placeholder="Nhap cau tra loi tu luan..."
+                            className="w-full resize-y rounded-2xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-sm text-on-surface outline-none focus:border-primary"
+                          />
+
+                          <div className="rounded-2xl border border-dashed border-outline-variant/60 bg-surface-container-lowest p-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <p className="text-sm font-bold text-on-surface">Anh dap an</p>
+                                <p className="text-xs text-on-surface-variant">
+                                  PNG, JPG, WEBP - toi da 5 MB moi anh - toi da {MAX_ANSWER_IMAGE_COUNT} anh
+                                </p>
+                              </div>
+                              <label className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-colors ${
+                                submission || isUploading
+                                  ? 'cursor-not-allowed bg-surface-container text-on-surface-variant'
+                                  : 'cursor-pointer bg-primary/10 text-primary hover:bg-primary/15'
+                              }`}>
+                                {isUploading ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <ImagePlus className="h-4 w-4" />
+                                )}
+                                {isUploading ? 'Dang tai...' : 'Tai anh len'}
+                                <input
+                                  type="file"
+                                  accept="image/png,image/jpeg,image/webp"
+                                  multiple
+                                  disabled={Boolean(submission) || isUploading}
+                                  className="hidden"
+                                  onChange={event => {
+                                    handleAddEssayImage(question.id, event.target.files);
+                                    event.target.value = '';
+                                  }}
+                                />
+                              </label>
+                            </div>
+
+                            {uploadedImages.length > 0 && (
+                              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                {uploadedImages.map((image, imageIndex) => (
+                                  <div
+                                    key={image.url}
+                                    className="overflow-hidden rounded-2xl border border-outline-variant/40 bg-surface"
+                                  >
+                                    <a href={image.url} target="_blank" rel="noreferrer">
+                                      <img
+                                        src={image.url}
+                                        alt={image.name}
+                                        className="h-36 w-full object-cover"
+                                      />
+                                    </a>
+                                    <div className="flex items-start justify-between gap-2 px-3 py-2">
+                                      <div className="min-w-0">
+                                        <p className="truncate text-xs font-bold text-on-surface">
+                                          Anh {imageIndex + 1}
+                                        </p>
+                                        <p className="truncate text-[11px] text-on-surface-variant">
+                                          {image.name}
+                                        </p>
+                                      </div>
+                                      {!submission && (
+                                        <button
+                                          type="button"
+                                          onClick={() => removeEssayImage(question.id, image.url)}
+                                          className="rounded-lg p-1 text-on-surface-variant hover:bg-surface-container hover:text-red-500"
+                                          title="Xoa anh"
+                                        >
+                                          <X className="h-4 w-4" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {question.options.map((option, optionIndex) => {
+                            const checked = selected.includes(optionIndex);
+                            return (
+                              <button
+                                key={`${question.id}-${optionIndex}`}
+                                type="button"
+                                onClick={() => toggleChoice(question.id, optionIndex, question.type === 'multiple')}
+                                disabled={Boolean(submission)}
+                                className={`w-full rounded-2xl border px-4 py-3 text-left transition-all ${
+                                  checked
+                                    ? 'border-primary/40 bg-primary/10'
+                                    : 'border-outline-variant/50 bg-surface-container-lowest hover:border-primary/30'
+                                }`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <span className={`mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-xs font-extrabold ${
+                                    checked ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'
+                                  }`}>
+                                    {OPTION_LABELS[optionIndex] ?? optionIndex + 1}
+                                  </span>
+                                  <span className="mt-1 flex-shrink-0 text-primary">
+                                    {checked ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                                  </span>
+                                  <span className="min-w-0 text-sm font-medium leading-relaxed text-on-surface">
+                                    <LatexText content={option} />
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </article>
                   );
                 })}
               </div>
-              )}
+            </section>
 
-              <div className="mt-8 flex items-center justify-between">
-                <button
-                  onClick={() => setCurrentIdx(i => Math.max(0, i - 1))}
-                  disabled={currentIdx === 0 || phase !== 'exam'}
-                  className="flex items-center gap-2 rounded-xl border border-outline-variant px-4 py-2 text-sm font-bold text-on-surface-variant disabled:opacity-40"
-                >
-                  <ChevronLeft className="h-4 w-4" /> Trước
-                </button>
-                {currentIdx < questions.length - 1 ? (
-                  <button
-                    onClick={() => setCurrentIdx(i => Math.min(questions.length - 1, i + 1))}
-                    disabled={phase !== 'exam'}
-                    className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-bold text-on-primary"
-                  >
-                    Tiếp <ChevronRight className="h-4 w-4" />
-                  </button>
+            <aside className="lg:sticky lg:top-6 lg:self-start">
+              <div className="rounded-2xl border border-outline-variant/40 bg-surface-container-lowest p-5">
+                <p className="text-sm font-extrabold text-on-surface">Tien do lam bai</p>
+                <div className="mt-4 h-2 rounded-full bg-surface-container">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${exam.questionCount ? (answeredCount / exam.questionCount) * 100 : 0}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-xs font-bold text-on-surface-variant">
+                  Da tra loi {answeredCount}/{exam.questionCount} cau
+                </p>
+                <div className="mt-4 space-y-2 text-xs font-medium text-on-surface-variant">
+                  <p>Pham vi: {exam.scopeStartChapterTitle ?? 'Chuong dau'} - {exam.placementChapterTitle ?? 'chuong dat bai kiem tra'}</p>
+                  <p>Tong diem: {formatPoints(exam.totalPoints)}</p>
+                  <p>So lan lam toi da: {exam.maxAttempts}</p>
+                  <p className={isTimeUrgent ? 'font-bold text-red-500' : ''}>
+                    Con lai: {displayTime}
+                  </p>
+                  {hasUploadingImages && (
+                    <p className="font-bold text-amber-600">Dang tai anh dap an, vui long doi mot chut.</p>
+                  )}
+                </div>
+                {submitError && (
+                  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                    {submitError}
+                  </div>
+                )}
+                {submission ? (
+                  <div className="mt-5 rounded-2xl border border-green-200 bg-green-50 p-4 text-green-800">
+                    <p className="text-sm font-extrabold">Da nop bai kiem tra</p>
+                    <p className="mt-1 text-xs font-semibold">
+                      Trac nghiem dung {submission.correctObjectiveCount}/{submission.totalObjectiveCount} cau.
+                    </p>
+                    {submission.status === 'pending' ? (
+                      <p className="mt-1 text-xs font-semibold">
+                        Diem trac nghiem da duoc cham may: {submission.autoScorePercent}%.
+                        Phan tu luan da duoc gui sang giao vien de cham tiep.
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs font-semibold">
+                        Diem tu dong: {submission.autoScorePercent}% - Bai da duoc cham xong.
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <button
-                    onClick={handleSubmit}
-                    disabled={phase !== 'exam' || !allAnswered}
-                    className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-bold text-on-primary disabled:opacity-50"
+                    type="button"
+                    onClick={() => handleSubmitExam()}
+                    disabled={submitting || answeredCount < exam.questionCount || hasUploadingImages}
+                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {phase === 'submitting' && <Loader2 className="h-4 w-4 animate-spin" />}
-                    Nộp bài
+                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    {submitting ? 'Dang nop bai...' : 'Nop bai kiem tra'}
                   </button>
                 )}
-              </div>
-            </>
-          )}
-        </section>
-
-        <aside className="rounded-3xl border border-outline-variant/40 bg-surface-container-lowest p-4 shadow-lg">
-          <h2 className="mb-3 text-sm font-extrabold text-on-surface">Bản đồ câu hỏi</h2>
-          <div className="grid grid-cols-5 gap-2">
-            {questions.map((question, index) => {
-              const answer = answers[question.id];
-              const answered = question.type === 'essay'
-                ? Boolean(answer?.textAnswer.trim()) || (answer?.imageUrls.length ?? 0) > 0
-                : (answer?.selectedIndices.length ?? 0) > 0;
-              const current = index === currentIdx;
-              return (
                 <button
-                  key={question.id}
-                  onClick={() => setCurrentIdx(index)}
-                  className={`aspect-square rounded-xl text-sm font-extrabold transition-all ${
-                    current
-                      ? 'bg-primary text-on-primary'
-                      : answered
-                      ? 'bg-green-500/15 text-green-600'
-                      : 'bg-surface-container text-on-surface-variant'
-                  }`}
+                  type="button"
+                  onClick={() => navigate(returnTo)}
+                  className="mt-5 w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-on-primary hover:bg-primary/90"
                 >
-                  {index + 1}
+                  Quay lai hoc tiep
                 </button>
-              );
-            })}
+              </div>
+            </aside>
           </div>
-          <button
-            onClick={handleSubmit}
-            disabled={phase !== 'exam' || !allAnswered}
-            className="mt-5 w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-on-primary disabled:opacity-50"
-          >
-            Nộp bài kiểm tra
-          </button>
-        </aside>
+        )}
       </main>
     </div>
   );

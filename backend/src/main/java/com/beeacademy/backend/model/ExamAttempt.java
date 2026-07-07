@@ -88,6 +88,13 @@ public class ExamAttempt {
         this.submittedAt = Instant.now();
     }
 
+    public void saveDraft(String answersJson) {
+        if (this.submittedAt != null) {
+            return;
+        }
+        this.answers = answersJson;
+    }
+
     public void grade(double scorePercent, String feedback) {
         this.manualScorePercent = BigDecimal.valueOf(scorePercent)
                 .setScale(1, java.math.RoundingMode.HALF_UP);

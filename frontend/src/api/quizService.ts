@@ -63,7 +63,9 @@ export interface QuizResultDetail {
   questionId: string;
   content: string;
   studentAnswer: string | null;
+  studentAnswerText?: string | null;
   correctAnswer: string | null;
+  correctAnswerText?: string | null;
   isCorrect: boolean;
   explanation: string | null;
 }

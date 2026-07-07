@@ -61,81 +61,6 @@ export interface ExamQuestionRandomRequest {
   }>;
 }
 
-export interface StudentExamRequiredChapter {
-  chapterId: string;
-  title: string;
-  hasQuiz: boolean;
-  quizPassed: boolean;
-}
-
-export interface StudentExamSummaryResponse {
-  examId: string | null;
-  slotIndex: number;
-  scopeStartChapterId: string | null;
-  scopeStartChapterTitle: string | null;
-  placementChapterId: string | null;
-  placementChapterTitle: string | null;
-  name: string;
-  description: string | null;
-  durationMinutes: number | null;
-  passScorePercent: number | null;
-  maxAttempts: number | null;
-  configured: boolean;
-  unlocked: boolean;
-  passed: boolean;
-  latestScorePercent: number | null;
-  attemptsUsed: number;
-  requiredQuizCount: number;
-  passedQuizCount: number;
-  lockedReason: string | null;
-  requiredChapters: StudentExamRequiredChapter[];
-}
-
-export interface StudentExamQuestion {
-  id: string;
-  text: string;
-  type: ExamQuestionType;
-  options: string[];
-  points: number;
-}
-
-export interface StudentExamStartResponse {
-  attemptId: string;
-  examId: string;
-  slotIndex: number;
-  name: string;
-  description: string | null;
-  durationMinutes: number;
-  totalQuestions: number;
-  attemptNumber: number;
-  questions: StudentExamQuestion[];
-}
-
-export interface StudentExamResultDetail {
-  questionId: string;
-  text: string;
-  type: ExamQuestionType;
-  studentAnswers: number[];
-  textAnswer: string | null;
-  imageUrls: string[];
-  correctAnswers: number[];
-  isCorrect: boolean | null;
-  explanation: string | null;
-  points: number;
-}
-
-export interface StudentExamResultResponse {
-  attemptId: string;
-  examId: string;
-  slotIndex: number;
-  scorePercent: number;
-  passed: boolean | null;
-  earnedPoints: number;
-  totalPoints: number;
-  attemptNumber: number;
-  details: StudentExamResultDetail[];
-}
-
 export interface TeacherExamQuestionReview {
   id: string;
   text: string;
@@ -223,57 +148,6 @@ export async function saveCourseExam(
 
 export async function deleteCourseExam(courseId: string, slotIndex: number): Promise<void> {
   await apiClient.delete(`/api/teacher/courses/${courseId}/exams/${slotIndex}`);
-}
-
-export async function listStudentCourseExams(courseId: string): Promise<StudentExamSummaryResponse[]> {
-  const res = await apiClient.get<ApiResponse<StudentExamSummaryResponse[]>>(
-    `/api/student/courses/${courseId}/exams`,
-  );
-  return unwrap(res.data);
-}
-
-export async function startStudentExam(
-    courseId: string,
-    slotIndex: number,
-): Promise<StudentExamStartResponse> {
-  const res = await apiClient.post<ApiResponse<StudentExamStartResponse>>(
-    `/api/student/courses/${courseId}/exams/${slotIndex}/start`,
-  );
-  return unwrap(res.data);
-}
-
-export async function submitStudentExam(
-    attemptId: string,
-    answers: Record<string, {
-      selectedIndices?: number[];
-      textAnswer?: string;
-      imageUrls?: string[];
-    }>,
-): Promise<StudentExamResultResponse> {
-  const res = await apiClient.post<ApiResponse<StudentExamResultResponse>>(
-    `/api/student/exam-attempts/${attemptId}/submit`,
-    { answers },
-  );
-  return unwrap(res.data);
-}
-
-export async function uploadExamAnswerImage(attemptId: string, file: File): Promise<{
-  storagePath: string;
-  publicUrl: string | null;
-  fileType: string;
-  fileSizeBytes: number;
-}> {
-  const formData = new FormData();
-  formData.append('file', file);
-  const res = await apiClient.post<ApiResponse<{
-    storagePath: string;
-    publicUrl: string | null;
-    fileType: string;
-    fileSizeBytes: number;
-  }>>(`/api/student/exam-attempts/${attemptId}/images`, formData, {
-    timeout: 60000,
-  });
-  return unwrap(res.data);
 }
 
 export async function listTeacherExamAttempts(): Promise<TeacherExamAttemptResponse[]> {

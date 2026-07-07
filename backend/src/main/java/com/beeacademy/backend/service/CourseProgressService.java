@@ -2,14 +2,24 @@ package com.beeacademy.backend.service;
 
 import com.beeacademy.backend.dto.request.CompleteCourseProgressItemRequest;
 import com.beeacademy.backend.dto.response.CourseProgressResponse;
+import com.beeacademy.backend.dto.response.StudentLearningProgressResponse;
 import com.beeacademy.backend.exception.BusinessException;
 import com.beeacademy.backend.exception.ResourceNotFoundException;
+import com.beeacademy.backend.model.Chapter;
+import com.beeacademy.backend.model.Course;
 import com.beeacademy.backend.model.CourseProgressItem;
 import com.beeacademy.backend.model.Enrollment;
+import com.beeacademy.backend.model.Lesson;
+import com.beeacademy.backend.model.OrderStatus;
+import com.beeacademy.backend.model.QuizAttempt;
+import com.beeacademy.backend.model.QuizConfig;
+import com.beeacademy.backend.repository.ChapterRepository;
 import com.beeacademy.backend.repository.CourseProgressItemRepository;
 import com.beeacademy.backend.repository.CourseRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
 import com.beeacademy.backend.repository.LessonRepository;
+import com.beeacademy.backend.repository.OrderItemRepository;
+import com.beeacademy.backend.repository.QuizAttemptRepository;
 import com.beeacademy.backend.repository.QuizConfigRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
@@ -17,8 +27,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -32,13 +48,83 @@ public class CourseProgressService {
     private final CourseProgressItemRepository progressRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final CourseRepository courseRepository;
+    private final ChapterRepository chapterRepository;
     private final LessonRepository lessonRepository;
     private final QuizConfigRepository quizConfigRepository;
+    private final QuizAttemptRepository quizAttemptRepository;
+    private final OrderItemRepository orderItemRepository;
 
     @Transactional(readOnly = true)
     public CourseProgressResponse getProgress(UUID courseId, AuthenticatedUser me) {
         requireEnrolled(me.userId(), courseId);
         return buildResponse(me.userId(), courseId);
+    }
+
+    @Transactional(readOnly = true)
+    public StudentLearningProgressResponse getLearningProgress(AuthenticatedUser me) {
+        UUID studentId = me.userId();
+        Map<UUID, Enrollment> enrollmentByCourse = enrollmentRepository.findByStudentId(studentId)
+                .stream()
+                .collect(Collectors.toMap(Enrollment::getCourseId, enrollment -> enrollment));
+        LinkedHashSet<UUID> ownedCourseIds = new LinkedHashSet<>(enrollmentByCourse.keySet());
+        ownedCourseIds.addAll(orderItemRepository.findPaidCourseIdsByStudent(studentId, OrderStatus.PAID.toDbValue()));
+
+        if (ownedCourseIds.isEmpty()) {
+            return new StudentLearningProgressResponse(
+                    0, 0, 0, 0, 0, 0, List.of());
+        }
+
+        List<UUID> courseIds = ownedCourseIds.stream().toList();
+        List<Course> courses = courseRepository.findByIdIn(courseIds);
+        Map<UUID, Integer> progressByCourse = calculateProgressForCourses(studentId, courseIds);
+
+        List<CourseProgressItem> completedItems =
+                progressRepository.findByStudentIdAndCourseIdIn(studentId, courseIds);
+        Map<UUID, CourseProgressItem> completedByItemId = completedItems.stream()
+                .collect(Collectors.toMap(
+                        CourseProgressItem::getItemId,
+                        item -> item,
+                        (first, ignored) -> first));
+
+        Map<UUID, List<QuizConfig>> quizConfigsByCourse = quizConfigRepository.findByCourseIds(courseIds)
+                .stream()
+                .collect(Collectors.groupingBy(config -> config.getChapter().getCourse().getId()));
+        Map<UUID, QuizConfig> quizByChapter = quizConfigsByCourse.values().stream()
+                .flatMap(List::stream)
+                .collect(Collectors.toMap(config -> config.getChapter().getId(), config -> config));
+
+        Map<UUID, QuizAttempt> latestQuizByConfig = new HashMap<>();
+        quizAttemptRepository.findSubmittedByStudentAndCourseIds(studentId, courseIds)
+                .forEach(attempt -> latestQuizByConfig.putIfAbsent(
+                        attempt.getQuizConfig().getId(), attempt));
+
+        List<StudentLearningProgressResponse.CourseProgressDetail> courseDetails = courses.stream()
+                .map(course -> buildCourseProgressDetail(
+                        course,
+                        enrollmentByCourse.get(course.getId()),
+                        progressByCourse.getOrDefault(course.getId(), 0),
+                        completedByItemId,
+                        quizByChapter,
+                        latestQuizByConfig))
+                .toList();
+
+        int totalLessons = courseDetails.stream().mapToInt(StudentLearningProgressResponse.CourseProgressDetail::totalLessons).sum();
+        int completedLessons = courseDetails.stream().mapToInt(StudentLearningProgressResponse.CourseProgressDetail::completedLessons).sum();
+        int totalQuizzes = courseDetails.stream().mapToInt(StudentLearningProgressResponse.CourseProgressDetail::totalQuizzes).sum();
+        int completedQuizzes = courseDetails.stream().mapToInt(StudentLearningProgressResponse.CourseProgressDetail::completedQuizzes).sum();
+        int averageProgress = (int) Math.round(courseDetails.stream()
+                .mapToInt(StudentLearningProgressResponse.CourseProgressDetail::progressPct)
+                .average()
+                .orElse(0.0));
+
+        return new StudentLearningProgressResponse(
+                courseDetails.size(),
+                averageProgress,
+                completedLessons,
+                totalLessons,
+                completedQuizzes,
+                totalQuizzes,
+                courseDetails);
     }
 
     @Transactional
@@ -106,6 +192,107 @@ public class CourseProgressService {
                 .map(CourseProgressItem::getItemId)
                 .toList();
         return new CourseProgressResponse(courseId, calculateProgressPct(studentId, courseId), lessonIds, quizIds);
+    }
+
+    private StudentLearningProgressResponse.CourseProgressDetail buildCourseProgressDetail(
+            Course course,
+            Enrollment enrollment,
+            Integer progressPct,
+            Map<UUID, CourseProgressItem> completedByItemId,
+            Map<UUID, QuizConfig> quizByChapter,
+            Map<UUID, QuizAttempt> latestQuizByConfig
+    ) {
+        List<Chapter> chapters = chapterRepository.findWithLessonsByCourseId(course.getId());
+        List<StudentLearningProgressResponse.ChapterProgressDetail> chapterDetails = chapters.stream()
+                .map(chapter -> buildChapterProgressDetail(
+                        chapter,
+                        completedByItemId,
+                        quizByChapter.get(chapter.getId()),
+                        latestQuizByConfig))
+                .toList();
+        int totalLessons = chapterDetails.stream()
+                .mapToInt(StudentLearningProgressResponse.ChapterProgressDetail::totalLessons)
+                .sum();
+        int completedLessons = chapterDetails.stream()
+                .mapToInt(StudentLearningProgressResponse.ChapterProgressDetail::completedLessons)
+                .sum();
+        int totalQuizzes = (int) chapterDetails.stream()
+                .filter(StudentLearningProgressResponse.ChapterProgressDetail::quizConfigured)
+                .count();
+        int completedQuizzes = (int) chapterDetails.stream()
+                .filter(StudentLearningProgressResponse.ChapterProgressDetail::quizCompleted)
+                .count();
+        Double latestQuizScore = chapterDetails.stream()
+                .filter(chapter -> chapter.latestQuizSubmittedAt() != null && chapter.latestQuizScore() != null)
+                .max(Comparator.comparing(StudentLearningProgressResponse.ChapterProgressDetail::latestQuizSubmittedAt))
+                .map(StudentLearningProgressResponse.ChapterProgressDetail::latestQuizScore)
+                .orElse(null);
+        return new StudentLearningProgressResponse.CourseProgressDetail(
+                course.getId(),
+                course.getSlug(),
+                course.getTitle(),
+                course.getThumbnailUrl(),
+                course.getCategory() != null ? course.getCategory().getName() : null,
+                course.getTeacher() != null ? course.getTeacher().getFullName() : null,
+                progressPct != null ? progressPct : 0,
+                completedLessons,
+                totalLessons,
+                completedQuizzes,
+                totalQuizzes,
+                latestQuizScore,
+                enrollment != null ? enrollment.getEnrolledAt() : null,
+                chapterDetails);
+    }
+
+    private StudentLearningProgressResponse.ChapterProgressDetail buildChapterProgressDetail(
+            Chapter chapter,
+            Map<UUID, CourseProgressItem> completedByItemId,
+            QuizConfig quizConfig,
+            Map<UUID, QuizAttempt> latestQuizByConfig
+    ) {
+        List<Lesson> lessons = chapter.getLessons().stream()
+                .sorted(Comparator.comparing(Lesson::getPosition))
+                .toList();
+        List<StudentLearningProgressResponse.LessonProgressDetail> lessonDetails = lessons.stream()
+                .map(lesson -> {
+                    CourseProgressItem completed = completedByItemId.get(lesson.getId());
+                    return new StudentLearningProgressResponse.LessonProgressDetail(
+                            lesson.getId(),
+                            lesson.getTitle(),
+                            lesson.getPosition(),
+                            lesson.getDurationSec(),
+                            completed != null,
+                            completed != null ? completed.getCompletedAt() : null);
+                })
+                .toList();
+        QuizAttempt latestQuiz = quizConfig != null ? latestQuizByConfig.get(quizConfig.getId()) : null;
+        boolean quizCompleted = quizConfig != null
+                && (completedByItemId.containsKey(chapter.getId()) || latestQuiz != null);
+        if (latestQuiz == null && quizCompleted) {
+            latestQuiz = quizAttemptRepository
+                    .findSubmittedByStudentAndChapter(
+                            completedByItemId.get(chapter.getId()).getStudentId(),
+                            chapter.getId())
+                    .stream()
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        return new StudentLearningProgressResponse.ChapterProgressDetail(
+                chapter.getId(),
+                chapter.getTitle(),
+                chapter.getPosition(),
+                (int) lessonDetails.stream()
+                        .filter(StudentLearningProgressResponse.LessonProgressDetail::completed)
+                        .count(),
+                lessonDetails.size(),
+                quizConfig != null,
+                quizCompleted,
+                latestQuiz != null ? latestQuiz.getId() : null,
+                latestQuiz != null && latestQuiz.getScore() != null ? latestQuiz.getScore().doubleValue() : null,
+                latestQuiz != null ? latestQuiz.getPassed() : null,
+                latestQuiz != null ? latestQuiz.getSubmittedAt() : null,
+                lessonDetails);
     }
 
     private void requireEnrolled(UUID studentId, UUID courseId) {

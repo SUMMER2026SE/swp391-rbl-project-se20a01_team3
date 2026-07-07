@@ -151,7 +151,12 @@ export default function TeacherGradesPage() {
         listTeacherExamAttempts(),
       ]);
       setSubmissions(data);
-      setExamAttempts(examData);
+      setExamAttempts(
+        [...examData].sort((a, b) => {
+          if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;
+          return new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime();
+        }),
+      );
       if (showSuccess) notify.success('Đã làm mới danh sách bài tự luận.');
     } catch (err) {
       notify.error(isApiError(err) ? err.message : 'Không thể tải bài tự luận đã nộp.');
