@@ -16,7 +16,12 @@ public interface ExamAttemptRepository extends JpaRepository<ExamAttempt, UUID> 
 
     int countByStudentIdAndExamConfigId(UUID studentId, UUID examConfigId);
 
+    int countByStudentIdAndExamConfigIdAndSubmittedAtIsNotNull(UUID studentId, UUID examConfigId);
+
     Optional<ExamAttempt> findByIdAndStudentId(UUID id, UUID studentId);
+
+    Optional<ExamAttempt> findFirstByStudentIdAndExamConfigIdAndSubmittedAtIsNullOrderByStartedAtDesc(
+            UUID studentId, UUID examConfigId);
 
     Optional<ExamAttempt> findFirstByStudentIdAndExamConfigIdAndSubmittedAtIsNotNullOrderBySubmittedAtDesc(
             UUID studentId, UUID examConfigId);

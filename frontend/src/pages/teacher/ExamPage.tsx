@@ -150,6 +150,13 @@ function formatPoints(points: number): string {
   return points.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
 }
 
+function orderExamQuestionsObjectiveFirst(questions: ExamQuestion[]): ExamQuestion[] {
+  return [
+    ...questions.filter(question => question.type !== 'essay'),
+    ...questions.filter(question => question.type === 'essay'),
+  ];
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  PHẦN 2 — NAV_ITEMS (đồng bộ sidebar teacher)
 // ═══════════════════════════════════════════════════════════════════
@@ -298,7 +305,7 @@ function examFromResponse(response: ExamConfigResponse): Exam {
     shuffleQuestions: response.shuffleQuestions,
     shuffleOptions: response.shuffleOptions,
     showAnswerAfterSubmit: response.showAnswerAfterSubmit,
-    questions,
+    questions: orderExamQuestionsObjectiveFirst(questions),
   };
 }
 
@@ -327,7 +334,7 @@ function examToRequest(exam: Exam): ExamConfigRequest {
     shuffleQuestions: exam.shuffleQuestions,
     shuffleOptions: exam.shuffleOptions,
     showAnswerAfterSubmit: exam.showAnswerAfterSubmit,
-    questions: exam.questions.map(q => ({
+    questions: orderExamQuestionsObjectiveFirst(exam.questions).map(q => ({
       id: q.id,
       text: q.text.trim(),
       type: q.type,
@@ -845,7 +852,7 @@ export default function TeacherExamPage() {
         ...slot.exam,
         scopeStartChapterId: slot.exam.scopeStartChapterId ?? slot.scopeStartChapter?.id,
         placementChapterId: slot.exam.placementChapterId ?? slot.placementChapter?.id,
-        questions: slot.exam.questions.map(q => ({ ...q })), // deep copy questions
+        questions: orderExamQuestionsObjectiveFirst(slot.exam.questions).map(q => ({ ...q })), // deep copy questions
       });
     } else {
       setForm({
@@ -884,7 +891,9 @@ export default function TeacherExamPage() {
     if (!form) return;
     setForm({
       ...form,
-      questions: form.questions.map((q, i) => i === idx ? updated : q),
+      questions: orderExamQuestionsObjectiveFirst(
+        form.questions.map((q, i) => i === idx ? updated : q),
+      ),
     });
   }
 
@@ -957,7 +966,7 @@ export default function TeacherExamPage() {
       );
       setForm({
         ...form,
-        questions: questions.map(questionFromPayload),
+        questions: orderExamQuestionsObjectiveFirst(questions.map(questionFromPayload)),
       });
       notify.success(`Đã random ${questions.length} câu từ ngân hàng câu hỏi`);
     } catch (error) {
@@ -1059,7 +1068,7 @@ export default function TeacherExamPage() {
       }));
       setForm({
         ...savedExam,
-        questions: savedExam.questions.map(q => ({ ...q })),
+        questions: orderExamQuestionsObjectiveFirst(savedExam.questions).map(q => ({ ...q })),
       });
       notify.success('Đã lưu bài kiểm tra');
     } catch (error) {

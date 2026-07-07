@@ -233,7 +233,12 @@ public class QuizService {
 
             details.add(new QuizResultResponse.QuestionResult(
                     questionId, sq.content(),
-                    studentAnswer, correctAnswer, isRight, sq.explanation()));
+                    studentAnswer,
+                    choiceText(sq, studentAnswer),
+                    correctAnswer,
+                    choiceText(sq, correctAnswer),
+                    isRight,
+                    sq.explanation()));
         }
 
         int total = snapshot.size();
@@ -287,7 +292,14 @@ public class QuizService {
             boolean isRight = correctAns != null && correctAns.equals(studentAns);
             if (isRight) correct++;
             details.add(new QuizResultResponse.QuestionResult(
-                    qId, sq.content(), studentAns, correctAns, isRight, sq.explanation()));
+                    qId,
+                    sq.content(),
+                    studentAns,
+                    choiceText(sq, studentAns),
+                    correctAns,
+                    choiceText(sq, correctAns),
+                    isRight,
+                    sq.explanation()));
         }
 
         return new QuizResultResponse(
@@ -341,6 +353,27 @@ public class QuizService {
     ) {}
 
     private record SnapshotChoice(UUID id, String content, boolean isCorrect, int position) {}
+
+    private String choiceText(SnapshotQuestion question, UUID choiceId) {
+        if (question == null || choiceId == null || question.choices() == null) {
+            return null;
+        }
+        List<SnapshotChoice> choices = question.choices();
+        for (int index = 0; index < choices.size(); index++) {
+            SnapshotChoice choice = choices.get(index);
+            if (choiceId.equals(choice.id())) {
+                return choiceLabel(index) + ". " + choice.content();
+            }
+        }
+        return null;
+    }
+
+    private String choiceLabel(int index) {
+        if (index >= 0 && index < 26) {
+            return String.valueOf((char) ('A' + index));
+        }
+        return String.valueOf(index + 1);
+    }
 
     /**
      * Shuffle choices một lần duy nhất cho mỗi câu hỏi.
@@ -415,10 +448,19 @@ public class QuizService {
                 Map<String, Object> q = (Map<String, Object>) entry.getValue();
                 String correctIdStr = (String) q.get("correctChoiceId");
                 UUID correctId = correctIdStr != null ? UUID.fromString(correctIdStr) : null;
+                List<Map<String, Object>> rawChoices = (List<Map<String, Object>>) q.get("choices");
+                List<SnapshotChoice> choices = rawChoices == null ? List.of() : rawChoices.stream()
+                        .map(choice -> new SnapshotChoice(
+                                UUID.fromString((String) choice.get("id")),
+                                (String) choice.get("content"),
+                                Boolean.TRUE.equals(choice.get("isCorrect")),
+                                choice.get("position") instanceof Number number ? number.intValue() : 0
+                        ))
+                        .toList();
                 result.put(qId, new SnapshotQuestion(
                         (String) q.get("content"),
                         (String) q.get("explanation"),
-                        correctId, List.of()));
+                        correctId, choices));
             }
             return result;
         } catch (Exception e) {

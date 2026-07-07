@@ -22,6 +22,8 @@ public interface CourseProgressItemRepository extends JpaRepository<CourseProgre
 
     List<CourseProgressItem> findByStudentIdAndCourseId(UUID studentId, UUID courseId);
 
+    List<CourseProgressItem> findByStudentIdAndCourseIdIn(UUID studentId, Collection<UUID> courseIds);
+
     long countByStudentIdAndCourseId(UUID studentId, UUID courseId);
 
     @Query("""

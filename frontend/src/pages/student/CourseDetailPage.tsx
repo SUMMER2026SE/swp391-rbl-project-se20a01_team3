@@ -29,6 +29,7 @@ import {
   Lock, ShoppingCart, Video, Menu, X, MessageSquare, BookOpen,
   ClipboardList, XCircle, Award, RotateCcw, ChevronLeft, ChevronRight,
   Trophy, Loader2, Send, AlertCircle, Plus, Minus, Clock, Trash2, Pencil,
+  GraduationCap,
   Pause, Volume2, VolumeX, Maximize,
 } from 'lucide-react';
 import DashboardHeader from '../../components/DashboardHeader';
@@ -57,7 +58,6 @@ import {
   updateCourseDiscussionReply,
   updateCourseDiscussionThread,
 } from '../../api/courseDiscussionService';
-import { listStudentCourseExams } from '../../api/examService';
 import { uploadQaImage } from '../../api/qaService';
 import { completeCourseProgressItem, getCourseProgress } from '../../api/courseProgressService';
 import {
@@ -70,9 +70,9 @@ import {
   getStudentVideoProgress,
   saveStudentVideoProgress,
 } from '../../api/studentVideoProgressService';
+import { listStudentExams, type StudentExam } from '../../api/studentExamService';
 import type { StudentVideoProgress } from '../../api/studentVideoProgressService';
 import type { CourseDiscussionThread } from '../../api/courseDiscussionService';
-import type { StudentExamSummaryResponse } from '../../api/examService';
 import type { StudentLessonNote } from '../../api/studentLessonNoteService';
 import type { ChapterDetail, CourseReviewSummary, LessonDetail } from '../../types/api';
 
@@ -1864,6 +1864,8 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
 
   // activeQuiz: null = không hiện modal, Lesson = hiện QuizModal cho bài đó
   const [activeQuiz, setActiveQuiz] = useState<Lesson | null>(null);
+  const [studentExams, setStudentExams] = useState<StudentExam[]>([]);
+  const [loadingStudentExams, setLoadingStudentExams] = useState(false);
 
   // Lấy dữ liệu và actions từ Zustand store
   const completedLessons = useCourseStore((state) => state.completedLessons);
@@ -1905,7 +1907,6 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
   const [editingReplyText, setEditingReplyText] = useState('');
   const [savingDiscussionId, setSavingDiscussionId] = useState<string | null>(null);
-  const [studentExams, setStudentExams] = useState<StudentExamSummaryResponse[]>([]);
   const watchedUntilRef = useRef(0);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1935,6 +1936,20 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
         lessons: course.lessons ?? [],
       }]
   ), [rawChapters, course.lessons]);
+  const examsByPlacementChapterId = useMemo(() => (
+    studentExams.reduce<Record<string, StudentExam[]>>((acc, exam) => {
+      const savedPlacementExists = exam.placementChapterId
+        ? chapterSections.some(chapter => chapter.id === exam.placementChapterId)
+        : false;
+      const fallbackIndex = ((exam.slotIndex ?? 0) + 1) * 3 - 1;
+      const fallbackChapter = chapterSections[Math.max(0, Math.min(chapterSections.length - 1, fallbackIndex))];
+      const placementChapterId = savedPlacementExists ? exam.placementChapterId : fallbackChapter?.id;
+      if (!placementChapterId) return acc;
+      acc[placementChapterId] = [...(acc[placementChapterId] ?? []), exam]
+        .sort((a, b) => a.slotIndex - b.slotIndex);
+      return acc;
+    }, {})
+  ), [chapterSections, studentExams]);
   const orderedVideoLessons = useMemo(
     () => getOrderedVideoLessons(chapterSections),
     [chapterSections],
@@ -1973,7 +1988,6 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     !activeLesson.url.includes('/embed/')
   );
   const canSubmitReview = course.isEnrolled && user?.role === 'student';
-
   useEffect(() => {
     setActiveLesson(firstLesson);
     setActiveQuiz(null);
@@ -1981,6 +1995,33 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     setVideoUrlExpired(false);
     setExpandedChapterIds(new Set(chapterSections.slice(0, 1).map(chapter => chapter.id)));
   }, [chapterSections, course.id, firstLesson]);
+
+  useEffect(() => {
+    if (!course.isEnrolled || !accessToken) {
+      setStudentExams([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingStudentExams(true);
+    listStudentExams(course.id)
+      .then(exams => {
+        if (!cancelled) setStudentExams(exams);
+      })
+      .catch(error => {
+        if (!cancelled) {
+          console.warn('Không tải được danh sách bài kiểm tra:', error);
+          setStudentExams([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingStudentExams(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, course.id, course.isEnrolled]);
 
   useEffect(() => {
     const localProgress = activeLesson
@@ -2123,21 +2164,6 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       cancelled = true;
     };
   }, [activeTab, course.id]);
-
-  useEffect(() => {
-    let cancelled = false;
-    listStudentCourseExams(course.id)
-      .then(items => {
-        if (!cancelled) setStudentExams(items);
-      })
-      .catch(() => {
-        if (!cancelled) setStudentExams([]);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [course.id]);
 
   useEffect(() => {
     if (!course.isEnrolled || !accessToken) return;
@@ -3382,8 +3408,6 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
               <div className="flex-grow overflow-y-auto px-3 py-4 space-y-4">
                 {chapterSections.map((chapter, chapterIndex) => {
                   const isExpanded = expandedChapterIds.has(chapter.id);
-                  const examsAfterChapter = studentExams.filter(item => item.placementChapterId === chapter.id);
-                  const shouldShowExam = examsAfterChapter.length > 0;
                   const videoLessonsInChapter = chapter.lessons.filter(lesson => lesson.type === 'video');
                   const completedVideoCount = videoLessonsInChapter.filter(lesson =>
                     completedList.includes(lesson.id)
@@ -3391,6 +3415,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                   const isChapterVideoCompleted = videoLessonsInChapter.length === 0 ||
                     completedVideoCount === videoLessonsInChapter.length;
                   const isChapterQuizCompleted = completedQuizList.includes(chapter.id);
+                  const examsAfterChapter = examsByPlacementChapterId[chapter.id] ?? [];
 
                   return (
                     <div key={chapter.id} className="space-y-2">
@@ -3488,7 +3513,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                                 {chapter.hasQuizConfig && chapter.id !== 'flat-lessons' && (
                                   course.isEnrolled && isChapterVideoCompleted ? (
                                     <Link
-                                      to={`/courses/${courseId}/chapters/${chapter.id}/quiz`}
+                                      to={`/courses/${courseId}/chapters/${chapter.id}/quiz?returnTo=${encodeURIComponent(`/courses/${courseId}?learn=1${activeLesson ? `&lesson=${activeLesson.id}` : ''}`)}`}
                                       className="w-full text-left rounded-xl border border-transparent px-3 py-2.5 flex items-center gap-3 bg-surface hover:bg-amber-500/5 hover:border-amber-500/20 transition-all group"
                                     >
                                       <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isChapterQuizCompleted
@@ -3523,57 +3548,38 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                                     </div>
                                   )
                                 )}
+
+                                {examsAfterChapter.map(exam => (
+                                  <Link
+                                    key={exam.id}
+                                    to={`/courses/${courseId}/exams/${exam.slotIndex}?returnTo=${encodeURIComponent(`/courses/${courseId}?learn=1${activeLesson ? `&lesson=${activeLesson.id}` : ''}`)}`}
+                                    className="w-full text-left rounded-xl border border-transparent px-3 py-2.5 flex items-center gap-3 bg-surface hover:bg-primary/5 hover:border-primary/20 transition-all group"
+                                  >
+                                    <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15 flex items-center justify-center flex-shrink-0">
+                                      <GraduationCap className="w-4 h-4" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-semibold text-on-surface line-clamp-1">
+                                        {exam.name}
+                                      </p>
+                                      <p className="text-xs font-medium text-primary">
+                                        {exam.questionCount} câu · {exam.durationMinutes} phút · Mở bài kiểm tra
+                                      </p>
+                                    </div>
+                                  </Link>
+                                ))}
+
+                                {loadingStudentExams && chapterIndex === 0 && (
+                                  <div className="w-full rounded-xl border border-transparent bg-surface-container/40 px-3 py-2.5 text-xs font-semibold text-on-surface-variant">
+                                    Đang tải bài kiểm tra...
+                                  </div>
+                                )}
+
                               </div>
                             </motion.div>
                           )}
                         </AnimatePresence>
                       </section>
-
-                      {shouldShowExam && examsAfterChapter.map(exam => (
-                        exam.unlocked ? (
-                          <Link
-                            key={exam.slotIndex}
-                            to={`/courses/${courseId}/exams/${exam.slotIndex}`}
-                            className={`w-full text-left rounded-2xl border px-3 py-3 flex items-start gap-3 transition-all ${exam.passed
-                                ? 'bg-green-500/5 border-green-500/25 hover:bg-green-500/10'
-                                : 'bg-primary/5 border-primary/25 hover:bg-primary/10'
-                              }`}
-                          >
-                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${exam.passed ? 'bg-green-500/15 text-green-600' : 'bg-primary/15 text-primary'
-                              }`}>
-                              {exam.passed ? <CheckCircle2 className="w-4.5 h-4.5" /> : <ClipboardList className="w-4.5 h-4.5" />}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className={`text-sm font-extrabold line-clamp-2 ${exam.passed ? 'text-green-700' : 'text-primary'}`}>
-                                {exam.name}
-                              </p>
-                              <p className="mt-0.5 text-xs font-medium text-on-surface-variant">
-                                {exam.passed
-                                  ? `Đã đạt ${exam.latestScorePercent ?? 0}%`
-                                  : `Mở khóa sau ${exam.passedQuizCount}/${exam.requiredQuizCount} quiz · Làm bài ngay`}
-                              </p>
-                            </div>
-                          </Link>
-                        ) : (
-                          <div
-                            key={exam.slotIndex}
-                            className="w-full rounded-2xl border border-outline-variant/40 bg-surface-container/50 px-3 py-3 flex items-start gap-3 opacity-90"
-                          >
-                            <div className="w-8 h-8 rounded-xl bg-surface-container-high text-on-surface-variant flex items-center justify-center flex-shrink-0">
-                              <Lock className="w-4.5 h-4.5" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-extrabold text-on-surface line-clamp-2">{exam.name}</p>
-                              <p className="mt-0.5 text-xs font-medium text-on-surface-variant">
-                                {exam.lockedReason ?? `Cần pass ${exam.requiredQuizCount} quiz chương`}
-                              </p>
-                              <p className="mt-1 text-[11px] font-bold text-on-surface-variant">
-                                Đã pass {exam.passedQuizCount}/{exam.requiredQuizCount} quiz
-                              </p>
-                            </div>
-                          </div>
-                        )
-                      ))}
                     </div>
                   );
                 })}
