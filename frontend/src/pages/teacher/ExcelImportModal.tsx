@@ -3,15 +3,15 @@
  * Giáo viên upload file .xlsx → parse → preview → bulk import
  *
  * Định dạng Excel (hàng 1 = header, dữ liệu từ hàng 2):
- *   A: Nội dung câu hỏi   (bắt buộc)
- *   B: Loại               TN = trắc nghiệm | DS = đúng/sai | TL = tự luận
- *   C: Độ khó             D = dễ | TB = trung bình | K = khó
- *   D: Đáp án A           (bắt buộc)
- *   E: Đáp án B           (bắt buộc)
- *   F: Đáp án C           (tùy chọn)
- *   G: Đáp án D           (tùy chọn)
- *   H: Đáp án đúng        A / B / C / D, bỏ trống nếu TL
- *   I: Giải thích         (tùy chọn)
+ *   A: Nội dung câu hỏi
+ *   B: Loại (TN/DS/DC/NC/TL/TLN/TLD/HA/CT/AU/NF)
+ *   C: Độ khó (D/TB/K)
+ *   D-G: Đáp án A-D (cho câu trắc nghiệm)
+ *   H: Đáp án đúng
+ *   I: Giải thích
+ *   J: Đáp án chấp nhận
+ *   K: Cặp nối
+ *   L-R: metadata mở rộng theo từng loại
  */
 
 import { useState, useRef, useCallback } from 'react';
@@ -19,7 +19,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
 import { notify } from '../../lib/toast';
 import * as questionService from '../../api/questionService';
-import type { CreateQuestionRequest } from '../../api/questionService';
+import type { CreateQuestionRequest, QuestionMetadata } from '../../api/questionService';
 import { isApiError } from '../../api/client';
 import { listCategories } from '../../api/courseService';
 import { listMyCourses, getCourseDetail } from '../../api/teacherCourseService';
@@ -38,10 +38,11 @@ type Difficulty = 'easy' | 'medium' | 'hard';
 interface ParsedRow {
   rowNum: number;
   content: string;
-  type: 'multiple_choice' | 'true_false' | 'essay';
+  type: CreateQuestionRequest['type'];
   difficulty: Difficulty;
   choices: Array<{ content: string; isCorrect: boolean }>;
   explanation: string;
+  metadata?: QuestionMetadata | null;
   error?: string;
 }
 
@@ -60,12 +61,19 @@ function token(value: unknown): string {
     .toUpperCase();
 }
 
-function parseQuestionType(value: unknown): 'multiple_choice' | 'true_false' | 'essay' {
+function parseQuestionType(value: unknown): CreateQuestionRequest['type'] {
   const t = token(value);
+  if (['DS', 'DUNG/SAI', 'TRUE_FALSE', 'TRUEFALSE', 'TF'].includes(t)) return 'true_false';
+  if (['DC', 'DIEN_CHO_TRONG', 'FILL_IN_BLANK', 'FILLBLANK'].includes(t)) return 'fill_in_blank';
+  if (['NC', 'NOI_COT', 'MATCHING'].includes(t)) return 'matching';
+  if (['TLN', 'TU_LUAN_NGAN', 'ESSAY_SHORT'].includes(t)) return 'essay_short';
+  if (['TLD', 'TU_LUAN_DAI', 'ESSAY_LONG'].includes(t)) return 'essay_long';
+  if (['HA', 'HINH_ANH', 'IMAGE_QUESTION'].includes(t)) return 'image_question';
+  if (['CT', 'CONG_THUC', 'FORMULA_QUESTION'].includes(t)) return 'formula_question';
+  if (['AU', 'AUDIO_QUESTION', 'NGHE_AUDIO'].includes(t)) return 'audio_question';
+  if (['NF', 'NOP_FILE', 'FILE_UPLOAD'].includes(t)) return 'file_upload';
   if (['TL', 'TU_LUAN', 'TULUAN', 'ESSAY'].includes(t)) return 'essay';
-  return ['DS', 'DUNG/SAI', 'TRUE_FALSE', 'TRUEFALSE', 'TF'].includes(t)
-    ? 'true_false'
-    : 'multiple_choice';
+  return 'multiple_choice';
 }
 
 function parseDifficulty(value: unknown): Difficulty {
@@ -75,18 +83,57 @@ function parseDifficulty(value: unknown): Difficulty {
   return 'medium';
 }
 
-function correctChoiceIndex(value: unknown): number {
-  const c = token(value);
-  if (['A', '1'].includes(c)) return 0;
-  if (['B', '2'].includes(c)) return 1;
-  if (['C', '3'].includes(c)) return 2;
-  if (['D', '4'].includes(c)) return 3;
-  return -1;
+function correctChoiceIndices(value: unknown): number[] {
+  const raw = plain(value);
+  if (!raw) return [];
+  return raw
+    .split(/[,\s;/|+-]+/)
+    .map(token)
+    .map(c => {
+      if (['A', '1'].includes(c)) return 0;
+      if (['B', '2'].includes(c)) return 1;
+      if (['C', '3'].includes(c)) return 2;
+      if (['D', '4'].includes(c)) return 3;
+      return -1;
+    })
+    .filter(index => index >= 0)
+    .filter((index, position, arr) => arr.indexOf(index) === position);
 }
 
 function trueFalseCorrectIndex(value: unknown): number {
   const c = token(value);
   return ['B', 'S', 'SAI', 'FALSE', 'F', '0'].includes(c) ? 1 : 0;
+}
+
+function splitValues(value: unknown): string[] {
+  return plain(value)
+    .split(/\r?\n|[|;,]+/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function parseMatchingPairs(value: unknown): Array<{ left: string; right: string }> {
+  return splitValues(value)
+    .map(item => item.split(/=>|->|:/).map(part => part.trim()))
+    .filter(parts => parts.length >= 2 && parts[0] && parts[1])
+    .map(parts => ({ left: parts[0], right: parts.slice(1).join(': ') }));
+}
+
+function questionTypeLabel(type: CreateQuestionRequest['type']): string {
+  const labels: Record<CreateQuestionRequest['type'], string> = {
+    multiple_choice: 'Trắc nghiệm',
+    true_false: 'Đúng / Sai',
+    fill_in_blank: 'Điền chỗ trống',
+    matching: 'Nối cột',
+    essay: 'Tự luận',
+    essay_short: 'Tự luận ngắn',
+    essay_long: 'Tự luận dài',
+    image_question: 'Câu hỏi hình ảnh',
+    formula_question: 'Câu hỏi công thức',
+    audio_question: 'Câu hỏi audio',
+    file_upload: 'Nộp file / ảnh',
+  };
+  return labels[type];
 }
 
 function getErrorMessage(err: unknown, fallback: string): string {
@@ -124,37 +171,84 @@ function parseExcel(file: File): Promise<ParsedRow[]> {
           const ansC        = plain(r[5]);
           const ansD        = plain(r[6]);
           const explanation = plain(r[8]);
+          const acceptedAnswers = splitValues(r[9]);
+          const matchingPairs = parseMatchingPairs(r[10]);
+          const sampleAnswer = plain(r[11]);
+          const wordLimit = plain(r[12]);
+          const gradingRubric = plain(r[13]);
+          const promptAssetUrl = plain(r[14]);
+          const transcript = plain(r[15]);
+          const formulaLatex = plain(r[16]);
+          const allowedUploadTypes = splitValues(r[17]);
+          const maxFiles = plain(r[18]);
 
           // Build choices
           let choices: Array<{ content: string; isCorrect: boolean }>;
+          let metadata: QuestionMetadata | null = null;
           let error: string | undefined;
 
-          if (type === 'essay') {
+          if (type === 'essay' || type === 'essay_short' || type === 'essay_long') {
             choices = [];
+            metadata = {
+              sampleAnswer: sampleAnswer || undefined,
+              wordLimit: wordLimit ? Number(wordLimit) : null,
+              gradingRubric: gradingRubric || undefined,
+            };
+          } else if (type === 'fill_in_blank') {
+            choices = [];
+            metadata = { acceptedAnswers };
+            if (acceptedAnswers.length === 0) error = 'Cần cột đáp án chấp nhận';
+          } else if (type === 'matching') {
+            choices = [];
+            metadata = { matchingPairs };
+            if (matchingPairs.length < 2) error = 'Cần ít nhất 2 cặp nối';
           } else if (type === 'true_false') {
             const correctIdx = trueFalseCorrectIndex(r[7] || 'A');
             choices = [
               { content: 'Đúng', isCorrect: correctIdx === 0 },
               { content: 'Sai',  isCorrect: correctIdx === 1 },
             ];
+          } else if (type === 'file_upload') {
+            choices = [];
+            metadata = {
+              allowedUploadTypes,
+              maxFiles: maxFiles ? Number(maxFiles) : null,
+              sampleAnswer: sampleAnswer || undefined,
+            };
+            if (allowedUploadTypes.length === 0) error = 'Cần cột loại file cho phép';
           } else {
             const raw = [ansA, ansB, ansC, ansD].filter(Boolean);
             if (raw.length < 2) {
               error = 'Cần ít nhất 2 đáp án';
             }
-            const correctIdx = correctChoiceIndex(r[7] || 'A');
+            const correctIndices = correctChoiceIndices(r[7] || 'A');
             choices = raw.map((c, idx) => ({
               content: c,
-              isCorrect: idx === correctIdx,
+              isCorrect: correctIndices.includes(idx),
             }));
-            if (correctIdx < 0 || correctIdx >= raw.length) {
+            if (correctIndices.length === 0 || correctIndices.some(correctIdx => correctIdx >= raw.length)) {
               error = `Đáp án đúng "${plain(r[7])}" không hợp lệ`;
+            }
+            if (type === 'image_question') {
+              metadata = { promptAssetUrl: promptAssetUrl || undefined };
+              if (!promptAssetUrl) error = 'Cần URL hình ảnh';
+            }
+            if (type === 'audio_question') {
+              metadata = {
+                promptAssetUrl: promptAssetUrl || undefined,
+                transcript: transcript || undefined,
+              };
+              if (!promptAssetUrl) error = 'Cần URL audio';
+            }
+            if (type === 'formula_question') {
+              metadata = { formulaLatex: formulaLatex || undefined };
+              if (!formulaLatex && !content.includes('$')) error = 'Cần công thức LaTeX hoặc công thức trong nội dung';
             }
           }
 
           if (!content) error = 'Thiếu nội dung câu hỏi';
 
-          parsed.push({ rowNum: i + 1, content, type, difficulty, choices, explanation, error });
+          parsed.push({ rowNum: i + 1, content, type, difficulty, choices, explanation, metadata, error });
         }
         resolve(parsed);
       } catch (err) {
@@ -171,28 +265,46 @@ function parseExcel(file: File): Promise<ParsedRow[]> {
 function downloadTemplate() {
   const header = [
     'Nội dung câu hỏi',
-    'Loại (TN/DS/TL)',
+    'Loại (TN/DS/DC/NC/TL/TLN/TLD/HA/CT/AU/NF)',
     'Độ khó (D/TB/K)',
     'Đáp án A',
     'Đáp án B',
     'Đáp án C',
     'Đáp án D',
-    'Đáp án đúng (A/B/C/D, bỏ trống nếu TL)',
+    'Đáp án đúng (A/B/C/D hoặc A,B,..., bỏ trống nếu không phải trắc nghiệm)',
     'Giải thích (tùy chọn)',
+    'Đáp án chấp nhận (ngăn bởi |)',
+    'Cặp nối (vd trái=>phải | trái=>phải)',
+    'Đáp án mẫu',
+    'Giới hạn từ',
+    'Rubric',
+    'URL tài nguyên',
+    'Transcript',
+    'Công thức LaTeX',
+    'Loại file cho phép',
+    'Số file tối đa',
   ];
   const examples = [
-    ['Phương trình bậc hai ax²+bx+c=0 có tối đa bao nhiêu nghiệm thực?', 'TN', 'D', '1 nghiệm', '2 nghiệm', '3 nghiệm', '0 nghiệm', 'B', 'Theo định lý cơ bản đại số'],
-    ['Trái đất quay quanh Mặt Trời.', 'DS', 'D', '', '', '', '', 'A', ''],
-    ['Nguyên tố nào có số hiệu nguyên tử bằng 1?', 'TN', 'TB', 'Heli', 'Oxy', 'Hydro', 'Carbon', 'C', 'H có Z=1 trong bảng tuần hoàn'],
-    ['Trình bày các bước giải phương trình bậc hai bằng công thức nghiệm.', 'TL', 'K', '', '', '', '', '', 'Câu tự luận không cần đáp án trong ngân hàng'],
+    ['Phương trình bậc hai ax²+bx+c=0 có tối đa bao nhiêu nghiệm thực?', 'TN', 'D', '1 nghiệm', '2 nghiệm', '3 nghiệm', '0 nghiệm', 'B', 'Theo định lý cơ bản đại số', '', '', '', '', '', '', '', '', '', ''],
+    ['Những số nào sau đây là số nguyên tố?', 'TN', 'TB', '2', '3', '4', '5', 'A,B,D', 'Có thể có nhiều đáp án đúng', '', '', '', '', '', '', '', '', '', ''],
+    ['Trái đất quay quanh Mặt Trời.', 'DS', 'D', '', '', '', '', 'A', '', '', '', '', '', '', '', '', '', '', ''],
+    ['Thủ đô của Việt Nam là ___', 'DC', 'D', '', '', '', '', '', '', 'Hà Nội|Ha Noi', '', '', '', '', '', '', '', '', ''],
+    ['Ghép tác giả với tác phẩm', 'NC', 'TB', '', '', '', '', '', '', '', 'Nam Cao=>Chí Phèo|Tô Hoài=>Dế Mèn phiêu lưu ký', '', '', '', '', '', '', '', ''],
+    ['Trình bày các bước giải phương trình bậc hai bằng công thức nghiệm.', 'TLN', 'K', '', '', '', '', '', 'Câu tự luận ngắn', '', '', 'Nêu đủ công thức và cách thay số', '150', '', '', '', '', '', ''],
+    ['Quan sát hình và chọn đáp án đúng.', 'HA', 'TB', 'A', 'B', 'C', 'D', 'A', '', '', '', '', '', '', 'https://example.com/image.png', '', '', '', ''],
+    ['Nghe đoạn audio và chọn đáp án đúng.', 'AU', 'TB', 'A', 'B', 'C', 'D', 'B', '', '', '', '', '', '', 'https://example.com/audio.mp3', 'Hello class...', '', '', ''],
+    ['Giải phương trình $x^2 - 5x + 6 = 0$', 'CT', 'TB', 'x=2 hoặc x=3', 'x=1 hoặc x=6', 'x=2 hoặc x=6', 'x=1 hoặc x=3', 'A', '', '', '', '', '', '', '', '', 'x^2 - 5x + 6 = 0', '', ''],
+    ['Nộp file bài làm PDF.', 'NF', 'TB', '', '', '', '', '', '', '', '', 'Nộp file trình bày lời giải', '', '', '', '', '', 'application/pdf|image/png', '1'],
   ];
 
   const ws = XLSX.utils.aoa_to_sheet([header, ...examples]);
 
   // Style header row width
   ws['!cols'] = [
-    { wch: 50 }, { wch: 14 }, { wch: 16 }, { wch: 20 }, { wch: 20 },
-    { wch: 20 }, { wch: 20 }, { wch: 22 }, { wch: 35 },
+    { wch: 50 }, { wch: 22 }, { wch: 16 }, { wch: 20 }, { wch: 20 },
+    { wch: 20 }, { wch: 20 }, { wch: 30 }, { wch: 35 }, { wch: 28 },
+    { wch: 36 }, { wch: 28 }, { wch: 14 }, { wch: 24 }, { wch: 34 },
+    { wch: 24 }, { wch: 24 }, { wch: 28 }, { wch: 14 },
   ];
 
   const wb = XLSX.utils.book_new();
@@ -339,6 +451,7 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
       difficulty:  r.difficulty,
       type:        r.type,
       choices:     r.choices,
+      metadata:    r.metadata ?? null,
     }));
 
     setImporting(true);
@@ -406,7 +519,7 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-blue-800">Bước 1 — Tải file mẫu</p>
                   <p className="text-xs text-blue-600 mt-0.5">
-                    File mẫu có ví dụ trắc nghiệm, đúng/sai và tự luận không đáp án.
+                    File mẫu đã có ví dụ cho trắc nghiệm, điền chỗ trống, nối cột, tự luận, hình ảnh, audio, công thức và nộp file.
                   </p>
                 </div>
                 <button
@@ -592,13 +705,21 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
                                 <p className="truncate">{row.content || <span className="text-red-400 italic">Trống</span>}</p>
                               </td>
                               <td className="px-3 py-2 whitespace-nowrap text-on-surface-variant">
-                                {row.type === 'essay' ? 'Tự luận' : row.type === 'multiple_choice' ? 'Trắc nghiệm' : 'Đúng/Sai'}
+                                {questionTypeLabel(row.type)}
                               </td>
                               <td className="px-3 py-2">
                                 <DiffBadge d={row.difficulty} />
                               </td>
                               <td className="px-3 py-2 text-on-surface">
-                                {row.choices.find(c => c.isCorrect)?.content.slice(0, 30) ?? '—'}
+                                {row.choices.length > 0
+                                  ? row.choices
+                                    .filter(c => c.isCorrect)
+                                    .map(c => c.content.slice(0, 30))
+                                    .join(', ') || '—'
+                                  : row.metadata?.acceptedAnswers?.join(', ')
+                                    || row.metadata?.matchingPairs?.map(pair => `${pair.left}→${pair.right}`).join(' | ')
+                                    || row.metadata?.allowedUploadTypes?.join(', ')
+                                    || '—'}
                               </td>
                               <td className="px-3 py-2">
                                 {row.error ? (

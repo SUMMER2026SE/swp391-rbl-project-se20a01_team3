@@ -8,8 +8,37 @@ import type { ApiResponse, PageResponse } from '../types/api';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
-export type QuestionType = 'multiple_choice' | 'true_false' | 'essay';
+export type QuestionType =
+  | 'multiple_choice'
+  | 'true_false'
+  | 'fill_in_blank'
+  | 'matching'
+  | 'essay'
+  | 'essay_short'
+  | 'essay_long'
+  | 'image_question'
+  | 'formula_question'
+  | 'audio_question'
+  | 'file_upload';
 export type QuestionStatus = 'active' | 'inactive';
+
+export interface MatchingPair {
+  left: string;
+  right: string;
+}
+
+export interface QuestionMetadata {
+  acceptedAnswers?: string[];
+  matchingPairs?: MatchingPair[];
+  sampleAnswer?: string;
+  wordLimit?: number | null;
+  gradingRubric?: string;
+  promptAssetUrl?: string;
+  transcript?: string;
+  formulaLatex?: string;
+  allowedUploadTypes?: string[];
+  maxFiles?: number | null;
+}
 
 export interface ChoiceResponse {
   id: string;
@@ -22,6 +51,7 @@ export interface QuestionResponse {
   id: string;
   content: string;
   explanation: string | null;
+  metadata: QuestionMetadata | null;
   difficulty: Difficulty;
   type: QuestionType;
   status: QuestionStatus;
@@ -51,6 +81,7 @@ export interface CreateQuestionRequest {
   difficulty: Difficulty;
   type: QuestionType;
   choices: Array<{ content: string; isCorrect: boolean }>;
+  metadata?: QuestionMetadata | null;
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
