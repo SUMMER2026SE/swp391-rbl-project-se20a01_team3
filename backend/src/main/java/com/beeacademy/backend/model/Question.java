@@ -81,6 +81,9 @@ public class Question {
     @Column(name = "explanation")
     private String explanation;
 
+    @Column(name = "metadata_json")
+    private String metadataJson;
+
     /**
      * Độ khó: easy | medium | hard — ánh xạ Postgres enum question_difficulty.
      * Dùng TEXT thường để Hibernate không nhầm với Java enum serialization.
@@ -137,7 +140,7 @@ public class Question {
     // ========================================================================
 
     public static Question create(Profile teacher, Category category, Integer grade, Chapter chapter,
-                                   String content, String explanation,
+                                   String content, String explanation, String metadataJson,
                                    String difficulty, String type) {
         Question q     = new Question();
         q.id           = UUID.randomUUID();
@@ -147,6 +150,7 @@ public class Question {
         q.chapter      = chapter;
         q.content      = content;
         q.explanation  = explanation;
+        q.metadataJson = metadataJson;
         q.difficulty   = difficulty;   // "easy" | "medium" | "hard"
         q.type         = type;         // "multiple_choice" | "true_false"
         q.status       = "active";
@@ -155,12 +159,14 @@ public class Question {
     }
 
     public void update(Category category, Integer grade, Chapter chapter,
-                       String content, String explanation, String difficulty, String type) {
+                       String content, String explanation, String metadataJson,
+                       String difficulty, String type) {
         if (category != null) this.category = category;
         if (grade != null) this.grade = grade;
         this.chapter = chapter;
         if (content != null && !content.isBlank()) this.content = content;
         if (explanation != null) this.explanation = explanation;
+        this.metadataJson = metadataJson;
         if (difficulty != null) this.difficulty = difficulty;
         if (type != null) this.type = type;
     }

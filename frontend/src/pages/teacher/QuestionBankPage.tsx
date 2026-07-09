@@ -6,7 +6,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { notify } from '../../lib/toast';
 import * as questionService from '../../api/questionService';
 import type {
-  QuestionResponse, Difficulty, QuestionStatus, CreateQuestionRequest,
+  QuestionResponse, Difficulty, QuestionStatus, CreateQuestionRequest, QuestionMetadata, MatchingPair,
 } from '../../api/questionService';
 import { listCategories } from '../../api/courseService';
 import { listMyCourses, getCourseDetail } from '../../api/teacherCourseService';
@@ -70,15 +70,43 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function correctChoiceCount(
+  choices: Array<{ isCorrect: boolean | null | undefined }>,
+) {
+  return choices.filter(choice => Boolean(choice.isCorrect)).length;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  QUESTION FORM PANEL
 // ═══════════════════════════════════════════════════════════════════
 
 interface ChoiceRow { content: string; isCorrect: boolean }
-type BankQuestionType = 'multiple_choice' | 'true_false' | 'essay';
+type BankQuestionType = CreateQuestionRequest['type'];
+
+const QUESTION_TYPE_OPTIONS: Array<{ value: BankQuestionType; label: string }> = [
+  { value: 'multiple_choice', label: 'Trắc nghiệm' },
+  { value: 'true_false', label: 'Đúng / Sai' },
+  { value: 'fill_in_blank', label: 'Điền vào chỗ trống' },
+  { value: 'matching', label: 'Nối cột' },
+  { value: 'essay_short', label: 'Tự luận ngắn' },
+  { value: 'essay_long', label: 'Tự luận dài' },
+  { value: 'image_question', label: 'Câu hỏi có hình ảnh' },
+  { value: 'formula_question', label: 'Câu hỏi có công thức' },
+  { value: 'audio_question', label: 'Câu hỏi nghe audio' },
+  { value: 'file_upload', label: 'Nộp file / ảnh bài làm' },
+  { value: 'essay', label: 'Tự luận chung' },
+];
+
+const OBJECTIVE_TYPES: BankQuestionType[] = [
+  'multiple_choice',
+  'true_false',
+  'image_question',
+  'formula_question',
+  'audio_question',
+];
 
 function emptyChoices(type: BankQuestionType): ChoiceRow[] {
-  if (type === 'essay') return [];
+  if (!OBJECTIVE_TYPES.includes(type)) return [];
   if (type === 'true_false') return [
     { content: 'Đúng', isCorrect: true },
     { content: 'Sai',  isCorrect: false },
@@ -87,6 +115,22 @@ function emptyChoices(type: BankQuestionType): ChoiceRow[] {
     { content: '', isCorrect: true  },
     { content: '', isCorrect: false },
   ];
+}
+
+function typeLabel(type: BankQuestionType, choices?: Array<{ isCorrect: boolean | null | undefined }>) {
+  if (type === 'multiple_choice') {
+    const hasManyCorrect = (choices ?? []).filter(choice => Boolean(choice.isCorrect)).length > 1;
+    return hasManyCorrect ? 'Trắc nghiệm nhiều đáp án' : 'Trắc nghiệm 1 đáp án';
+  }
+  return QUESTION_TYPE_OPTIONS.find(option => option.value === type)?.label ?? type;
+}
+
+function parseLines(values?: string[] | null) {
+  return (values ?? []).join('\n');
+}
+
+function parseCsv(values?: string[] | null) {
+  return (values ?? []).join(', ');
 }
 
 interface FormState {
@@ -99,6 +143,16 @@ interface FormState {
   difficulty: Difficulty;
   type: BankQuestionType;
   choices: ChoiceRow[];
+  acceptedAnswersText: string;
+  matchingPairs: MatchingPair[];
+  sampleAnswer: string;
+  wordLimit: string;
+  gradingRubric: string;
+  promptAssetUrl: string;
+  transcript: string;
+  formulaLatex: string;
+  allowedUploadTypesText: string;
+  maxFiles: string;
 }
 
 function emptyForm(): FormState {
@@ -107,10 +161,21 @@ function emptyForm(): FormState {
     content: '', explanation: '',
     difficulty: 'medium', type: 'multiple_choice',
     choices: emptyChoices('multiple_choice'),
+    acceptedAnswersText: '',
+    matchingPairs: [{ left: '', right: '' }, { left: '', right: '' }],
+    sampleAnswer: '',
+    wordLimit: '',
+    gradingRubric: '',
+    promptAssetUrl: '',
+    transcript: '',
+    formulaLatex: '',
+    allowedUploadTypesText: 'image/png, image/jpeg',
+    maxFiles: '1',
   };
 }
 
 function formFromQuestion(q: QuestionResponse): FormState {
+  const metadata = q.metadata ?? {};
   return {
     categoryId:  q.categoryId  ?? '',
     grade:       q.grade ? String(q.grade) : '',
@@ -121,6 +186,18 @@ function formFromQuestion(q: QuestionResponse): FormState {
     difficulty:  q.difficulty,
     type:        q.type,
     choices:     q.choices.map(c => ({ content: c.content, isCorrect: !!c.isCorrect })),
+    acceptedAnswersText: parseLines(metadata.acceptedAnswers),
+    matchingPairs: metadata.matchingPairs?.length
+      ? metadata.matchingPairs.map(pair => ({ left: pair.left, right: pair.right }))
+      : [{ left: '', right: '' }, { left: '', right: '' }],
+    sampleAnswer: metadata.sampleAnswer ?? '',
+    wordLimit: metadata.wordLimit != null ? String(metadata.wordLimit) : '',
+    gradingRubric: metadata.gradingRubric ?? '',
+    promptAssetUrl: metadata.promptAssetUrl ?? '',
+    transcript: metadata.transcript ?? '',
+    formulaLatex: metadata.formulaLatex ?? '',
+    allowedUploadTypesText: parseCsv(metadata.allowedUploadTypes) || 'image/png, image/jpeg',
+    maxFiles: metadata.maxFiles != null ? String(metadata.maxFiles) : '1',
   };
 }
 
@@ -183,13 +260,32 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
   }
 
   function handleTypeChange(type: BankQuestionType) {
-    setForm(f => ({ ...f, type, choices: emptyChoices(type) }));
+    setForm(f => ({
+      ...f,
+      type,
+      choices: emptyChoices(type),
+      acceptedAnswersText: '',
+      matchingPairs: [{ left: '', right: '' }, { left: '', right: '' }],
+      sampleAnswer: '',
+      wordLimit: '',
+      gradingRubric: '',
+      promptAssetUrl: '',
+      transcript: '',
+      formulaLatex: '',
+      allowedUploadTypesText: 'image/png, image/jpeg',
+      maxFiles: '1',
+    }));
   }
 
   function setChoiceCorrect(idx: number) {
     setForm(f => ({
       ...f,
-      choices: f.choices.map((c, i) => ({ ...c, isCorrect: i === idx })),
+      choices: f.choices.map((c, i) => {
+        if (f.type === 'multiple_choice') {
+          return i === idx ? { ...c, isCorrect: !c.isCorrect } : c;
+        }
+        return { ...c, isCorrect: i === idx };
+      }),
     }));
   }
 
@@ -207,12 +303,89 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
     }));
   }
 
+  function setMatchingPair(idx: number, side: 'left' | 'right', value: string) {
+    setForm(f => ({
+      ...f,
+      matchingPairs: f.matchingPairs.map((pair, i) => (
+        i === idx ? { ...pair, [side]: value } : pair
+      )),
+    }));
+  }
+
+  function addMatchingPair() {
+    setForm(f => ({
+      ...f,
+      matchingPairs: [...f.matchingPairs, { left: '', right: '' }],
+    }));
+  }
+
+  function removeMatchingPair(idx: number) {
+    setForm(f => ({
+      ...f,
+      matchingPairs: f.matchingPairs.filter((_, i) => i !== idx),
+    }));
+  }
+
+  function buildMetadata(): QuestionMetadata | null {
+    switch (form.type) {
+      case 'fill_in_blank':
+        return {
+          acceptedAnswers: form.acceptedAnswersText
+            .split('\n')
+            .map(value => value.trim())
+            .filter(Boolean),
+        };
+      case 'matching':
+        return {
+          matchingPairs: form.matchingPairs
+            .map(pair => ({ left: pair.left.trim(), right: pair.right.trim() }))
+            .filter(pair => pair.left && pair.right),
+        };
+      case 'essay':
+      case 'essay_short':
+        return {
+          sampleAnswer: form.sampleAnswer.trim() || undefined,
+          wordLimit: form.wordLimit ? Number(form.wordLimit) : null,
+        };
+      case 'essay_long':
+        return {
+          sampleAnswer: form.sampleAnswer.trim() || undefined,
+          wordLimit: form.wordLimit ? Number(form.wordLimit) : null,
+          gradingRubric: form.gradingRubric.trim() || undefined,
+        };
+      case 'image_question':
+        return {
+          promptAssetUrl: form.promptAssetUrl.trim() || undefined,
+        };
+      case 'formula_question':
+        return {
+          formulaLatex: form.formulaLatex.trim() || undefined,
+        };
+      case 'audio_question':
+        return {
+          promptAssetUrl: form.promptAssetUrl.trim() || undefined,
+          transcript: form.transcript.trim() || undefined,
+        };
+      case 'file_upload':
+        return {
+          allowedUploadTypes: form.allowedUploadTypesText
+            .split(',')
+            .map(value => value.trim())
+            .filter(Boolean),
+          maxFiles: form.maxFiles ? Number(form.maxFiles) : null,
+          sampleAnswer: form.sampleAnswer.trim() || undefined,
+        };
+      default:
+        return null;
+    }
+  }
+
   function removeChoice(idx: number) {
     setForm(f => {
       const choices = f.choices.filter((_, i) => i !== idx);
       // Nếu đáp án đúng bị xóa, đặt đáp án đầu tiên là đúng
       const hasCorrect = choices.some(c => c.isCorrect);
-      if (!hasCorrect && choices.length > 0) choices[0].isCorrect = true;
+      if (!hasCorrect && choices.length > 0 && f.type === 'true_false') choices[0].isCorrect = true;
       return { ...f, choices };
     });
   }
@@ -221,8 +394,17 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
     if (!form.categoryId) { notify.error('Vui lòng chọn môn học'); return; }
     if (!form.grade) { notify.error('Vui lòng chọn lớp'); return; }
     if (!form.content.trim()) { notify.error('Vui lòng nhập nội dung câu hỏi'); return; }
-    if (form.type !== 'essay' && form.choices.some(c => !c.content.trim())) { notify.error('Vui lòng điền đầy đủ nội dung các đáp án'); return; }
-    if (form.type !== 'essay' && !form.choices.some(c => c.isCorrect)) { notify.error('Vui lòng chọn đáp án đúng'); return; }
+    if (OBJECTIVE_TYPES.includes(form.type) && form.choices.some(c => !c.content.trim())) { notify.error('Vui lòng điền đầy đủ nội dung các đáp án'); return; }
+    if (OBJECTIVE_TYPES.includes(form.type) && !form.choices.some(c => c.isCorrect)) { notify.error('Vui lòng chọn ít nhất 1 đáp án đúng'); return; }
+    if (form.type === 'true_false' && form.choices.filter(c => c.isCorrect).length !== 1) { notify.error('Câu đúng/sai phải có đúng 1 đáp án đúng'); return; }
+    if (form.type === 'fill_in_blank' && !form.acceptedAnswersText.trim()) { notify.error('Vui lòng nhập ít nhất 1 đáp án chấp nhận cho câu điền chỗ trống'); return; }
+    if (form.type === 'matching' && form.matchingPairs.filter(pair => pair.left.trim() && pair.right.trim()).length < 2) { notify.error('Vui lòng tạo ít nhất 2 cặp nối cột hợp lệ'); return; }
+    if (form.type === 'image_question' && !form.promptAssetUrl.trim()) { notify.error('Vui lòng nhập URL hình ảnh cho câu hỏi'); return; }
+    if (form.type === 'audio_question' && !form.promptAssetUrl.trim()) { notify.error('Vui lòng nhập URL audio cho câu hỏi'); return; }
+    if (form.type === 'formula_question' && !form.formulaLatex.trim() && !form.content.includes('$')) { notify.error('Vui lòng nhập công thức hoặc chèn công thức trực tiếp vào nội dung câu hỏi'); return; }
+    if (form.type === 'file_upload' && !form.allowedUploadTypesText.trim()) { notify.error('Vui lòng nhập loại file được phép nộp'); return; }
+
+    const metadata = buildMetadata();
 
     const req: CreateQuestionRequest = {
       categoryId:  form.categoryId,
@@ -232,9 +414,10 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
       explanation: form.explanation.trim() || undefined,
       difficulty:  form.difficulty,
       type:        form.type,
-      choices:     form.type === 'essay'
-        ? []
-        : form.choices.map(c => ({ content: c.content.trim(), isCorrect: c.isCorrect })),
+      metadata,
+      choices:     OBJECTIVE_TYPES.includes(form.type)
+        ? form.choices.map(c => ({ content: c.content.trim(), isCorrect: c.isCorrect }))
+        : [],
     };
 
     setSaving(true);
@@ -382,21 +565,17 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
               {/* Loại câu hỏi */}
               <div>
                 <label className="block text-sm font-bold text-on-surface mb-1.5">Loại câu hỏi</label>
-                <div className="flex rounded-xl overflow-hidden border border-outline-variant">
-                  {(['multiple_choice', 'true_false', 'essay'] as const).map(t => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => handleTypeChange(t)}
-                      className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${
-                        form.type === t
-                          ? 'bg-primary text-on-primary'
-                          : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
-                      }`}
-                    >
-                      {t === 'multiple_choice' ? 'Trắc nghiệm' : t === 'true_false' ? 'Đúng / Sai' : 'Tự luận'}
-                    </button>
-                  ))}
+                <div className="relative">
+                  <select
+                    value={form.type}
+                    onChange={e => handleTypeChange(e.target.value as BankQuestionType)}
+                    className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                  >
+                    {QUESTION_TYPE_OPTIONS.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
                 </div>
               </div>
 
@@ -439,75 +618,267 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                 </div>
               </div>
 
-              {/* Đáp án */}
-              <div>
-                <label className="block text-sm font-bold text-on-surface mb-1.5">
-                  {form.type === 'essay' ? 'Đáp án' : 'Đáp án'}
-                  {form.type !== 'essay' && <span className="text-red-500"> *</span>}
-                  <span className="ml-1 text-xs font-normal text-on-surface-variant">
-                    {form.type === 'essay'
-                      ? '(tự luận không cần đáp án trong ngân hàng)'
-                      : '(click vòng tròn để chọn đáp án đúng)'}
-                  </span>
-                </label>
-                <div className="space-y-2">
-                  {form.choices.map((choice, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      {/* Radio chọn đúng */}
-                      <button
-                        type="button"
-                        onClick={() => setChoiceCorrect(idx)}
-                        className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                          choice.isCorrect
-                            ? 'border-primary bg-primary text-on-primary'
-                            : 'border-outline-variant text-transparent hover:border-primary/50'
-                        }`}
-                      >
-                        {choice.isCorrect ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5 opacity-0" />}
-                      </button>
-
-                      {/* Input nội dung */}
-                      {form.type === 'true_false' ? (
-                        <div className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium border ${
-                          choice.isCorrect ? 'border-primary bg-primary/5 text-primary' : 'border-outline-variant bg-surface-container text-on-surface-variant'
-                        }`}>
-                          {choice.content}
-                        </div>
-                      ) : (
-                        <input
-                          type="text"
-                          value={choice.content}
-                          onChange={e => setChoiceContent(idx, e.target.value)}
-                          placeholder={`Đáp án ${String.fromCharCode(65 + idx)}`}
-                          className="flex-1 px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
-                        />
-                      )}
-
-                      {/* Nút xóa (chỉ khi multiple_choice và có > 2 đáp án) */}
-                      {form.type === 'multiple_choice' && form.choices.length > 2 && (
+              {OBJECTIVE_TYPES.includes(form.type) && (
+                <div>
+                  <label className="block text-sm font-bold text-on-surface mb-1.5">
+                    Đáp án <span className="text-red-500">*</span>
+                    <span className="ml-1 text-xs font-normal text-on-surface-variant">
+                      {form.type === 'multiple_choice'
+                        ? '(có thể chọn một hoặc nhiều đáp án đúng)'
+                        : '(click để chọn đáp án đúng)'}
+                    </span>
+                  </label>
+                  <div className="space-y-2">
+                    {form.choices.map((choice, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => removeChoice(idx)}
-                          className="flex-shrink-0 p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          onClick={() => setChoiceCorrect(idx)}
+                          className={`flex-shrink-0 w-6 h-6 border-2 flex items-center justify-center transition-colors ${
+                            form.type === 'multiple_choice' ? 'rounded-md' : 'rounded-full'
+                          } ${
+                            choice.isCorrect
+                              ? 'border-primary bg-primary text-on-primary'
+                              : 'border-outline-variant text-transparent hover:border-primary/50'
+                          }`}
+                        >
+                          {choice.isCorrect ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5 opacity-0" />}
+                        </button>
+
+                        {form.type === 'true_false' ? (
+                          <div className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium border ${
+                            choice.isCorrect ? 'border-primary bg-primary/5 text-primary' : 'border-outline-variant bg-surface-container text-on-surface-variant'
+                          }`}>
+                            {choice.content}
+                          </div>
+                        ) : (
+                          <input
+                            type="text"
+                            value={choice.content}
+                            onChange={e => setChoiceContent(idx, e.target.value)}
+                            placeholder={`Đáp án ${String.fromCharCode(65 + idx)}`}
+                            className="flex-1 px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                          />
+                        )}
+
+                        {form.type === 'multiple_choice' && form.choices.length > 2 && (
+                          <button
+                            type="button"
+                            onClick={() => removeChoice(idx)}
+                            className="flex-shrink-0 p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {form.type === 'multiple_choice' && form.choices.length < 6 && (
+                    <button
+                      type="button"
+                      onClick={addChoice}
+                      className="mt-2 flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Thêm đáp án
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {form.type === 'fill_in_blank' && (
+                <div>
+                  <label className="block text-sm font-bold text-on-surface mb-1.5">
+                    Đáp án chấp nhận <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={form.acceptedAnswersText}
+                    onChange={e => set('acceptedAnswersText', e.target.value)}
+                    rows={4}
+                    placeholder={`Mỗi dòng là một đáp án chấp nhận\nVí dụ:\nHà Nội\nha noi`}
+                    className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary resize-none"
+                  />
+                </div>
+              )}
+
+              {form.type === 'matching' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-sm font-bold text-on-surface">
+                      Cặp nối <span className="text-red-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addMatchingPair}
+                      className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Thêm cặp
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {form.matchingPairs.map((pair, idx) => (
+                      <div key={idx} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                        <input
+                          type="text"
+                          value={pair.left}
+                          onChange={e => setMatchingPair(idx, 'left', e.target.value)}
+                          placeholder={`Vế trái ${idx + 1}`}
+                          className="px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                        />
+                        <input
+                          type="text"
+                          value={pair.right}
+                          onChange={e => setMatchingPair(idx, 'right', e.target.value)}
+                          placeholder={`Vế phải ${idx + 1}`}
+                          className="px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeMatchingPair(idx)}
+                          disabled={form.matchingPairs.length <= 2}
+                          className="px-2.5 py-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
                         >
                           <X className="w-4 h-4" />
                         </button>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    ))}
+                  </div>
                 </div>
+              )}
 
-                {/* Nút thêm đáp án */}
-                {form.type === 'multiple_choice' && form.choices.length < 4 && (
-                  <button
-                    type="button"
-                    onClick={addChoice}
-                    className="mt-2 flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Thêm đáp án
-                  </button>
-                )}
-              </div>
+              {(form.type === 'essay' || form.type === 'essay_short' || form.type === 'essay_long') && (
+                <>
+                  <div>
+                    <label className="block text-sm font-bold text-on-surface mb-1.5">Bài mẫu / đáp án gợi ý</label>
+                    <textarea
+                      value={form.sampleAnswer}
+                      onChange={e => set('sampleAnswer', e.target.value)}
+                      rows={4}
+                      placeholder="Nhập đáp án mẫu hoặc ý chính để hỗ trợ chấm điểm..."
+                      className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary resize-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-bold text-on-surface mb-1.5">Giới hạn từ</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={form.wordLimit}
+                        onChange={e => set('wordLimit', e.target.value)}
+                        placeholder="Ví dụ: 150"
+                        className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+                  {form.type === 'essay_long' && (
+                    <div>
+                      <label className="block text-sm font-bold text-on-surface mb-1.5">Rubric chấm điểm</label>
+                      <textarea
+                        value={form.gradingRubric}
+                        onChange={e => set('gradingRubric', e.target.value)}
+                        rows={4}
+                        placeholder="Mô tả tiêu chí chấm điểm cho bài tự luận dài..."
+                        className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary resize-none"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {form.type === 'image_question' && (
+                <div>
+                  <label className="block text-sm font-bold text-on-surface mb-1.5">
+                    URL hình ảnh <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.promptAssetUrl}
+                    onChange={e => set('promptAssetUrl', e.target.value)}
+                    placeholder="https://.../image.png"
+                    className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+              )}
+
+              {form.type === 'formula_question' && (
+                <div>
+                  <label className="block text-sm font-bold text-on-surface mb-1.5">Công thức LaTeX</label>
+                  <textarea
+                    value={form.formulaLatex}
+                    onChange={e => set('formulaLatex', e.target.value)}
+                    rows={3}
+                    placeholder="Ví dụ: x^2 + y^2 = z^2"
+                    className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary resize-none"
+                  />
+                </div>
+              )}
+
+              {form.type === 'audio_question' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-bold text-on-surface mb-1.5">
+                      URL audio <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={form.promptAssetUrl}
+                      onChange={e => set('promptAssetUrl', e.target.value)}
+                      placeholder="https://.../audio.mp3"
+                      className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-on-surface mb-1.5">Transcript</label>
+                    <textarea
+                      value={form.transcript}
+                      onChange={e => set('transcript', e.target.value)}
+                      rows={3}
+                      placeholder="Nội dung audio để hỗ trợ biên tập hoặc chấm điểm..."
+                      className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary resize-none"
+                    />
+                  </div>
+                </>
+              )}
+
+              {form.type === 'file_upload' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-bold text-on-surface mb-1.5">
+                      Loại file cho phép <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={form.allowedUploadTypesText}
+                      onChange={e => set('allowedUploadTypesText', e.target.value)}
+                      placeholder="image/png, image/jpeg, application/pdf"
+                      className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-bold text-on-surface mb-1.5">Số file tối đa</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={form.maxFiles}
+                        onChange={e => set('maxFiles', e.target.value)}
+                        className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-on-surface mb-1.5">Hướng dẫn / bài mẫu</label>
+                    <textarea
+                      value={form.sampleAnswer}
+                      onChange={e => set('sampleAnswer', e.target.value)}
+                      rows={3}
+                      placeholder="Mô tả yêu cầu nộp bài hoặc tiêu chí đánh giá..."
+                      className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary resize-none"
+                    />
+                  </div>
+                </>
+              )}
 
               {/* Giải thích */}
               <div>
@@ -654,6 +1025,16 @@ const STATUS_OPTS = [
   { value: 'inactive'as const, label: 'Tạm ẩn' },
 ];
 
+const QUESTION_TYPE_FILTER_OPTS: Array<{ value: BankQuestionType | 'all'; label: string }> = [
+  { value: 'all', label: 'Táº¥t cáº£ loáº¡i cÃ¢u há»i' },
+  ...QUESTION_TYPE_OPTIONS,
+];
+
+function questionTypeFilterLabel(value: BankQuestionType | 'all', fallback: string) {
+  if (value === 'all') return 'T\u1ea5t c\u1ea3 lo\u1ea1i c\u00e2u h\u1ecfi';
+  return fallback;
+}
+
 export default function QuestionBankPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -676,6 +1057,7 @@ export default function QuestionBankPage() {
   // ── Filters ───────────────────────────────────────────────────
   const [diffFilter,    setDiffFilter]    = useState<Difficulty | 'all'>('all');
   const [statusFilter,  setStatusFilter]  = useState<QuestionStatus | 'all'>('all');
+  const [typeFilter,    setTypeFilter]    = useState<BankQuestionType | 'all'>('all');
   const [categoryFilter,setCategoryFilter]= useState('');
   const [gradeFilter,   setGradeFilter]   = useState('');
   const [courseFilter,  setCourseFilter]  = useState('');
@@ -774,11 +1156,19 @@ export default function QuestionBankPage() {
   // Không chứa logic fetch — chỉ trigger lại useEffect bên trên qua refreshKey.
   const loadQuestions = useCallback(() => setRefreshKey(k => k + 1), []);
 
+  const filteredQuestions = typeFilter === 'all'
+    ? questions
+    : questions.filter(question => question.type === typeFilter);
+
+  useEffect(() => {
+    setSelectedIds(prev => prev.filter(id => filteredQuestions.some(question => question.id === id)));
+  }, [filteredQuestions]);
+
   // ── Actions ───────────────────────────────────────────────────
   function openAdd()  { setEditingQ(null); setPanelOpen(true); }
   function openEdit(q: QuestionResponse) { setEditingQ(q); setPanelOpen(true); }
 
-  const allQuestionIds = questions.map(q => q.id);
+  const allQuestionIds = filteredQuestions.map(q => q.id);
   const selectedCount = selectedIds.length;
   const allSelected = allQuestionIds.length > 0 && allQuestionIds.every(id => selectedIds.includes(id));
 
@@ -827,13 +1217,13 @@ export default function QuestionBankPage() {
 
   // ── Stats ──────────────────────────────────────────────────────
   const stats = {
-    total:  questions.length,
-    easy:   questions.filter(q => q.difficulty === 'easy').length,
-    medium: questions.filter(q => q.difficulty === 'medium').length,
-    hard:   questions.filter(q => q.difficulty === 'hard').length,
+    total:  filteredQuestions.length,
+    easy:   filteredQuestions.filter(q => q.difficulty === 'easy').length,
+    medium: filteredQuestions.filter(q => q.difficulty === 'medium').length,
+    hard:   filteredQuestions.filter(q => q.difficulty === 'hard').length,
   };
 
-  const hasFilter = diffFilter !== 'all' || statusFilter !== 'all' || categoryFilter || gradeFilter || courseFilter || chapterFilter;
+  const hasFilter = diffFilter !== 'all' || statusFilter !== 'all' || typeFilter !== 'all' || categoryFilter || gradeFilter || courseFilter || chapterFilter;
 
   // ═══════════════════════════════════════════════════════════════
   //  RENDER
@@ -1043,6 +1433,19 @@ export default function QuestionBankPage() {
               <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
             </div>
 
+            <div className="relative">
+              <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as BankQuestionType | 'all')}
+                className="appearance-none pl-3 pr-8 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface font-medium focus:outline-none focus:border-primary cursor-pointer max-w-[220px]"
+              >
+                {QUESTION_TYPE_FILTER_OPTS.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {questionTypeFilterLabel(option.value, option.label)}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
+            </div>
+
             {/* Trạng thái */}
             <div className="relative">
               <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as QuestionStatus | 'all')}
@@ -1055,7 +1458,7 @@ export default function QuestionBankPage() {
 
             {hasFilter && (
               <button
-                onClick={() => { setDiffFilter('all'); setStatusFilter('all'); setCategoryFilter(''); setGradeFilter(''); setCourseFilter(''); setChapterFilter(''); }}
+                onClick={() => { setDiffFilter('all'); setStatusFilter('all'); setTypeFilter('all'); setCategoryFilter(''); setGradeFilter(''); setCourseFilter(''); setChapterFilter(''); }}
                 className="text-xs font-bold text-primary hover:underline"
               >
                 Xóa bộ lọc
@@ -1091,7 +1494,7 @@ export default function QuestionBankPage() {
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }}
               className="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl overflow-hidden shadow-sm"
             >
-              {questions.length === 0 ? (
+              {filteredQuestions.length === 0 ? (
                 <div className="py-20 text-center">
                   <Database className="w-14 h-14 text-on-surface-variant/30 mx-auto mb-4" />
                   <p className="text-on-surface-variant font-medium text-lg">Chưa có câu hỏi nào</p>
@@ -1120,7 +1523,8 @@ export default function QuestionBankPage() {
                             className="w-4 h-4 rounded border-outline-variant accent-primary cursor-pointer"
                           />
                         </th>
-                        <th className="text-left px-5 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide w-[38%]">Nội dung câu hỏi</th>
+                        <th className="text-left px-5 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide w-[32%]">Nội dung câu hỏi</th>
+                        <th className="text-left px-4 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide">Loại câu hỏi</th>
                         <th className="text-left px-4 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide">Độ khó</th>
                         <th className="text-left px-4 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide hidden md:table-cell">Chương</th>
                         <th className="text-left px-4 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide hidden md:table-cell">Môn</th>
@@ -1132,7 +1536,7 @@ export default function QuestionBankPage() {
                     </thead>
                     <tbody>
                       <AnimatePresence>
-                        {questions.map((q, idx) => (
+                        {filteredQuestions.map((q, idx) => (
                           <motion.tr key={q.id}
                             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: idx * 0.025 }}
@@ -1152,9 +1556,13 @@ export default function QuestionBankPage() {
                             <td className="px-5 py-3">
                               <p className="text-on-surface font-medium leading-snug">{truncate(q.content, 100)}</p>
                               <p className="text-xs text-on-surface-variant mt-0.5">
-                                {q.type === 'multiple_choice' ? 'Trắc nghiệm' : q.type === 'true_false' ? 'Đúng / Sai' : 'Tự luận'}
-                                {q.choices.length > 0 && ` · ${q.choices.length} đáp án`}
+                                {q.choices.length > 0 && `${q.choices.length} đáp án`}
                               </p>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-xs font-medium text-on-surface">
+                                {typeLabel(q.type, q.choices)}
+                              </span>
                             </td>
                             <td className="px-4 py-3"><DifficultyBadge difficulty={q.difficulty} /></td>
                             <td className="px-4 py-3 text-on-surface-variant hidden md:table-cell text-xs">

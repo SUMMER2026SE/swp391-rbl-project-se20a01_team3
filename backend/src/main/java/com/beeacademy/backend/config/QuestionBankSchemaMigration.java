@@ -36,28 +36,53 @@ public class QuestionBankSchemaMigration implements ApplicationRunner {
             return;
         }
 
-        jdbcTemplate.execute("""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1
-                        FROM pg_type t
-                        JOIN pg_namespace n ON n.oid = t.typnamespace
-                        WHERE n.nspname = 'public'
-                          AND t.typname = 'question_type'
-                    ) AND NOT EXISTS (
-                        SELECT 1
-                        FROM pg_enum e
-                        JOIN pg_type t ON t.oid = e.enumtypid
-                        JOIN pg_namespace n ON n.oid = t.typnamespace
-                        WHERE n.nspname = 'public'
-                          AND t.typname = 'question_type'
-                          AND e.enumlabel = 'essay'
-                    ) THEN
-                        ALTER TYPE public.question_type ADD VALUE 'essay';
-                    END IF;
-                END $$;
-                """);
+        for (String type : new String[] {
+                "essay",
+                "fill_in_blank",
+                "matching",
+                "essay_short",
+                "essay_long",
+                "image_question",
+                "formula_question",
+                "audio_question",
+                "file_upload"
+        }) {
+            jdbcTemplate.execute("""
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1
+                            FROM pg_type t
+                            JOIN pg_namespace n ON n.oid = t.typnamespace
+                            WHERE n.nspname = 'public'
+                              AND t.typname = 'question_type'
+                        ) AND NOT EXISTS (
+                            SELECT 1
+                            FROM pg_enum e
+                            JOIN pg_type t ON t.oid = e.enumtypid
+                            JOIN pg_namespace n ON n.oid = t.typnamespace
+                            WHERE n.nspname = 'public'
+                              AND t.typname = 'question_type'
+                              AND e.enumlabel = '%s'
+                        ) THEN
+                            EXECUTE 'ALTER TYPE public.question_type ADD VALUE ''%s''';
+                        END IF;
+                    END $$;
+                    """.formatted(type, type));
+        }
+
+        Boolean hasMetadataColumn = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'questions'
+                      AND column_name = 'metadata_json'
+                )
+                """, Boolean.class);
+        if (!Boolean.TRUE.equals(hasMetadataColumn)) {
+            jdbcTemplate.execute("ALTER TABLE public.questions ADD COLUMN metadata_json TEXT");
+        }
 
         Boolean hasGradeColumn = jdbcTemplate.queryForObject("""
                 SELECT EXISTS (

@@ -121,7 +121,7 @@ public interface QuestionRepository extends JpaRepository<Question, UUID>, JpaSp
     @Query("SELECT q FROM Question q WHERE q.category.id = :categoryId " +
            "AND q.grade IN :grades " +
            "AND q.difficulty = :difficulty AND q.status = 'active' " +
-           "AND q.type <> 'essay'")
+           "AND q.type IN ('multiple_choice', 'true_false')")
     List<Question> findActiveByCategoryAndGradesAndDifficulty(
             @Param("categoryId") UUID categoryId,
             @Param("grades") List<Integer> grades,
@@ -130,7 +130,8 @@ public interface QuestionRepository extends JpaRepository<Question, UUID>, JpaSp
     @Query("SELECT DISTINCT q FROM Question q LEFT JOIN FETCH q.choices " +
            "WHERE q.teacher.id = :teacherId AND q.category.id = :categoryId " +
            "AND q.grade IN :grades " +
-           "AND q.difficulty = :difficulty AND q.status = 'active'")
+           "AND q.difficulty = :difficulty AND q.status = 'active' " +
+           "AND q.type IN ('multiple_choice', 'true_false', 'essay')")
     List<Question> findActiveByTeacherAndCategoryAndGradesAndDifficulty(
             @Param("teacherId") UUID teacherId,
             @Param("categoryId") UUID categoryId,
@@ -139,7 +140,8 @@ public interface QuestionRepository extends JpaRepository<Question, UUID>, JpaSp
 
     @Query("SELECT DISTINCT q FROM Question q LEFT JOIN FETCH q.choices " +
            "WHERE q.teacher.id = :teacherId AND q.chapter.id = :chapterId " +
-           "AND q.difficulty = :difficulty AND q.status = 'active'")
+           "AND q.difficulty = :difficulty AND q.status = 'active' " +
+           "AND q.type IN ('multiple_choice', 'true_false', 'essay')")
     List<Question> findActiveByTeacherAndChapterAndDifficulty(
             @Param("teacherId") UUID teacherId,
             @Param("chapterId") UUID chapterId,
@@ -147,7 +149,8 @@ public interface QuestionRepository extends JpaRepository<Question, UUID>, JpaSp
 
     @Query("SELECT DISTINCT q FROM Question q LEFT JOIN FETCH q.choices " +
            "WHERE q.teacher.id = :teacherId AND q.chapter.id = :chapterId " +
-           "AND q.status = 'active'")
+           "AND q.status = 'active' " +
+           "AND q.type IN ('multiple_choice', 'true_false', 'essay')")
     List<Question> findActiveByTeacherAndChapter(
             @Param("teacherId") UUID teacherId,
             @Param("chapterId") UUID chapterId);
