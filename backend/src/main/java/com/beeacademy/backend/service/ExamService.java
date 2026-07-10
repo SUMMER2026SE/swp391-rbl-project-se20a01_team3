@@ -19,6 +19,7 @@ import com.beeacademy.backend.model.ExamConfig;
 import com.beeacademy.backend.model.Profile;
 import com.beeacademy.backend.model.Question;
 import com.beeacademy.backend.model.QuestionChoice;
+import com.beeacademy.backend.model.RewardAssessmentType;
 import com.beeacademy.backend.repository.ChapterRepository;
 import com.beeacademy.backend.repository.CourseRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
@@ -70,6 +71,7 @@ public class ExamService {
     private final ObjectMapper objectMapper;
     private final SupabaseStorageClient storageClient;
     private final UserNotificationService userNotificationService;
+    private final RewardService rewardService;
 
     @Transactional(readOnly = true)
     public List<ExamConfigResponse> listExams(UUID courseId, AuthenticatedUser me) {
@@ -153,6 +155,12 @@ public class ExamService {
             } catch (Exception ex) {
                 log.warn("Could not notify teacher about essay exam attempt {}", saved.getId(), ex);
             }
+        } else {
+            rewardService.recordAssessmentScore(
+                    me.userId(),
+                    RewardAssessmentType.EXAM,
+                    config.getId(),
+                    scoringSummary.autoScorePercent());
         }
 
         log.info("Student {} submitted exam course={} slot={} attempt={} autoScore={}",
@@ -355,6 +363,11 @@ public class ExamService {
 
         attempt.grade(request.scorePercent(), request.feedback());
         ExamAttempt saved = examAttemptRepository.save(attempt);
+        rewardService.recordAssessmentScore(
+                saved.getStudent().getId(),
+                RewardAssessmentType.EXAM,
+                saved.getExamConfig().getId(),
+                request.scorePercent());
         log.info("Teacher {} graded exam attempt {} with score={}",
                 me.userId(), attemptId, request.scorePercent());
         return toTeacherExamAttemptResponse(saved);

@@ -68,4 +68,12 @@ public class OrderController {
         OrderResponse order = orderService.verifyPayment(orderId, userId);
         return ResponseEntity.ok(ApiResponse.ok(order));
     }
+
+    @PostMapping("/{orderId}/cancel")
+    public ResponseEntity<ApiResponse<OrderResponse>> cancelOrder(
+            @PathVariable UUID orderId) {
+        UUID userId = CurrentUser.required().userId();
+        OrderResponse order = orderService.cancelOrder(orderId, userId);
+        return ResponseEntity.ok(ApiResponse.ok(order));
+    }
 }
