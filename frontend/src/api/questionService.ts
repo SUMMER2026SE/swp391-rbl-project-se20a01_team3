@@ -3,7 +3,7 @@
  * Gọi các endpoint /api/teacher/questions của backend.
  */
 import { apiClient, unwrap } from './client';
-import type { ApiResponse, PageResponse } from '../types/api';
+import type { ApiResponse, PageResponse, UploadResponse } from '../types/api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -38,6 +38,10 @@ export interface QuestionMetadata {
   formulaLatex?: string;
   allowedUploadTypes?: string[];
   maxFiles?: number | null;
+  readingSetId?: string;
+  sharedPromptTitle?: string;
+  sharedPrompt?: string;
+  questionOrderInSet?: number | null;
 }
 
 export interface ChoiceResponse {
@@ -157,6 +161,28 @@ export async function bulkCreateQuestions(
     '/api/teacher/questions/bulk',
     requests,
     { timeout: 120000 },
+  );
+  return unwrap(res.data);
+}
+
+export async function uploadQuestionImage(file: File): Promise<UploadResponse> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiClient.post<ApiResponse<UploadResponse>>(
+    '/api/upload/question-image',
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 },
+  );
+  return unwrap(res.data);
+}
+
+export async function uploadQuestionAudio(file: File): Promise<UploadResponse> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiClient.post<ApiResponse<UploadResponse>>(
+    '/api/upload/question-audio',
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 },
   );
   return unwrap(res.data);
 }

@@ -26,10 +26,12 @@ import {
   type SubmitExamAnswer,
   uploadStudentExamAnswerImage,
 } from '../../api/studentExamService';
+import type { MatchingPair } from '../../api/questionService';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F'];
 const MAX_ANSWER_IMAGE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_ANSWER_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const DEFAULT_FILE_UPLOAD_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
 const MAX_ANSWER_IMAGE_COUNT = 10;
 
 function formatPoints(value: number | null | undefined) {
@@ -38,16 +40,99 @@ function formatPoints(value: number | null | undefined) {
 }
 
 function questionTypeLabel(type: string) {
-  if (type === 'essay') return 'Tu luan';
-  if (type === 'multiple') return 'Nhieu dap an';
-  return 'Mot dap an';
+  switch (type) {
+    case 'multiple_choice': return 'Trac nghiem';
+    case 'true_false': return 'Dung sai';
+    case 'fill_in_blank': return 'Dien cho trong';
+    case 'matching': return 'Noi cot';
+    case 'essay':
+    case 'essay_short':
+    case 'essay_long': return 'Tu luan';
+    case 'image_question': return 'Cau hoi hinh anh';
+    case 'formula_question': return 'Cau hoi cong thuc';
+    case 'audio_question': return 'Cau hoi audio';
+    case 'file_upload': return 'Nop file / anh';
+    default: return 'Cau hoi';
+  }
+}
+
+function isObjectiveQuestion(type: string) {
+  return ['multiple_choice', 'true_false', 'image_question', 'formula_question', 'audio_question'].includes(type);
+}
+
+function isManualQuestion(type: string) {
+  return ['essay', 'essay_short', 'essay_long', 'file_upload'].includes(type);
+}
+
+function acceptedUploadTypes(question: StudentExamQuestion) {
+  if (question.type === 'file_upload') {
+    return question.metadata?.allowedUploadTypes?.length
+      ? question.metadata.allowedUploadTypes
+      : DEFAULT_FILE_UPLOAD_TYPES;
+  }
+  return ACCEPTED_ANSWER_IMAGE_TYPES;
 }
 
 function orderQuestionsObjectiveFirst(questions: StudentExamQuestion[]) {
   return [
-    ...questions.filter(question => question.type !== 'essay'),
-    ...questions.filter(question => question.type === 'essay'),
+    ...questions.filter(question => !isManualQuestion(question.type)),
+    ...questions.filter(question => isManualQuestion(question.type)),
   ];
+}
+
+interface QuestionRenderGroup {
+  readingSetId: string | null;
+  sharedPromptTitle?: string;
+  sharedPrompt?: string;
+  questions: Array<{
+    question: StudentExamQuestion;
+    displayNumber: number;
+  }>;
+}
+
+function buildQuestionRenderGroups(questions: StudentExamQuestion[]): QuestionRenderGroup[] {
+  const groups: QuestionRenderGroup[] = [];
+  const groupIndexByReadingSet = new Map<string, number>();
+
+  questions.forEach((question, index) => {
+    const readingSetId = question.metadata?.readingSetId?.trim() || '';
+    const sharedPrompt = question.metadata?.sharedPrompt?.trim() || '';
+
+    if (!readingSetId || !sharedPrompt) {
+      groups.push({
+        readingSetId: null,
+        questions: [{ question, displayNumber: index + 1 }],
+      });
+      return;
+    }
+
+    const existingGroupIndex = groupIndexByReadingSet.get(readingSetId);
+    if (existingGroupIndex != null) {
+      groups[existingGroupIndex].questions.push({
+        question,
+        displayNumber: index + 1,
+      });
+      return;
+    }
+
+    groupIndexByReadingSet.set(readingSetId, groups.length);
+    groups.push({
+      readingSetId,
+      sharedPromptTitle: question.metadata?.sharedPromptTitle?.trim() || undefined,
+      sharedPrompt,
+      questions: [{ question, displayNumber: index + 1 }],
+    });
+  });
+
+  groups.forEach(group => {
+    group.questions.sort((left, right) => {
+      const leftOrder = left.question.metadata?.questionOrderInSet ?? left.displayNumber;
+      const rightOrder = right.question.metadata?.questionOrderInSet ?? right.displayNumber;
+      return leftOrder - rightOrder;
+    });
+  });
+
+  return groups;
 }
 
 function formatRemainingTime(totalSeconds: number) {
@@ -70,6 +155,7 @@ export default function StudentExamPage() {
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number[]>>({});
   const [essayAnswers, setEssayAnswers] = useState<Record<string, string>>({});
   const [essayImages, setEssayImages] = useState<Record<string, StudentExamAnswerImageUpload[]>>({});
+  const [answerData, setAnswerData] = useState<Record<string, Record<string, unknown>>>({});
   const [uploadingImages, setUploadingImages] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -78,6 +164,10 @@ export default function StudentExamPage() {
   const orderedQuestions = useMemo(
     () => orderQuestionsObjectiveFirst(exam?.questions ?? []),
     [exam],
+  );
+  const questionRenderGroups = useMemo(
+    () => buildQuestionRenderGroups(orderedQuestions),
+    [orderedQuestions],
   );
 
   useEffect(() => {
@@ -97,6 +187,7 @@ export default function StudentExamPage() {
         setSelectedAnswers({});
         setEssayAnswers({});
         setEssayImages({});
+        setAnswerData({});
         setUploadingImages({});
         setSubmitError('');
         setSubmission(null);
@@ -118,12 +209,19 @@ export default function StudentExamPage() {
   const answeredCount = useMemo(() => {
     if (!exam) return 0;
     return orderedQuestions.filter(question => {
-      if (question.type === 'essay') {
+      if (isManualQuestion(question.type)) {
         return Boolean(essayAnswers[question.id]?.trim()) || (essayImages[question.id]?.length ?? 0) > 0;
+      }
+      if (question.type === 'fill_in_blank') {
+        return Boolean(essayAnswers[question.id]?.trim());
+      }
+      if (question.type === 'matching') {
+        const pairs = (answerData[question.id]?.matchingPairs as MatchingPair[] | undefined) ?? [];
+        return pairs.some(pair => pair.left?.trim() || pair.right?.trim());
       }
       return (selectedAnswers[question.id] ?? []).length > 0;
     }).length;
-  }, [essayAnswers, essayImages, exam, orderedQuestions, selectedAnswers]);
+  }, [answerData, essayAnswers, essayImages, exam, orderedQuestions, selectedAnswers]);
 
   const hasUploadingImages = useMemo(
     () => Object.values(uploadingImages).some(Boolean),
@@ -152,23 +250,25 @@ export default function StudentExamPage() {
     });
   }
 
-  async function handleAddEssayImage(questionId: string, files: FileList | null) {
+  async function handleAddEssayImage(question: StudentExamQuestion, files: FileList | null) {
+    const questionId = question.id;
     if (!courseId || submission || !files?.length) return;
 
     const selectedFiles = Array.from(files);
+    const allowedTypes = acceptedUploadTypes(question);
     const currentCount = essayImages[questionId]?.length ?? 0;
     if (currentCount + selectedFiles.length > MAX_ANSWER_IMAGE_COUNT) {
-      notify.error(`Moi cau tu luan toi da ${MAX_ANSWER_IMAGE_COUNT} anh dap an.`);
+      notify.error(`Moi cau toi da ${MAX_ANSWER_IMAGE_COUNT} tep dinh kem.`);
       return;
     }
 
     for (const file of selectedFiles) {
-      if (!ACCEPTED_ANSWER_IMAGE_TYPES.includes(file.type)) {
-        notify.error('Chi ho tro anh PNG, JPG hoac WEBP.');
+      if (!allowedTypes.includes(file.type)) {
+        notify.error(`Loai file khong duoc ho tro. Cho phep: ${allowedTypes.join(', ')}`);
         return;
       }
       if (file.size > MAX_ANSWER_IMAGE_BYTES) {
-        notify.error('Moi anh dap an toi da 5 MB.');
+        notify.error('Moi tep dinh kem toi da 5 MB.');
         return;
       }
     }
@@ -184,9 +284,9 @@ export default function StudentExamPage() {
         [questionId]: [...(prev[questionId] ?? []), ...uploadedImages],
       }));
       setSubmitError('');
-      notify.success(`Da tai len ${uploadedImages.length} anh dap an.`);
+      notify.success(`Da tai len ${uploadedImages.length} tep dinh kem.`);
     } catch (err) {
-      notify.error(isApiError(err) ? err.message : 'Khong the tai anh dap an.');
+      notify.error(isApiError(err) ? err.message : 'Khong the tai tep dinh kem.');
     } finally {
       setUploadingImages(prev => ({ ...prev, [questionId]: false }));
     }
@@ -212,17 +312,33 @@ export default function StudentExamPage() {
     }
 
     const answers = orderedQuestions.reduce<Record<string, SubmitExamAnswer>>((acc, question) => {
-      if (question.type === 'essay') {
+      if (isManualQuestion(question.type)) {
         acc[question.id] = {
           selectedIndices: [],
           textAnswer: essayAnswers[question.id]?.trim() ?? '',
           imageUrls: (essayImages[question.id] ?? []).map(image => image.url),
+          answerData: answerData[question.id] ?? null,
+        };
+      } else if (question.type === 'fill_in_blank') {
+        acc[question.id] = {
+          selectedIndices: [],
+          textAnswer: essayAnswers[question.id]?.trim() ?? '',
+          imageUrls: [],
+          answerData: null,
+        };
+      } else if (question.type === 'matching') {
+        acc[question.id] = {
+          selectedIndices: [],
+          textAnswer: '',
+          imageUrls: [],
+          answerData: answerData[question.id] ?? null,
         };
       } else {
         acc[question.id] = {
           selectedIndices: selectedAnswers[question.id] ?? [],
           textAnswer: '',
           imageUrls: [],
+          answerData: null,
         };
       }
       return acc;
@@ -256,6 +372,7 @@ export default function StudentExamPage() {
   }, [
     answeredCount,
     courseId,
+    answerData,
     essayAnswers,
     essayImages,
     exam,
@@ -362,21 +479,42 @@ export default function StudentExamPage() {
               </div>
 
               <div className="space-y-4">
-                {orderedQuestions.map((question, questionIndex) => {
-                  const selected = selectedAnswers[question.id] ?? [];
-                  const uploadedImages = essayImages[question.id] ?? [];
-                  const isUploading = Boolean(uploadingImages[question.id]);
+                {questionRenderGroups.map((group, groupIndex) => (
+                  <div
+                    key={group.readingSetId ?? `single-${groupIndex}`}
+                    className={group.readingSetId ? 'space-y-4 rounded-3xl border border-primary/20 bg-primary/5 p-4' : 'space-y-4'}
+                  >
+                    {group.sharedPrompt && (
+                      <section className="rounded-2xl border border-primary/15 bg-surface p-5">
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-extrabold text-primary">
+                            {group.sharedPromptTitle || 'Bài đọc chung'}
+                          </span>
+                          <span className="rounded-full bg-surface-container px-2.5 py-1 text-xs font-bold text-on-surface-variant">
+                            Nhóm: {group.readingSetId}
+                          </span>
+                        </div>
+                        <div className="text-sm leading-relaxed text-on-surface whitespace-pre-wrap">
+                          <LatexText content={group.sharedPrompt} />
+                        </div>
+                      </section>
+                    )}
 
-                  return (
-                    <article
-                      key={question.id}
-                      className="rounded-2xl border border-outline-variant/40 bg-surface p-5"
-                    >
+                    {group.questions.map(({ question, displayNumber }) => {
+                      const selected = selectedAnswers[question.id] ?? [];
+                      const uploadedImages = essayImages[question.id] ?? [];
+                      const isUploading = Boolean(uploadingImages[question.id]);
+
+                      return (
+                        <article
+                          key={question.id}
+                          className="rounded-2xl border border-outline-variant/40 bg-surface p-5"
+                        >
                       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
                           <div className="mb-2 flex flex-wrap items-center gap-2">
                             <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-extrabold text-primary">
-                              Cau {questionIndex + 1}
+                              Câu {displayNumber}
                             </span>
                             <span className="rounded-full bg-surface-container px-2.5 py-1 text-xs font-bold text-on-surface-variant">
                               {questionTypeLabel(question.type)}
@@ -385,13 +523,39 @@ export default function StudentExamPage() {
                           <div className="text-base font-semibold leading-relaxed text-on-surface">
                             <LatexText content={question.text} />
                           </div>
+                          {question.type === 'image_question' && question.metadata?.promptAssetUrl && (
+                            <div className="mt-3 overflow-hidden rounded-2xl border border-outline-variant/40 bg-surface-container-lowest">
+                              <img
+                                src={question.metadata.promptAssetUrl}
+                                alt="Question prompt"
+                                className="max-h-80 w-full object-contain"
+                              />
+                            </div>
+                          )}
+                          {question.type === 'audio_question' && question.metadata?.promptAssetUrl && (
+                            <div className="mt-3 space-y-2 rounded-2xl border border-outline-variant/40 bg-surface-container-lowest p-3">
+                              <audio controls className="w-full">
+                                <source src={question.metadata.promptAssetUrl} />
+                              </audio>
+                              {question.metadata.transcript && (
+                                <p className="text-xs text-on-surface-variant whitespace-pre-wrap">
+                                  Transcript: {question.metadata.transcript}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          {question.type === 'formula_question' && question.metadata?.formulaLatex && (
+                            <div className="mt-3 rounded-2xl border border-outline-variant/40 bg-surface-container-lowest p-3">
+                              <LatexText content={question.metadata.formulaLatex} />
+                            </div>
+                          )}
                         </div>
                         <span className="flex-shrink-0 rounded-xl bg-amber-500/10 px-3 py-1.5 text-xs font-extrabold text-amber-600">
                           {formatPoints(question.points)} diem
                         </span>
                       </div>
 
-                      {question.type === 'essay' ? (
+                      {isManualQuestion(question.type) ? (
                         <div className="space-y-3">
                           <textarea
                             value={essayAnswers[question.id] ?? ''}
@@ -408,9 +572,11 @@ export default function StudentExamPage() {
                           <div className="rounded-2xl border border-dashed border-outline-variant/60 bg-surface-container-lowest p-4">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                               <div>
-                                <p className="text-sm font-bold text-on-surface">Anh dap an</p>
+                                <p className="text-sm font-bold text-on-surface">
+                                  {question.type === 'file_upload' ? 'Tep dinh kem' : 'Anh dap an'}
+                                </p>
                                 <p className="text-xs text-on-surface-variant">
-                                  PNG, JPG, WEBP - toi da 5 MB moi anh - toi da {MAX_ANSWER_IMAGE_COUNT} anh
+                                  {acceptedUploadTypes(question).join(', ')} - toi da 5 MB moi tep - toi da {MAX_ANSWER_IMAGE_COUNT} tep
                                 </p>
                               </div>
                               <label className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-colors ${
@@ -423,15 +589,15 @@ export default function StudentExamPage() {
                                 ) : (
                                   <ImagePlus className="h-4 w-4" />
                                 )}
-                                {isUploading ? 'Dang tai...' : 'Tai anh len'}
+                                {isUploading ? 'Dang tai...' : 'Tai tep len'}
                                 <input
                                   type="file"
-                                  accept="image/png,image/jpeg,image/webp"
+                                  accept={acceptedUploadTypes(question).join(',')}
                                   multiple
                                   disabled={Boolean(submission) || isUploading}
                                   className="hidden"
                                   onChange={event => {
-                                    handleAddEssayImage(question.id, event.target.files);
+                                    handleAddEssayImage(question, event.target.files);
                                     event.target.value = '';
                                   }}
                                 />
@@ -445,17 +611,28 @@ export default function StudentExamPage() {
                                     key={image.url}
                                     className="overflow-hidden rounded-2xl border border-outline-variant/40 bg-surface"
                                   >
-                                    <a href={image.url} target="_blank" rel="noreferrer">
-                                      <img
-                                        src={image.url}
-                                        alt={image.name}
-                                        className="h-36 w-full object-cover"
-                                      />
-                                    </a>
+                                    {image.type.startsWith('image/') ? (
+                                      <a href={image.url} target="_blank" rel="noreferrer">
+                                        <img
+                                          src={image.url}
+                                          alt={image.name}
+                                          className="h-36 w-full object-cover"
+                                        />
+                                      </a>
+                                    ) : (
+                                      <a
+                                        href={image.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="flex h-36 w-full items-center justify-center bg-surface-container text-sm font-bold text-primary"
+                                      >
+                                        Mo tep dinh kem
+                                      </a>
+                                    )}
                                     <div className="flex items-start justify-between gap-2 px-3 py-2">
                                       <div className="min-w-0">
                                         <p className="truncate text-xs font-bold text-on-surface">
-                                          Anh {imageIndex + 1}
+                                          {question.type === 'file_upload' ? `Tep ${imageIndex + 1}` : `Anh ${imageIndex + 1}`}
                                         </p>
                                         <p className="truncate text-[11px] text-on-surface-variant">
                                           {image.name}
@@ -478,6 +655,47 @@ export default function StudentExamPage() {
                             )}
                           </div>
                         </div>
+                      ) : question.type === 'fill_in_blank' ? (
+                        <input
+                          type="text"
+                          value={essayAnswers[question.id] ?? ''}
+                          onChange={event => setEssayAnswers(prev => ({
+                            ...prev,
+                            [question.id]: event.target.value,
+                          }))}
+                          disabled={Boolean(submission)}
+                          placeholder="Nhap dap an..."
+                          className="w-full rounded-2xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-sm text-on-surface outline-none focus:border-primary"
+                        />
+                      ) : question.type === 'matching' ? (
+                        <div className="space-y-3">
+                          {((question.metadata?.matchingPairs as MatchingPair[] | undefined) ?? []).map((pair, pairIndex) => {
+                            const currentPairs = ((answerData[question.id]?.matchingPairs as MatchingPair[] | undefined) ?? []);
+                            const currentPair = currentPairs[pairIndex] ?? { left: pair.left, right: '' };
+                            return (
+                              <div key={`${question.id}-pair-${pairIndex}`} className="grid gap-2 sm:grid-cols-2">
+                                <div className="rounded-2xl border border-outline-variant/50 bg-surface-container-lowest px-4 py-3 text-sm font-medium text-on-surface">
+                                  {pair.left}
+                                </div>
+                                <input
+                                  type="text"
+                                  value={currentPair.right}
+                                  onChange={event => setAnswerData(prev => {
+                                    const nextPairs = [...currentPairs];
+                                    nextPairs[pairIndex] = { left: pair.left, right: event.target.value };
+                                    return {
+                                      ...prev,
+                                      [question.id]: { matchingPairs: nextPairs },
+                                    };
+                                  })}
+                                  disabled={Boolean(submission)}
+                                  placeholder="Nhap ve ghep tuong ung..."
+                                  className="rounded-2xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-sm text-on-surface outline-none focus:border-primary"
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
                       ) : (
                         <div className="space-y-2">
                           {question.options.map((option, optionIndex) => {
@@ -486,7 +704,7 @@ export default function StudentExamPage() {
                               <button
                                 key={`${question.id}-${optionIndex}`}
                                 type="button"
-                                onClick={() => toggleChoice(question.id, optionIndex, question.type === 'multiple')}
+                                onClick={() => toggleChoice(question.id, optionIndex, question.type === 'multiple_choice')}
                                 disabled={Boolean(submission)}
                                 className={`w-full rounded-2xl border px-4 py-3 text-left transition-all ${
                                   checked
@@ -512,9 +730,11 @@ export default function StudentExamPage() {
                           })}
                         </div>
                       )}
-                    </article>
-                  );
-                })}
+                        </article>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             </section>
 

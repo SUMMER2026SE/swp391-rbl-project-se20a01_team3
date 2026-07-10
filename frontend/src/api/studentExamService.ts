@@ -1,7 +1,8 @@
 import { apiClient, unwrap } from './client';
 import type { ApiResponse } from '../types/api';
+import type { QuestionMetadata, QuestionType } from './questionService';
 
-export type StudentExamQuestionType = 'single' | 'multiple' | 'essay';
+export type StudentExamQuestionType = QuestionType;
 export type StudentExamDifficulty = 'easy' | 'medium' | 'hard';
 
 export interface StudentExamQuestion {
@@ -9,6 +10,7 @@ export interface StudentExamQuestion {
   text: string;
   type: StudentExamQuestionType;
   options: string[];
+  metadata?: QuestionMetadata | null;
   points: number | null;
   difficulty: StudentExamDifficulty | null;
 }
@@ -28,6 +30,7 @@ export interface StudentExam {
   maxAttempts: number;
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
+  showAnswerAfterSubmit: boolean;
   questionCount: number;
   totalPoints: number;
   questions: StudentExamQuestion[];
@@ -38,6 +41,7 @@ export interface SubmitExamAnswer {
   selectedIndices?: number[];
   textAnswer?: string;
   imageUrls?: string[];
+  answerData?: Record<string, unknown> | null;
 }
 
 export interface StudentExamAnswerImageUpload {
@@ -81,7 +85,7 @@ export async function submitStudentExam(
 }
 
 export async function uploadStudentExamAnswerImage(
-  _courseId: string,
+  courseId: string,
   file: File,
 ): Promise<StudentExamAnswerImageUpload> {
   const form = new FormData();
@@ -91,7 +95,7 @@ export async function uploadStudentExamAnswerImage(
     fileType: string;
     fileSizeBytes: number;
   }>>(
-    '/api/qa/attachments',
+    `/api/student/courses/${encodeURIComponent(courseId)}/exams/answer-images`,
     form,
     { headers: { 'Content-Type': 'multipart/form-data' } },
   );

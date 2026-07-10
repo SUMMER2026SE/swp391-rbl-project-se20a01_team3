@@ -1,5 +1,6 @@
 package com.beeacademy.backend.dto.request;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.DecimalMax;
@@ -52,7 +53,8 @@ public record ExamConfigRequest(
             String text,
 
             @NotNull
-            @Pattern(regexp = "single|multiple|essay")
+            @Pattern(
+                    regexp = "multiple_choice|true_false|fill_in_blank|essay|image_question|audio_question")
             String type,
 
             @Size(max = 6)
@@ -60,6 +62,8 @@ public record ExamConfigRequest(
 
             @Size(max = 6)
             List<@Min(0) Integer> correctIndices,
+
+            JsonNode metadata,
 
             @Size(max = 2000)
             String explanation,

@@ -218,6 +218,8 @@ public class QuizService {
 
         // Deserialize snapshot để lấy đáp án đúng
         Map<UUID, SnapshotQuestion> snapshot = deserializeSnapshot(attempt.getQuestionsSnapshot());
+        Map<UUID, List<UUID>> submittedAnswers = normalizeSubmittedAnswers(
+                req.answers() != null ? req.answers() : Map.of());
 
         // Chấm điểm
         int correct = 0;
@@ -228,9 +230,9 @@ public class QuizService {
             UUID questionId = entry.getKey();
             SnapshotQuestion sq = entry.getValue();
 
-            UUID studentAnswer = req.answers() != null ? req.answers().get(questionId) : null;
-            UUID correctAnswer = sq.correctChoiceId();
-            boolean isRight = correctAnswer != null && correctAnswer.equals(studentAnswer);
+            List<UUID> studentAnswer = submittedAnswers.getOrDefault(questionId, List.of());
+            List<UUID> correctAnswer = sq.correctChoiceIds();
+            boolean isRight = studentAnswer.equals(correctAnswer);
             if (isRight) correct++;
 
             details.add(new QuizResultResponse.QuestionResult(
@@ -257,7 +259,7 @@ public class QuizService {
         boolean passed = score >= passingScore;
 
         // Serialize answers
-        String answersJson = serializeAnswers(req.answers());
+        String answersJson = serializeAnswers(submittedAnswers);
         attempt.submit(answersJson, score, passed);
         attemptRepository.save(attempt);
 
@@ -287,16 +289,16 @@ public class QuizService {
         }
 
         Map<UUID, SnapshotQuestion> snapshot = deserializeSnapshot(attempt.getQuestionsSnapshot());
-        Map<UUID, UUID> answers = deserializeAnswers(attempt.getAnswers());
+        Map<UUID, List<UUID>> answers = deserializeAnswers(attempt.getAnswers());
 
         int correct = 0;
         List<QuizResultResponse.QuestionResult> details = new ArrayList<>();
         for (Map.Entry<UUID, SnapshotQuestion> entry : snapshot.entrySet()) {
             UUID qId = entry.getKey();
             SnapshotQuestion sq = entry.getValue();
-            UUID studentAns = answers != null ? answers.get(qId) : null;
-            UUID correctAns = sq.correctChoiceId();
-            boolean isRight = correctAns != null && correctAns.equals(studentAns);
+            List<UUID> studentAns = answers != null ? answers.getOrDefault(qId, List.of()) : List.of();
+            List<UUID> correctAns = sq.correctChoiceIds();
+            boolean isRight = studentAns.equals(correctAns);
             if (isRight) correct++;
             details.add(new QuizResultResponse.QuestionResult(
                     qId,
@@ -355,24 +357,26 @@ public class QuizService {
     private record SnapshotQuestion(
             String content,
             String explanation,
-            UUID correctChoiceId,
+            List<UUID> correctChoiceIds,
             List<SnapshotChoice> choices
     ) {}
 
     private record SnapshotChoice(UUID id, String content, boolean isCorrect, int position) {}
 
-    private String choiceText(SnapshotQuestion question, UUID choiceId) {
-        if (question == null || choiceId == null || question.choices() == null) {
+    private String choiceText(SnapshotQuestion question, List<UUID> choiceIds) {
+        if (question == null || choiceIds == null || choiceIds.isEmpty() || question.choices() == null) {
             return null;
         }
         List<SnapshotChoice> choices = question.choices();
+        Map<UUID, String> labels = new LinkedHashMap<>();
         for (int index = 0; index < choices.size(); index++) {
             SnapshotChoice choice = choices.get(index);
-            if (choiceId.equals(choice.id())) {
-                return choiceLabel(index) + ". " + choice.content();
-            }
+            labels.put(choice.id(), choiceLabel(index) + ". " + choice.content());
         }
-        return null;
+        return choiceIds.stream()
+                .map(labels::get)
+                .filter(value -> value != null && !value.isBlank())
+                .collect(Collectors.joining(", "));
     }
 
     private String choiceLabel(int index) {
@@ -404,10 +408,10 @@ public class QuizService {
         for (Question q : questions) {
             List<QuestionChoice> choices = shuffledChoicesMap.get(q.getId());
 
-            UUID correctId = choices.stream()
+            List<UUID> correctIds = normalizeAnswerIds(choices.stream()
                     .filter(QuestionChoice::getIsCorrect)
                     .map(QuestionChoice::getId)
-                    .findFirst().orElse(null);
+                    .toList());
 
             List<Map<String, Object>> choiceList = choices.stream().map(c -> {
                 Map<String, Object> m = new HashMap<>();
@@ -421,7 +425,7 @@ public class QuizService {
             Map<String, Object> qMap = new HashMap<>();
             qMap.put("content", q.getContent());
             qMap.put("explanation", q.getExplanation());
-            qMap.put("correctChoiceId", correctId != null ? correctId.toString() : null);
+            qMap.put("correctChoiceIds", correctIds.stream().map(UUID::toString).toList());
             qMap.put("choices", choiceList);
             snapshot.put(q.getId().toString(), qMap);
         }
@@ -441,7 +445,7 @@ public class QuizService {
                             c.getId(), c.getContent(), c.getPosition()))
                     .toList();
             return new QuizAttemptStartResponse.QuestionForStudent(
-                    q.getId(), q.getContent(), q.getType(), choiceDtos);
+                    q.getId(), q.getContent(), studentQuestionType(q), choiceDtos);
         }).toList();
     }
 
@@ -453,8 +457,11 @@ public class QuizService {
             for (Map.Entry<String, Object> entry : raw.entrySet()) {
                 UUID qId = UUID.fromString(entry.getKey());
                 Map<String, Object> q = (Map<String, Object>) entry.getValue();
-                String correctIdStr = (String) q.get("correctChoiceId");
-                UUID correctId = correctIdStr != null ? UUID.fromString(correctIdStr) : null;
+                List<UUID> correctIds = normalizeUuidList(q.get("correctChoiceIds"));
+                if (correctIds.isEmpty() && q.get("correctChoiceId") instanceof String correctIdStr
+                        && correctIdStr != null && !correctIdStr.isBlank()) {
+                    correctIds = List.of(UUID.fromString(correctIdStr));
+                }
                 List<Map<String, Object>> rawChoices = (List<Map<String, Object>>) q.get("choices");
                 List<SnapshotChoice> choices = rawChoices == null ? List.of() : rawChoices.stream()
                         .map(choice -> new SnapshotChoice(
@@ -467,7 +474,7 @@ public class QuizService {
                 result.put(qId, new SnapshotQuestion(
                         (String) q.get("content"),
                         (String) q.get("explanation"),
-                        correctId, choices));
+                        correctIds, choices));
             }
             return result;
         } catch (Exception e) {
@@ -475,10 +482,12 @@ public class QuizService {
         }
     }
 
-    private String serializeAnswers(Map<UUID, UUID> answers) {
+    private String serializeAnswers(Map<UUID, List<UUID>> answers) {
         if (answers == null) return "{}";
-        Map<String, String> strMap = new HashMap<>();
-        answers.forEach((k, v) -> strMap.put(k.toString(), v != null ? v.toString() : null));
+        Map<String, List<String>> strMap = new HashMap<>();
+        answers.forEach((k, v) -> strMap.put(
+                k.toString(),
+                normalizeAnswerIds(v).stream().map(UUID::toString).toList()));
         try {
             return objectMapper.writeValueAsString(strMap);
         } catch (JsonProcessingException e) {
@@ -487,17 +496,60 @@ public class QuizService {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<UUID, UUID> deserializeAnswers(String json) {
+    private Map<UUID, List<UUID>> deserializeAnswers(String json) {
         if (json == null) return Map.of();
         try {
-            Map<String, String> raw = objectMapper.readValue(json, Map.class);
-            Map<UUID, UUID> result = new HashMap<>();
-            raw.forEach((k, v) -> result.put(
-                    UUID.fromString(k), v != null ? UUID.fromString(v) : null));
+            Map<String, Object> raw = objectMapper.readValue(json, Map.class);
+            Map<UUID, List<UUID>> result = new HashMap<>();
+            raw.forEach((k, v) -> result.put(UUID.fromString(k), normalizeUuidList(v)));
             return result;
         } catch (Exception e) {
             return Map.of();
         }
+    }
+
+    private Map<UUID, List<UUID>> normalizeSubmittedAnswers(Map<UUID, List<UUID>> answers) {
+        Map<UUID, List<UUID>> normalized = new HashMap<>();
+        if (answers == null) return normalized;
+        answers.forEach((questionId, choiceIds) -> normalized.put(questionId, normalizeAnswerIds(choiceIds)));
+        return normalized;
+    }
+
+    private List<UUID> normalizeAnswerIds(List<UUID> choiceIds) {
+        if (choiceIds == null) return List.of();
+        return choiceIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<UUID> normalizeUuidList(Object value) {
+        if (value == null) return List.of();
+        if (value instanceof String stringValue) {
+            if (stringValue.isBlank()) return List.of();
+            return List.of(UUID.fromString(stringValue));
+        }
+        if (value instanceof List<?> listValue) {
+            return listValue.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(item -> UUID.fromString(String.valueOf(item)))
+                    .distinct()
+                    .sorted()
+                    .toList();
+        }
+        return List.of();
+    }
+
+    private String studentQuestionType(Question question) {
+        if ("essay".equals(question.getType()) || "true_false".equals(question.getType())) {
+            return question.getType();
+        }
+        long correctCount = question.getChoices().stream()
+                .filter(QuestionChoice::getIsCorrect)
+                .count();
+        return correctCount > 1 ? "multiple" : "single";
     }
 
     // ========================================================================

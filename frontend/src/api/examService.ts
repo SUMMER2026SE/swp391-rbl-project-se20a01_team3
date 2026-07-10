@@ -1,7 +1,8 @@
 import { apiClient, unwrap } from './client';
 import type { ApiResponse } from '../types/api';
+import type { QuestionMetadata, QuestionType } from './questionService';
 
-export type ExamQuestionType = 'single' | 'multiple' | 'essay';
+export type ExamQuestionType = QuestionType;
 export type ExamDifficulty = 'easy' | 'medium' | 'hard';
 
 export interface ExamQuestionPayload {
@@ -10,6 +11,7 @@ export interface ExamQuestionPayload {
   type: ExamQuestionType;
   options: string[];
   correctIndices: number[];
+  metadata?: QuestionMetadata | null;
   explanation?: string | null;
   points: number;
   difficulty: ExamDifficulty;
@@ -66,9 +68,11 @@ export interface TeacherExamQuestionReview {
   text: string;
   type: ExamQuestionType;
   options: string[];
+  metadata?: QuestionMetadata | null;
   studentAnswers: number[];
   textAnswer: string | null;
   imageUrls: string[];
+  answerData?: Record<string, unknown> | null;
   correctAnswers: number[];
   correct: boolean | null;
   points: number;

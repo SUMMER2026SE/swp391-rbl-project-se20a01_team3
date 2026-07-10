@@ -153,14 +153,14 @@ function ResultDetailItem({ detail, index }: { detail: QuizResultDetail; index: 
               <div className="flex items-center gap-2 text-sm">
                 <span className="font-semibold text-on-surface-variant w-28 flex-shrink-0">Bạn chọn:</span>
                 <span className={`font-bold ${detail.isCorrect ? 'text-green-600' : 'text-red-500'}`}>
-                  <LatexText content={detail.studentAnswerText ?? detail.studentAnswer ?? '(Không trả lời)'} />
+                  <LatexText content={detail.studentAnswerText ?? '(Không trả lời)'} />
                 </span>
               </div>
               {!detail.isCorrect && (
                 <div className="flex items-center gap-2 text-sm">
                   <span className="font-semibold text-on-surface-variant w-28 flex-shrink-0">Đáp án đúng:</span>
                   <span className="font-bold text-green-600">
-                    <LatexText content={detail.correctAnswerText ?? detail.correctAnswer ?? ''} />
+                    <LatexText content={detail.correctAnswerText ?? ''} />
                   </span>
                 </div>
               )}
@@ -217,7 +217,7 @@ export default function StudentQuizPage() {
   const submittingRef = useRef(false);
 
   // answers: questionId ? choiceId
-  const [answers, setAnswers] = useState<Record<string, string | null>>({});
+  const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [currentIdx, setCurrentIdx] = useState(0);
 
   // Bắt đầu quiz
@@ -271,8 +271,8 @@ export default function StudentQuizPage() {
         const data = await quizSvc.startQuiz(chapterId!);
         if (cancelled) return;
         setAttempt(data);
-        const init: Record<string, null> = {};
-        data.questions.forEach(q => { init[q.id] = null; });
+        const init: Record<string, string[]> = {};
+        data.questions.forEach(q => { init[q.id] = []; });
         setAnswers(init);
         submittingRef.current = false;
         setPhase('quiz');
@@ -358,8 +358,8 @@ export default function StudentQuizPage() {
 
       const data = await quizSvc.startQuiz(chapterId);
       setAttempt(data);
-      const init: Record<string, null> = {};
-      data.questions.forEach(q => { init[q.id] = null; });
+      const init: Record<string, string[]> = {};
+      data.questions.forEach(q => { init[q.id] = []; });
       setAnswers(init);
       submittingRef.current = false;
       setPhase('quiz');
@@ -374,7 +374,7 @@ export default function StudentQuizPage() {
 
   const questions = attempt?.questions ?? [];
   const currentQ = questions[currentIdx];
-  const answeredCount = Object.values(answers).filter(v => v !== null).length;
+  const answeredCount = Object.values(answers).filter(v => v.length > 0).length;
   const allAnswered = answeredCount === questions.length;
 
   const requestSubmit = useCallback(() => {
@@ -627,12 +627,19 @@ export default function StudentQuizPage() {
                 <h2 className="text-xl font-bold text-on-surface leading-relaxed">
                   <LatexText content={currentQ.content} />
                 </h2>
+                {currentQ.type === 'multiple' && (
+                  <p className="mt-2 text-sm font-medium text-primary">
+                    CÃ¢u nÃ y cÃ³ thá»ƒ cÃ³ nhiá»u Ä‘Ã¡p Ã¡n Ä‘Ãºng.
+                  </p>
+                )}
               </div>
 
               {/* Choices */}
               <div className="space-y-3">
                 {currentQ.choices.map((choice, i) => {
-                  const isSelected = answers[currentQ.id] === choice.id;
+                  const selectedAnswers = answers[currentQ.id] ?? [];
+                  const isMultiple = currentQ.type === 'multiple';
+                  const isSelected = selectedAnswers.includes(choice.id);
                   const letter = ['A', 'B', 'C', 'D', 'E'][i] ?? String(i + 1);
                   return (
                     <motion.button
@@ -641,7 +648,15 @@ export default function StudentQuizPage() {
                       whileTap={{ scale: 0.99 }}
                       onClick={() => {
                         if (phase !== 'quiz') return;
-                        setAnswers(prev => ({ ...prev, [currentQ.id]: choice.id }));
+                        setAnswers(prev => {
+                          const currentAnswers = prev[currentQ.id] ?? [];
+                          const nextAnswers = isMultiple
+                            ? (currentAnswers.includes(choice.id)
+                              ? currentAnswers.filter(value => value !== choice.id)
+                              : [...currentAnswers, choice.id])
+                            : [choice.id];
+                          return { ...prev, [currentQ.id]: nextAnswers };
+                        });
                       }}
                       disabled={phase !== 'quiz'}
                       className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${
@@ -685,7 +700,7 @@ export default function StudentQuizPage() {
                 className={`rounded-full transition-all duration-200 ${
                   i === currentIdx
                     ? 'w-6 h-3 bg-primary'
-                    : answers[q.id] !== null
+                    : (answers[q.id] ?? []).length > 0
                     ? 'w-3 h-3 bg-primary/50 hover:bg-primary/70'
                     : 'w-3 h-3 bg-surface-container-high hover:bg-outline-variant'
                 }`}

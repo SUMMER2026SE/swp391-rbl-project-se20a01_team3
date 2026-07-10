@@ -81,20 +81,15 @@ function parseGeminiResponse(raw: string): ParsedQuestion[] {
         choices = choices.slice(0, 4);
       }
 
-      // Đảm bảo đúng 1 đáp án đúng
+      // Đảm bảo có ít nhất 1 đáp án đúng
       let correctCount = choices.filter(c => c.isCorrect).length;
       if (correctCount === 0 && choices.length > 0) choices[0].isCorrect = true;
-      if (correctCount > 1) {
-        // Giữ lại đáp án đúng đầu tiên
-        let found = false;
-        choices.forEach(c => { if (c.isCorrect && found) c.isCorrect = false; else if (c.isCorrect) found = true; });
-      }
       correctCount = choices.filter(c => c.isCorrect).length;
 
       if (!item.content?.trim())        error = 'Thiếu nội dung câu hỏi';
       else if (choices.length < 2)      error = 'Cần ít nhất 2 đáp án';
       else if (choices.some(c => !c.content)) error = 'Đáp án trống';
-      else if (correctCount !== 1)      error = 'Cần đúng 1 đáp án đúng';
+      else if (correctCount < 1)        error = 'Cần ít nhất 1 đáp án đúng';
 
       const difficulty: Difficulty =
         item.difficulty === 'easy' ? 'easy' : item.difficulty === 'hard' ? 'hard' : 'medium';
@@ -537,7 +532,10 @@ export default function AIScanModal({ open, onClose, onImported }: Props) {
                                   </td>
                                   <td className="px-3 py-2"><DiffBadge d={q.difficulty} /></td>
                                   <td className="px-3 py-2 text-on-surface">
-                                    {q.choices.find(c => c.isCorrect)?.content.slice(0, 35) ?? '—'}
+                                    {q.choices
+                                      .filter(c => c.isCorrect)
+                                      .map(c => c.content.slice(0, 35))
+                                      .join(', ') || '—'}
                                   </td>
                                   <td className="px-3 py-2">
                                     {q.error ? (

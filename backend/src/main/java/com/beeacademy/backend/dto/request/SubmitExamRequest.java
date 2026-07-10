@@ -1,5 +1,6 @@
 package com.beeacademy.backend.dto.request;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.Valid;
 
@@ -13,6 +14,7 @@ public record SubmitExamRequest(
     public record ExamAnswerRequest(
             List<Integer> selectedIndices,
             String textAnswer,
-            List<String> imageUrls
+            List<String> imageUrls,
+            JsonNode answerData
     ) {}
 }
