@@ -18,6 +18,7 @@ import AccountPage from './pages/student/AccountPage';
 import AvatarPage from './pages/student/AvatarPage';
 import ComplaintsPage from './pages/student/ComplaintsPage';
 import ProgressPage from './pages/student/ProgressPage';
+import RewardsPage from './pages/student/RewardsPage';
 import StudentQuizPage from './pages/student/StudentQuizPage';
 import StudentExamPage from './pages/student/StudentExamPage';
 import NotificationsPage from './pages/student/NotificationsPage';
@@ -74,6 +75,7 @@ export default function App() {
         <Route path="/orders"        element={<ProtectedRoute role="student"><OrdersPage /></ProtectedRoute>} />
         <Route path="/favorites"     element={<ProtectedRoute role="student"><FavoritesPage /></ProtectedRoute>} />
         <Route path="/progress"      element={<ProtectedRoute role="student"><ProgressPage /></ProtectedRoute>} />
+        <Route path="/rewards"       element={<ProtectedRoute role="student"><RewardsPage /></ProtectedRoute>} />
         <Route path="/messages"      element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
         <Route path="/profile"       element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         <Route path="/account/type"  element={<ProtectedRoute><ComingSoonPage title="Loại tài khoản" subtitle="Quản lý gói đăng ký của bạn" /></ProtectedRoute>} />

@@ -37,6 +37,7 @@ public class OrderService {
     private final CourseRepository courseRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final TeacherRevenueService teacherRevenueService;
+    private final RewardService rewardService;
 
     @Value("${payos.client-id}")
     private String payosClientId;
@@ -86,6 +87,30 @@ public class OrderService {
             // exception sẽ bị bắt ở đây và trả về BusinessException thay vì 500.
             orderRepository.save(order);
 
+            RewardService.AppliedRewardVoucher appliedVoucher = rewardService.reserveVoucherForOrder(
+                    userId, req.rewardVoucherId(), order.getId(), total);
+            if (appliedVoucher.studentVoucherId() != null) {
+                order.applyRewardVoucher(appliedVoucher.studentVoucherId(), appliedVoucher.discountAmount());
+                orderRepository.save(order);
+            }
+
+            List<OrderItem> orderItems = new ArrayList<>();
+            for (Course course : courses) {
+                int price = course.getSalePriceVnd() != null ? course.getSalePriceVnd() : course.getPriceVnd();
+                orderItems.add(OrderItem.create(order, course.getId(), price));
+            }
+            orderItemRepository.saveAll(orderItems);
+            order.getItems().addAll(orderItems);
+
+            Map<UUID, Course> coursesById = courses.stream()
+                    .collect(Collectors.toMap(Course::getId, Function.identity()));
+
+            if (order.getTotalAmount() <= 0) {
+                processPaidOrder(order);
+                log.info("Reward covered order completely: {}", order.getId());
+                return OrderResponse.from(order, null, coursesById);
+            }
+
             String cancelUrl = frontendUrl + "/payment-result?status=cancelled&orderId=" + order.getId();
             String returnUrl = frontendUrl + "/payment-result?status=success&orderId=" + order.getId();
 
@@ -105,13 +130,13 @@ public class OrderService {
 
             // Compute HMAC-SHA256 signature — keys in alphabetical order
             String sigData = String.format("amount=%d&cancelUrl=%s&description=%s&orderCode=%d&returnUrl=%s",
-                total, cancelUrl, order.getPaymentRef(), order.getOrderCode(), returnUrl);
+                order.getTotalAmount(), cancelUrl, order.getPaymentRef(), order.getOrderCode(), returnUrl);
             String signature = hmacSHA256(sigData, payosChecksumKey);
 
             // Build request body
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("orderCode", order.getOrderCode());
-            body.put("amount", total);
+            body.put("amount", order.getTotalAmount());
             body.put("description", order.getPaymentRef());
             body.put("items", items);
             body.put("returnUrl", returnUrl);
@@ -149,19 +174,9 @@ public class OrderService {
             order.setPaymentLinkId(paymentLinkId);
             orderRepository.save(order);
 
-            List<OrderItem> orderItems = new ArrayList<>();
-            for (Course course : courses) {
-                int price = course.getSalePriceVnd() != null ? course.getSalePriceVnd() : course.getPriceVnd();
-                orderItems.add(OrderItem.create(order, course.getId(), price));
-            }
-            orderItemRepository.saveAll(orderItems);
-            order.getItems().addAll(orderItems);
-
             log.info("Order created: {} orderCode={} ref={} checkoutUrl={}",
                 order.getId(), order.getOrderCode(), order.getPaymentRef(), checkoutUrl);
 
-            Map<UUID, Course> coursesById = courses.stream()
-                    .collect(Collectors.toMap(Course::getId, Function.identity()));
             return OrderResponse.from(order, checkoutUrl, coursesById);
 
         } catch (BusinessException e) {
@@ -236,6 +251,22 @@ public class OrderService {
         return OrderResponse.from(order, null, loadCourseMap(List.of(order)));
     }
 
+    @Transactional
+    public OrderResponse cancelOrder(UUID orderId, UUID userId) {
+        Order order = orderRepository.findById(orderId)
+            .orElseThrow(() -> new ResourceNotFoundException("Order", orderId));
+
+        if (!order.getUserId().equals(userId)) {
+            throw new BusinessException("FORBIDDEN", "Bạn không có quyền hủy đơn hàng này");
+        }
+        if (order.getStatus() == OrderStatus.PENDING) {
+            order.markCancelled();
+            orderRepository.save(order);
+            rewardService.releaseVoucherReservation(order.getRewardVoucherId(), order.getUserId(), order.getId());
+        }
+        return OrderResponse.from(order, null, loadCourseMap(List.of(order)));
+    }
+
     @Transactional(readOnly = true)
     public List<OrderResponse> listOrders(UUID userId) {
         List<Order> orders = orderRepository.findByUserIdWithItems(userId);
@@ -280,6 +311,11 @@ public class OrderService {
             log.warn("PayOS webhook: đơn hàng {} đã hết hạn nhưng vẫn xử lý vì PayOS xác nhận PAID", orderCode);
         }
 
+        processPaidOrder(order);
+    }
+
+    private void processPaidOrder(Order order) {
+        long orderCode = order.getOrderCode();
         List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
         for (OrderItem item : items) {
             // Tạo enrollment trước — đây là phần quan trọng nhất
@@ -307,6 +343,7 @@ public class OrderService {
 
         order.markPaid();
         orderRepository.save(order);
+        rewardService.markVoucherUsed(order.getRewardVoucherId(), order.getUserId());
         log.info("PayOS webhook: đơn hàng {} thanh toán thành công", orderCode);
     }
 

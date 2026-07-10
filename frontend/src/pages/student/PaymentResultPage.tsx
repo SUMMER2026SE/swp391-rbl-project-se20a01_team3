@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { CheckCircle2, XCircle, Clock, ArrowRight, RotateCcw, BookOpen } from 'lucide-react';
-import { getOrderStatus, verifyPayment, type OrderResponse } from '../../api/orderService';
+import { cancelOrder, getOrderStatus, verifyPayment, type OrderResponse } from '../../api/orderService';
 import { useCartStore } from '../../store/useCartStore';
 import { useCourseStore } from '../../store/useCourseStore';
 
@@ -57,6 +57,14 @@ export default function PaymentResultPage() {
         } else if (o.status === 'EXPIRED') {
           setStatus('expired');
         } else if (o.status === 'CANCELLED') {
+          setStatus('cancelled');
+        } else if (initialStatus === 'cancelled') {
+          try {
+            const cancelled = await cancelOrder(orderId);
+            setOrder(cancelled);
+          } catch {
+            setOrder(o);
+          }
           setStatus('cancelled');
         } else if (initialStatus === 'success') {
           // PayOS redirect với code=00 nhưng webhook chưa đến (local dev, firewall).
