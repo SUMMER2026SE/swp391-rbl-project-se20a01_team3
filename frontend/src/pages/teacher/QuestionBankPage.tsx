@@ -1,5 +1,5 @@
-import TeacherNotificationBell from '../../components/TeacherNotificationBell';
-import { useState, useEffect, useCallback } from 'react';
+﻿import TeacherNotificationBell from '../../components/TeacherNotificationBell';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -19,34 +19,31 @@ import {
   GraduationCap, Megaphone, RefreshCcw, Filter,
   ChevronDown, Zap, TrendingUp, Minus, Database,
   Save, Loader2, CheckCircle2, Circle, FileSpreadsheet, Sparkles, Lock, UserCircle, Star,
+  Image as ImageIcon, Headphones, ExternalLink,
 } from 'lucide-react';
 import ExcelImportModal from './ExcelImportModal';
 import AIScanModal from './AIScanModal';
 
-// ═══════════════════════════════════════════════════════════════════
-//  NAVIGATION
-// ═══════════════════════════════════════════════════════════════════
+// Navigation and helpers
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Tổng quan',         path: '/teacher'            },
   { icon: BookOpen,        label: 'Khóa học của tôi',  path: '/teacher/courses'    },
   { icon: Star,            label: 'Đánh giá khóa học', path: '/teacher/reviews'    },
-  { icon: FileText,        label: 'Bài giảng',          path: '/teacher/content'    },
-  { icon: PenSquare,       label: 'Quiz chương',        path: '/teacher/quiz'       },
+  { icon: FileText,        label: 'Bài giảng',         path: '/teacher/content'    },
+  { icon: PenSquare,       label: 'Quiz chương',       path: '/teacher/quiz'       },
   { icon: Database,        label: 'Ngân hàng câu hỏi', path: '/teacher/questions'  },
-  { icon: GraduationCap,   label: 'Bài kiểm tra',       path: '/teacher/exam'       },
-  { icon: ClipboardList,   label: 'Chấm điểm',          path: '/teacher/grades'     },
-  { icon: HelpCircle,      label: 'Hỏi & Đáp',          path: '/teacher/qa'         },
-  { icon: Megaphone,       label: 'Khiếu nại',          path: '/teacher/complaints' },
+  { icon: GraduationCap,   label: 'Bài kiểm tra',      path: '/teacher/exam'       },
+  { icon: ClipboardList,   label: 'Chấm điểm',         path: '/teacher/grades'     },
+  { icon: HelpCircle,      label: 'Hỏi & Đáp',         path: '/teacher/qa'         },
+  { icon: Megaphone,       label: 'Khiếu nại',         path: '/teacher/complaints' },
   { icon: BarChart2,       label: 'Doanh thu',          path: '/teacher/revenue'    },
   { icon: Landmark,        label: 'TK ngân hàng',       path: '/teacher/bank'       },
   { icon: UserCircle,      label: 'Hồ sơ',              path: '/teacher/profile'    },
-  { icon: Lock,            label: 'Tài khoản',           path: '/teacher/account'    },
+  { icon: Lock,            label: 'Tài khoản',          path: '/teacher/account'    },
 ];
 
-// ═══════════════════════════════════════════════════════════════════
-//  HELPERS & SMALL COMPONENTS
-// ═══════════════════════════════════════════════════════════════════
+// Small reusable components
 
 function DifficultyBadge({ difficulty }: { difficulty: Difficulty }) {
   const config = {
@@ -61,9 +58,8 @@ function DifficultyBadge({ difficulty }: { difficulty: Difficulty }) {
     </span>
   );
 }
-
 function truncate(text: string, n: number) {
-  return text.length <= n ? text : text.slice(0, n) + '…';
+  return text.length <= n ? text : text.slice(0, n) + '...';
 }
 
 function formatDate(iso: string) {
@@ -76,34 +72,44 @@ function correctChoiceCount(
   return choices.filter(choice => Boolean(choice.isCorrect)).length;
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  QUESTION FORM PANEL
-// ═══════════════════════════════════════════════════════════════════
+// Question form panel
 
 interface ChoiceRow { content: string; isCorrect: boolean }
 type BankQuestionType = CreateQuestionRequest['type'];
 
 const QUESTION_TYPE_OPTIONS: Array<{ value: BankQuestionType; label: string }> = [
-  { value: 'multiple_choice', label: 'Trắc nghiệm' },
-  { value: 'true_false', label: 'Đúng / Sai' },
-  { value: 'fill_in_blank', label: 'Điền vào chỗ trống' },
-  { value: 'matching', label: 'Nối cột' },
-  { value: 'essay_short', label: 'Tự luận ngắn' },
-  { value: 'essay_long', label: 'Tự luận dài' },
-  { value: 'image_question', label: 'Câu hỏi có hình ảnh' },
-  { value: 'formula_question', label: 'Câu hỏi có công thức' },
-  { value: 'audio_question', label: 'Câu hỏi nghe audio' },
-  { value: 'file_upload', label: 'Nộp file / ảnh bài làm' },
-  { value: 'essay', label: 'Tự luận chung' },
+  { value: 'multiple_choice', label: 'Tr\u1eafc nghi\u1ec7m' },
+  { value: 'true_false', label: '\u0110\u00fang / Sai' },
+  { value: 'fill_in_blank', label: '\u0110i\u1ec1n v\u00e0o ch\u1ed7 tr\u1ed1ng' },
+  { value: 'essay', label: 'T\u1ef1 lu\u1eadn chung' },
+  { value: 'image_question', label: 'C\u00e2u h\u1ecfi c\u00f3 h\u00ecnh \u1ea3nh' },
+  { value: 'audio_question', label: 'C\u00e2u h\u1ecfi nghe audio' },
 ];
-
+const LEGACY_QUESTION_TYPE_OPTIONS: Array<{ value: BankQuestionType; label: string }> = [
+  { value: 'matching', label: 'N\u1ed1i c\u1ed9t (ng\u1eebng d\u00f9ng)' },
+  { value: 'formula_question', label: 'C\u00e2u h\u1ecfi c\u00f3 c\u00f4ng th\u1ee9c (ng\u1eebng d\u00f9ng)' },
+  { value: 'file_upload', label: 'N\u1ed9p file / \u1ea3nh b\u00e0i l\u00e0m (ng\u1eebng d\u00f9ng)' },
+];
 const OBJECTIVE_TYPES: BankQuestionType[] = [
   'multiple_choice',
   'true_false',
   'image_question',
-  'formula_question',
   'audio_question',
 ];
+const READING_SET_TYPES: BankQuestionType[] = [
+  'multiple_choice',
+  'true_false',
+  'fill_in_blank',
+];
+function normalizeQuestionType(type: BankQuestionType): BankQuestionType {
+  if (type === 'essay_short' || type === 'essay_long') return 'essay';
+  return type;
+}
+function questionTypeOptions(currentType: BankQuestionType) {
+  const normalizedType = normalizeQuestionType(currentType);
+  const legacyOption = LEGACY_QUESTION_TYPE_OPTIONS.find(option => option.value === normalizedType);
+  return legacyOption ? [...QUESTION_TYPE_OPTIONS, legacyOption] : QUESTION_TYPE_OPTIONS;
+}
 
 function emptyChoices(type: BankQuestionType): ChoiceRow[] {
   if (!OBJECTIVE_TYPES.includes(type)) return [];
@@ -122,6 +128,10 @@ function typeLabel(type: BankQuestionType, choices?: Array<{ isCorrect: boolean 
     const hasManyCorrect = (choices ?? []).filter(choice => Boolean(choice.isCorrect)).length > 1;
     return hasManyCorrect ? 'Trắc nghiệm nhiều đáp án' : 'Trắc nghiệm 1 đáp án';
   }
+  if (type === 'essay_short' || type === 'essay_long') return 'T\u1ef1 lu\u1eadn chung';
+  if (type === 'matching') return 'N\u1ed1i c\u1ed9t (ng\u1eebng d\u00f9ng)';
+  if (type === 'formula_question') return 'C\u00e2u h\u1ecfi c\u00f3 c\u00f4ng th\u1ee9c (ng\u1eebng d\u00f9ng)';
+  if (type === 'file_upload') return 'N\u1ed9p file / \u1ea3nh b\u00e0i l\u00e0m (ng\u1eebng d\u00f9ng)';
   return QUESTION_TYPE_OPTIONS.find(option => option.value === type)?.label ?? type;
 }
 
@@ -131,6 +141,32 @@ function parseLines(values?: string[] | null) {
 
 function parseCsv(values?: string[] | null) {
   return (values ?? []).join(', ');
+}
+
+function isSupportedMediaUrl(url: string, extensions: string[]) {
+  const normalized = url.trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized.startsWith('data:')) return true;
+  return extensions.some(extension => normalized.includes(extension));
+}
+
+function hasAllowedFileExtension(fileName: string, extensions: string[]) {
+  const normalized = fileName.trim().toLowerCase();
+  return extensions.some(extension => normalized.endsWith(extension));
+}
+
+function isAllowedMediaFile(file: File, mimeTypes: string[], extensions: string[]) {
+  const normalizedMime = file.type.trim().toLowerCase();
+  if (normalizedMime && mimeTypes.includes(normalizedMime)) return true;
+  return hasAllowedFileExtension(file.name, extensions);
+}
+
+interface ReadingPassageOption {
+  id: string;
+  title: string;
+  content: string;
+  questionCount: number;
+  maxOrder: number;
 }
 
 interface FormState {
@@ -147,7 +183,12 @@ interface FormState {
   matchingPairs: MatchingPair[];
   sampleAnswer: string;
   wordLimit: string;
-  gradingRubric: string;
+  useSharedPrompt: boolean;
+  readingMode: 'existing' | 'new';
+  readingSetId: string;
+  sharedPromptTitle: string;
+  sharedPrompt: string;
+  questionOrderInSet: string;
   promptAssetUrl: string;
   transcript: string;
   formulaLatex: string;
@@ -165,7 +206,12 @@ function emptyForm(): FormState {
     matchingPairs: [{ left: '', right: '' }, { left: '', right: '' }],
     sampleAnswer: '',
     wordLimit: '',
-    gradingRubric: '',
+    useSharedPrompt: false,
+    readingMode: 'existing',
+    readingSetId: '',
+    sharedPromptTitle: '',
+    sharedPrompt: '',
+    questionOrderInSet: '',
     promptAssetUrl: '',
     transcript: '',
     formulaLatex: '',
@@ -184,7 +230,7 @@ function formFromQuestion(q: QuestionResponse): FormState {
     content:     q.content,
     explanation: q.explanation ?? '',
     difficulty:  q.difficulty,
-    type:        q.type,
+    type:        normalizeQuestionType(q.type),
     choices:     q.choices.map(c => ({ content: c.content, isCorrect: !!c.isCorrect })),
     acceptedAnswersText: parseLines(metadata.acceptedAnswers),
     matchingPairs: metadata.matchingPairs?.length
@@ -192,7 +238,12 @@ function formFromQuestion(q: QuestionResponse): FormState {
       : [{ left: '', right: '' }, { left: '', right: '' }],
     sampleAnswer: metadata.sampleAnswer ?? '',
     wordLimit: metadata.wordLimit != null ? String(metadata.wordLimit) : '',
-    gradingRubric: metadata.gradingRubric ?? '',
+    useSharedPrompt: Boolean(metadata.readingSetId || metadata.sharedPrompt),
+    readingMode: metadata.readingSetId ? 'existing' : 'new',
+    readingSetId: metadata.readingSetId ?? '',
+    sharedPromptTitle: metadata.sharedPromptTitle ?? '',
+    sharedPrompt: metadata.sharedPrompt ?? '',
+    questionOrderInSet: metadata.questionOrderInSet != null ? String(metadata.questionOrderInSet) : '',
     promptAssetUrl: metadata.promptAssetUrl ?? '',
     transcript: metadata.transcript ?? '',
     formulaLatex: metadata.formulaLatex ?? '',
@@ -206,32 +257,68 @@ interface QuestionFormPanelProps {
   editing: QuestionResponse | null;
   categories: Category[];
   courses: TeacherCourseResponse[];
+  questions: QuestionResponse[];
   onClose: () => void;
   onSaved: () => void;
 }
 
-function QuestionFormPanel({ open, editing, categories, courses, onClose, onSaved }: QuestionFormPanelProps) {
+function QuestionFormPanel({ open, editing, categories, courses, questions, onClose, onSaved }: QuestionFormPanelProps) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [chapters, setChapters] = useState<TeacherChapterResponse[]>([]);
   const [loadingChapters, setLoadingChapters] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingAudio, setUploadingAudio] = useState(false);
+  const availableReadingPassages = useMemo(() => {
+    const grouped = new Map<string, ReadingPassageOption>();
+    const sourceQuestions = Array.isArray(questions) ? questions : [];
 
-  // Reset form khi mở mới hoặc đổi câu hỏi đang sửa
+    sourceQuestions.forEach(question => {
+      if (editing && question.id === editing.id) return;
+      const metadata = question.metadata;
+      const readingSetId = metadata?.readingSetId?.trim();
+      const sharedPrompt = metadata?.sharedPrompt?.trim();
+      if (!readingSetId || !sharedPrompt) return;
+      if (form.categoryId && question.categoryId !== form.categoryId) return;
+      if (form.grade && question.grade !== Number(form.grade)) return;
+      if (form.chapterId && question.chapterId !== form.chapterId) return;
+
+      const existing = grouped.get(readingSetId);
+      const questionOrder = metadata?.questionOrderInSet ?? 0;
+      if (existing) {
+        existing.questionCount += 1;
+        existing.maxOrder = Math.max(existing.maxOrder, questionOrder);
+        return;
+      }
+
+      grouped.set(readingSetId, {
+        id: readingSetId,
+        title: metadata?.sharedPromptTitle?.trim() || `Bài đọc ${grouped.size + 1}`,
+        content: sharedPrompt,
+        questionCount: 1,
+        maxOrder: questionOrder,
+      });
+    });
+
+    return Array.from(grouped.values()).sort((left, right) => left.title.localeCompare(right.title, 'vi'));
+  }, [questions, editing, form.categoryId, form.grade, form.chapterId]);
+
+  // Reset form when opening a new question or switching the edited question.
   useEffect(() => {
     if (!open) return;
     setForm(editing ? formFromQuestion(editing) : emptyForm());
     setChapters([]);
   }, [open, editing]);
 
-  // Load chapters + lock category khi chọn course
+  // Load chapters and sync derived course fields.
   useEffect(() => {
     if (!form.courseId) { setChapters([]); return; }
     setLoadingChapters(true);
     getCourseDetail(form.courseId)
       .then(detail => {
         setChapters(detail.chapters);
-        // Luôn auto-fill category từ course (bỏ điều kiện !editing cũ)
-        // — đảm bảo categoryId luôn khớp với course đang chọn
+        // Always auto-fill category from the selected course.
+        // This keeps categoryId aligned with the current course.
         if (detail.categoryId) {
           setForm(f => ({
             ...f,
@@ -268,7 +355,12 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
       matchingPairs: [{ left: '', right: '' }, { left: '', right: '' }],
       sampleAnswer: '',
       wordLimit: '',
-      gradingRubric: '',
+      useSharedPrompt: READING_SET_TYPES.includes(type) ? f.useSharedPrompt : false,
+      readingMode: READING_SET_TYPES.includes(type) ? f.readingMode : 'existing',
+      readingSetId: READING_SET_TYPES.includes(type) ? f.readingSetId : '',
+      sharedPromptTitle: READING_SET_TYPES.includes(type) ? f.sharedPromptTitle : '',
+      sharedPrompt: READING_SET_TYPES.includes(type) ? f.sharedPrompt : '',
+      questionOrderInSet: READING_SET_TYPES.includes(type) ? f.questionOrderInSet : '',
       promptAssetUrl: '',
       transcript: '',
       formulaLatex: '',
@@ -326,48 +418,108 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
     }));
   }
 
+  async function handleImageFileSelected(file?: File | null) {
+    if (!file) return;
+    if (!isAllowedMediaFile(
+      file,
+      ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
+      ['.jpg', '.jpeg', '.png', '.webp'],
+    )) {
+      notify.error('Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP');
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const uploaded = await questionService.uploadQuestionImage(file);
+      if (!uploaded.publicUrl) {
+        notify.error('Không nhận được đường dẫn ảnh sau khi tải lên');
+        return;
+      }
+      set('promptAssetUrl', uploaded.publicUrl);
+      notify.success('Đã tải ảnh lên');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Không tải được ảnh lên';
+      notify.error(message);
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  async function handleAudioFileSelected(file?: File | null) {
+    if (!file) return;
+    if (!isAllowedMediaFile(
+      file,
+      [
+        'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav',
+        'audio/ogg', 'audio/mp4', 'audio/x-m4a', 'audio/aac', 'audio/m4a',
+      ],
+      ['.mp3', '.wav', '.ogg', '.m4a', '.aac'],
+    )) {
+      notify.error('Chỉ hỗ trợ audio MP3, WAV, OGG, M4A hoặc AAC');
+      return;
+    }
+
+    setUploadingAudio(true);
+    try {
+      const uploaded = await questionService.uploadQuestionAudio(file);
+      if (!uploaded.publicUrl) {
+        notify.error('Không nhận được đường dẫn audio sau khi tải lên');
+        return;
+      }
+      set('promptAssetUrl', uploaded.publicUrl);
+      notify.success('Đã tải audio lên');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Không tải được audio lên';
+      notify.error(message);
+    } finally {
+      setUploadingAudio(false);
+    }
+  }
+
   function buildMetadata(): QuestionMetadata | null {
+    let metadata: QuestionMetadata | null = null;
+
     switch (form.type) {
       case 'fill_in_blank':
-        return {
+        metadata = {
           acceptedAnswers: form.acceptedAnswersText
             .split('\n')
             .map(value => value.trim())
             .filter(Boolean),
         };
+        break;
       case 'matching':
-        return {
+        metadata = {
           matchingPairs: form.matchingPairs
-            .map(pair => ({ left: pair.left.trim(), right: pair.right.trim() }))
-            .filter(pair => pair.left && pair.right),
+            .filter(pair => pair.left.trim() && pair.right.trim())
+            .map(pair => ({ left: pair.left.trim(), right: pair.right.trim() })),
         };
+        break;
       case 'essay':
-      case 'essay_short':
-        return {
+        metadata = {
           sampleAnswer: form.sampleAnswer.trim() || undefined,
-          wordLimit: form.wordLimit ? Number(form.wordLimit) : null,
+          wordLimit: form.wordLimit.trim() ? Number(form.wordLimit) : undefined,
         };
-      case 'essay_long':
-        return {
-          sampleAnswer: form.sampleAnswer.trim() || undefined,
-          wordLimit: form.wordLimit ? Number(form.wordLimit) : null,
-          gradingRubric: form.gradingRubric.trim() || undefined,
-        };
+        break;
       case 'image_question':
-        return {
+        metadata = {
           promptAssetUrl: form.promptAssetUrl.trim() || undefined,
         };
+        break;
       case 'formula_question':
-        return {
+        metadata = {
           formulaLatex: form.formulaLatex.trim() || undefined,
         };
+        break;
       case 'audio_question':
-        return {
+        metadata = {
           promptAssetUrl: form.promptAssetUrl.trim() || undefined,
           transcript: form.transcript.trim() || undefined,
         };
+        break;
       case 'file_upload':
-        return {
+        metadata = {
           allowedUploadTypes: form.allowedUploadTypesText
             .split(',')
             .map(value => value.trim())
@@ -375,15 +527,44 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
           maxFiles: form.maxFiles ? Number(form.maxFiles) : null,
           sampleAnswer: form.sampleAnswer.trim() || undefined,
         };
+        break;
       default:
-        return null;
+        metadata = null;
     }
+
+    if (form.useSharedPrompt && READING_SET_TYPES.includes(form.type)) {
+      const selectedReading = availableReadingPassages.find(option => option.id === form.readingSetId);
+      const generatedReadingSetId = `reading-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const isExistingReading = form.readingMode === 'existing';
+      const resolvedReadingSetId = isExistingReading
+        ? form.readingSetId.trim()
+        : (form.readingSetId.trim() || generatedReadingSetId);
+      const resolvedOrder = form.questionOrderInSet.trim()
+        ? Number(form.questionOrderInSet)
+        : (isExistingReading ? ((selectedReading?.maxOrder ?? 0) + 1) : 1);
+
+      metadata = {
+        ...(metadata ?? {}),
+        readingSetId: resolvedReadingSetId,
+        sharedPromptTitle: isExistingReading
+          ? (selectedReading?.title || undefined)
+          : (form.sharedPromptTitle.trim() || undefined),
+        sharedPrompt: isExistingReading
+          ? (selectedReading?.content || undefined)
+          : (form.sharedPrompt.trim() || undefined),
+        questionOrderInSet: resolvedOrder,
+      };
+    }
+
+    return metadata && Object.values(metadata).some(value => value != null && value !== '' && (!Array.isArray(value) || value.length > 0))
+      ? metadata
+      : null;
   }
 
   function removeChoice(idx: number) {
     setForm(f => {
       const choices = f.choices.filter((_, i) => i !== idx);
-      // Nếu đáp án đúng bị xóa, đặt đáp án đầu tiên là đúng
+      // If the correct answer was removed, keep the first remaining answer selected.
       const hasCorrect = choices.some(c => c.isCorrect);
       if (!hasCorrect && choices.length > 0 && f.type === 'true_false') choices[0].isCorrect = true;
       return { ...f, choices };
@@ -399,8 +580,12 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
     if (form.type === 'true_false' && form.choices.filter(c => c.isCorrect).length !== 1) { notify.error('Câu đúng/sai phải có đúng 1 đáp án đúng'); return; }
     if (form.type === 'fill_in_blank' && !form.acceptedAnswersText.trim()) { notify.error('Vui lòng nhập ít nhất 1 đáp án chấp nhận cho câu điền chỗ trống'); return; }
     if (form.type === 'matching' && form.matchingPairs.filter(pair => pair.left.trim() && pair.right.trim()).length < 2) { notify.error('Vui lòng tạo ít nhất 2 cặp nối cột hợp lệ'); return; }
-    if (form.type === 'image_question' && !form.promptAssetUrl.trim()) { notify.error('Vui lòng nhập URL hình ảnh cho câu hỏi'); return; }
-    if (form.type === 'audio_question' && !form.promptAssetUrl.trim()) { notify.error('Vui lòng nhập URL audio cho câu hỏi'); return; }
+    if (form.type === 'image_question' && !form.promptAssetUrl.trim()) { notify.error('Vui lòng tải ảnh lên cho câu hỏi'); return; }
+    if (form.type === 'audio_question' && !form.promptAssetUrl.trim()) { notify.error('Vui lòng tải audio lên cho câu hỏi'); return; }
+    if (form.useSharedPrompt && READING_SET_TYPES.includes(form.type) && form.readingMode === 'existing' && !form.readingSetId.trim()) { notify.error('Vui lòng chọn bài đọc'); return; }
+    if (form.useSharedPrompt && READING_SET_TYPES.includes(form.type) && form.readingMode === 'new' && !form.sharedPromptTitle.trim()) { notify.error('Vui lòng nhập tiêu đề bài đọc'); return; }
+    if (form.useSharedPrompt && READING_SET_TYPES.includes(form.type) && form.readingMode === 'new' && !form.sharedPrompt.trim()) { notify.error('Vui lòng nhập nội dung bài đọc'); return; }
+    if (form.useSharedPrompt && READING_SET_TYPES.includes(form.type) && form.questionOrderInSet.trim() && Number(form.questionOrderInSet) < 1) { notify.error('Thứ tự câu trong bài đọc phải lớn hơn 0'); return; }
     if (form.type === 'formula_question' && !form.formulaLatex.trim() && !form.content.includes('$')) { notify.error('Vui lòng nhập công thức hoặc chèn công thức trực tiếp vào nội dung câu hỏi'); return; }
     if (form.type === 'file_upload' && !form.allowedUploadTypesText.trim()) { notify.error('Vui lòng nhập loại file được phép nộp'); return; }
 
@@ -413,7 +598,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
       content:     form.content.trim(),
       explanation: form.explanation.trim() || undefined,
       difficulty:  form.difficulty,
-      type:        form.type,
+      type:        normalizeQuestionType(form.type),
       metadata,
       choices:     OBJECTIVE_TYPES.includes(form.type)
         ? form.choices.map(c => ({ content: c.content.trim(), isCorrect: c.isCorrect }))
@@ -474,10 +659,10 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
               </button>
             </div>
 
-            {/* Body — scrollable */}
+            {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-              {/* Khóa học → Chương (ưu tiên chọn trước) */}
+              {/* Course and chapter */}
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-sm font-bold text-on-surface mb-1.5">Khóa học</label>
@@ -502,7 +687,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                       disabled={!form.courseId || loadingChapters}
                       className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
                     >
-                      <option value="">-- Cấp môn học --</option>
+                      <option value="">-- Chọn chương --</option>
                       {chapters.map(ch => <option key={ch.id} value={ch.id}>{truncate(ch.title, 40)}</option>)}
                     </select>
                     {loadingChapters
@@ -536,7 +721,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                 </div>
               </div>
 
-              {/* Môn học — locked khi đã chọn course */}
+              {/* Subject */}
               <div>
                 <label className="block text-sm font-bold text-on-surface mb-1.5">
                   Môn học <span className="text-red-500">*</span>
@@ -562,7 +747,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                   </p>
                 )}
               </div>
-              {/* Loại câu hỏi */}
+              {/* Question type */}
               <div>
                 <label className="block text-sm font-bold text-on-surface mb-1.5">Loại câu hỏi</label>
                 <div className="relative">
@@ -571,7 +756,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                     onChange={e => handleTypeChange(e.target.value as BankQuestionType)}
                     className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
                   >
-                    {QUESTION_TYPE_OPTIONS.map(option => (
+                    {questionTypeOptions(form.type).map(option => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -579,7 +764,111 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                 </div>
               </div>
 
-              {/* Nội dung câu hỏi */}
+              {READING_SET_TYPES.includes(form.type) && (
+                <div className="space-y-3 rounded-2xl border border-primary/15 bg-primary/5 p-4">
+                  <label className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={form.useSharedPrompt}
+                      onChange={e => {
+                        const enabled = e.target.checked;
+                        setForm(f => ({
+                          ...f,
+                          useSharedPrompt: enabled,
+                          readingMode: enabled ? f.readingMode : 'existing',
+                          readingSetId: enabled ? f.readingSetId : '',
+                          sharedPromptTitle: enabled ? f.sharedPromptTitle : '',
+                          sharedPrompt: enabled ? f.sharedPrompt : '',
+                          questionOrderInSet: enabled ? f.questionOrderInSet : '',
+                        }));
+                      }}
+                      className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary"
+                    />
+                    <span className="text-sm font-bold text-on-surface">Thuộc bài đọc</span>
+                  </label>
+
+                  {form.useSharedPrompt && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-bold text-on-surface mb-1.5">Tiêu đề bài đọc</label>
+                        <div className="relative">
+                          <select
+                            value={form.readingMode === 'new' ? '__new__' : form.readingSetId}
+                            onChange={e => {
+                              const value = e.target.value;
+                              if (value === '__new__') {
+                                setForm(f => ({
+                                  ...f,
+                                  readingMode: 'new',
+                                  readingSetId: '',
+                                  sharedPromptTitle: '',
+                                  sharedPrompt: '',
+                                  questionOrderInSet: '',
+                                }));
+                                return;
+                              }
+                              const selectedReading = availableReadingPassages.find(option => option.id === value);
+                              setForm(f => ({
+                                ...f,
+                                readingMode: 'existing',
+                                readingSetId: value,
+                                sharedPromptTitle: selectedReading?.title ?? '',
+                                sharedPrompt: selectedReading?.content ?? '',
+                                questionOrderInSet: selectedReading ? String(selectedReading.maxOrder + 1) : '',
+                              }));
+                            }}
+                            className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                          >
+                            <option value="">-- Chọn bài đọc --</option>
+                            {availableReadingPassages.map(option => (
+                              <option key={option.id} value={option.id}>
+                                {option.title} ({option.questionCount} câu)
+                              </option>
+                            ))}
+                            <option value="__new__">+ Tạo bài đọc mới</option>
+                          </select>
+                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
+                        </div>
+                        <p className="mt-1 text-xs text-on-surface-variant">
+                          Nếu chọn bài đọc đã có, hệ thống sẽ tự gắn câu hỏi vào cùng nhóm bài đọc đó.
+                        </p>
+                      </div>
+
+                      {form.readingMode === 'new' && (
+                        <>
+                          <div>
+                            <label className="block text-sm font-bold text-on-surface mb-1.5">
+                              Tiêu đề bài đọc mới <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={form.sharedPromptTitle}
+                              onChange={e => set('sharedPromptTitle', e.target.value)}
+                              placeholder="Ví dụ: Bài đọc 1"
+                              className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-bold text-on-surface mb-1.5">
+                              Nội dung bài đọc <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                              value={form.sharedPrompt}
+                              onChange={e => set('sharedPrompt', e.target.value)}
+                              rows={6}
+                              placeholder="Nhập nội dung bài đọc dùng chung cho các câu hỏi..."
+                              className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary resize-y"
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Question content */}
               <div>
                 <label className="block text-sm font-bold text-on-surface mb-1.5">
                   Nội dung câu hỏi <span className="text-red-500">*</span>
@@ -593,7 +882,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                 />
               </div>
 
-              {/* Độ khó */}
+              {/* Difficulty */}
               <div>
                 <label className="block text-sm font-bold text-on-surface mb-1.5">Độ khó</label>
                 <div className="flex gap-2">
@@ -661,7 +950,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                           />
                         )}
 
-                        {form.type === 'multiple_choice' && form.choices.length > 2 && (
+                        {['multiple_choice', 'image_question', 'audio_question'].includes(form.type) && form.choices.length > 2 && (
                           <button
                             type="button"
                             onClick={() => removeChoice(idx)}
@@ -674,7 +963,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                     ))}
                   </div>
 
-                  {form.type === 'multiple_choice' && form.choices.length < 6 && (
+                  {['multiple_choice', 'image_question', 'audio_question'].includes(form.type) && form.choices.length < 6 && (
                     <button
                       type="button"
                       onClick={addChoice}
@@ -746,7 +1035,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                 </div>
               )}
 
-              {(form.type === 'essay' || form.type === 'essay_short' || form.type === 'essay_long') && (
+              {form.type === 'essay' && (
                 <>
                   <div>
                     <label className="block text-sm font-bold text-on-surface mb-1.5">Bài mẫu / đáp án gợi ý</label>
@@ -771,39 +1060,89 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                       />
                     </div>
                   </div>
-                  {form.type === 'essay_long' && (
-                    <div>
-                      <label className="block text-sm font-bold text-on-surface mb-1.5">Rubric chấm điểm</label>
-                      <textarea
-                        value={form.gradingRubric}
-                        onChange={e => set('gradingRubric', e.target.value)}
-                        rows={4}
-                        placeholder="Mô tả tiêu chí chấm điểm cho bài tự luận dài..."
-                        className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary resize-none"
-                      />
-                    </div>
-                  )}
                 </>
               )}
 
               {form.type === 'image_question' && (
-                <div>
-                  <label className="block text-sm font-bold text-on-surface mb-1.5">
-                    URL hình ảnh <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={form.promptAssetUrl}
-                    onChange={e => set('promptAssetUrl', e.target.value)}
-                    placeholder="https://.../image.png"
-                    className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
-                  />
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center flex-shrink-0">
+                        <ImageIcon className="w-4.5 h-4.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-sky-900">Câu hỏi có hình ảnh</p>
+                        <p className="text-xs text-sky-700 mt-1">
+                          Dùng khi học sinh cần quan sát hình rồi chọn đáp án. Hãy nhập liên kết ảnh công khai
+                          có thể truy cập trực tiếp.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-on-surface mb-1.5">
+                      Tải ảnh câu hỏi <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <label className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-outline-variant bg-surface-container text-sm font-bold text-on-surface cursor-pointer hover:bg-surface-container-high transition-colors">
+                        {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
+                        {uploadingImage ? 'Đang tải ảnh...' : 'Chọn ảnh và tải lên'}
+                        <input
+                          type="file"
+                          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                          className="hidden"
+                          disabled={uploadingImage}
+                          onChange={e => void handleImageFileSelected(e.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      {form.promptAssetUrl && (
+                        <button
+                          type="button"
+                          onClick={() => set('promptAssetUrl', '')}
+                          className="text-sm font-bold text-red-500 hover:underline text-left"
+                        >
+                          Xóa ảnh đã chọn
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-on-surface-variant">
+                      Hỗ trợ JPG, PNG, WEBP. Hệ thống sẽ tự tải file lên storage, bạn không cần nhập URL.
+                    </p>
+                  </div>
+
+                  {form.promptAssetUrl.trim() && (
+                    <div className="rounded-2xl border border-outline-variant/40 bg-surface-container p-3 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-bold text-on-surface">Xem trước hình ảnh</p>
+                        <a
+                          href={form.promptAssetUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline"
+                        >
+                          Mở liên kết <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                      {isSupportedMediaUrl(form.promptAssetUrl, ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']) ? (
+                        <img
+                          src={form.promptAssetUrl}
+                          alt="Xem trước câu hỏi hình ảnh"
+                          className="w-full max-h-72 object-contain rounded-xl border border-outline-variant/30 bg-white"
+                        />
+                      ) : (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          Chưa thể xác nhận đây là link ảnh hợp lệ. Bạn vẫn có thể lưu nếu đường dẫn đúng.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
               {form.type === 'formula_question' && (
                 <div>
-                  <label className="block text-sm font-bold text-on-surface mb-1.5">Công thức LaTeX</label>
+                    <label className="block text-sm font-bold text-on-surface mb-1.5">Công thức LaTeX</label>
                   <textarea
                     value={form.formulaLatex}
                     onChange={e => set('formulaLatex', e.target.value)}
@@ -816,25 +1155,90 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
 
               {form.type === 'audio_question' && (
                 <>
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                        <Headphones className="w-4.5 h-4.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-emerald-900">Câu hỏi nghe audio</p>
+                        <p className="text-xs text-emerald-700 mt-1">
+                          Dùng cho bài nghe. Học sinh sẽ nghe file audio rồi chọn đáp án đúng.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-bold text-on-surface mb-1.5">
-                      URL audio <span className="text-red-500">*</span>
+                      Tải audio câu hỏi <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="text"
-                      value={form.promptAssetUrl}
-                      onChange={e => set('promptAssetUrl', e.target.value)}
-                      placeholder="https://.../audio.mp3"
-                      className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
-                    />
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <label className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-outline-variant bg-surface-container text-sm font-bold text-on-surface cursor-pointer hover:bg-surface-container-high transition-colors">
+                        {uploadingAudio ? <Loader2 className="w-4 h-4 animate-spin" /> : <Headphones className="w-4 h-4" />}
+                        {uploadingAudio ? 'Đang tải audio...' : 'Chọn audio và tải lên'}
+                        <input
+                          type="file"
+                          accept=".mp3,.wav,.ogg,.m4a,.aac,audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/ogg,audio/mp4,audio/x-m4a,audio/aac,audio/m4a"
+                          className="hidden"
+                          disabled={uploadingAudio}
+                          onChange={e => void handleAudioFileSelected(e.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      {form.promptAssetUrl && (
+                        <button
+                          type="button"
+                          onClick={() => set('promptAssetUrl', '')}
+                          className="text-sm font-bold text-red-500 hover:underline text-left"
+                        >
+                          Xóa audio đã chọn
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-on-surface-variant">
+                      Hỗ trợ MP3, WAV, OGG, M4A, AAC. Hệ thống sẽ tự tải file lên storage, bạn không cần nhập URL.
+                    </p>
                   </div>
+
+                  {form.promptAssetUrl.trim() && (
+                    <div className="rounded-2xl border border-outline-variant/40 bg-surface-container p-3 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-bold text-on-surface">Xem trước audio</p>
+                        <a
+                          href={form.promptAssetUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline"
+                        >
+                          Mở liên kết <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                      {isSupportedMediaUrl(form.promptAssetUrl, ['.mp3', '.wav', '.ogg', '.m4a']) ? (
+                        <audio
+                          controls
+                          preload="none"
+                          className="w-full"
+                          src={form.promptAssetUrl}
+                        >
+                          Trình duyệt không hỗ trợ phát audio.
+                        </audio>
+                      ) : (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          Chưa thể xác nhận đây là link audio hợp lệ. Bạn vẫn có thể lưu nếu đường dẫn đúng.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div>
-                    <label className="block text-sm font-bold text-on-surface mb-1.5">Transcript</label>
+                    <label className="block text-sm font-bold text-on-surface mb-1.5">
+                      Transcript <span className="text-xs font-normal text-on-surface-variant">(khuyến nghị)</span>
+                    </label>
                     <textarea
                       value={form.transcript}
                       onChange={e => set('transcript', e.target.value)}
-                      rows={3}
-                      placeholder="Nội dung audio để hỗ trợ biên tập hoặc chấm điểm..."
+                      rows={4}
+                      placeholder="Nhập nội dung lời nghe để hỗ trợ biên tập, kiểm tra và tái sử dụng..."
                       className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary resize-none"
                     />
                   </div>
@@ -880,7 +1284,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
                 </>
               )}
 
-              {/* Giải thích */}
+              {/* Explanation */}
               <div>
                 <label className="block text-sm font-bold text-on-surface mb-1.5">
                   Giải thích <span className="text-xs font-normal text-on-surface-variant">(tùy chọn)</span>
@@ -919,9 +1323,7 @@ function QuestionFormPanel({ open, editing, categories, courses, onClose, onSave
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  CONFIRM DELETE DIALOG
-// ═══════════════════════════════════════════════════════════════════
+// Confirm delete dialog
 
 function ConfirmDeleteDialog({
   question, onConfirm, onCancel,
@@ -1008,9 +1410,7 @@ function ConfirmBulkDeleteDialog({
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  MAIN PAGE
-// ═══════════════════════════════════════════════════════════════════
+// Main page
 
 const DIFFICULTY_OPTS = [
   { value: 'all'   as const, label: 'Tất cả độ khó' },
@@ -1026,7 +1426,7 @@ const STATUS_OPTS = [
 ];
 
 const QUESTION_TYPE_FILTER_OPTS: Array<{ value: BankQuestionType | 'all'; label: string }> = [
-  { value: 'all', label: 'Táº¥t cáº£ loáº¡i cÃ¢u há»i' },
+  { value: 'all', label: 'Tất cả loại câu hỏi' },
   ...QUESTION_TYPE_OPTIONS,
 ];
 
@@ -1041,20 +1441,20 @@ export default function QuestionBankPage() {
   const logout  = useAuthStore(s => s.logout);
   const user    = useAuthStore(s => s.user);
 
-  // ── Data ──────────────────────────────────────────────────────
+  // Data
   const [questions,   setQuestions]   = useState<QuestionResponse[]>([]);
-  // totalItems: tổng số câu hỏi từ BE (bao gồm những câu ngoài giới hạn fetch).
-  // Dùng để cảnh báo GV khi danh sách bị cắt (fetch size 200 < totalItems).
+  // totalItems stores the real total from the backend, even when the fetch is limited.
+  // It is used to warn teachers when the current client list is truncated.
   const [totalItems,  setTotalItems]  = useState(0);
   const [categories,  setCategories]  = useState<Category[]>([]);
   const [courses,     setCourses]     = useState<TeacherCourseResponse[]>([]);
   const [allChapters, setAllChapters] = useState<TeacherChapterResponse[]>([]);
 
-  // ── Loading ───────────────────────────────────────────────────
+  // Loading
   const [loadingQ,    setLoadingQ]    = useState(true);
   const [loadingMeta, setLoadingMeta] = useState(true);
 
-  // ── Filters ───────────────────────────────────────────────────
+  // Filters
   const [diffFilter,    setDiffFilter]    = useState<Difficulty | 'all'>('all');
   const [statusFilter,  setStatusFilter]  = useState<QuestionStatus | 'all'>('all');
   const [typeFilter,    setTypeFilter]    = useState<BankQuestionType | 'all'>('all');
@@ -1063,7 +1463,7 @@ export default function QuestionBankPage() {
   const [courseFilter,  setCourseFilter]  = useState('');
   const [chapterFilter, setChapterFilter] = useState('');
 
-  // ── Panel / dialog state ──────────────────────────────────────
+  // Panel and dialog state
   const [isSidebarOpen,  setIsSidebarOpen]  = useState(false);
   const [panelOpen,      setPanelOpen]      = useState(false);
   const [importOpen,     setImportOpen]     = useState(false);
@@ -1074,9 +1474,8 @@ export default function QuestionBankPage() {
   const [bulkDeleting,   setBulkDeleting]   = useState(false);
   const [selectedIds,    setSelectedIds]    = useState<string[]>([]);
 
-  // ── Load metadata (categories + courses) once ─────────────────
-  // cancelled flag ngăn StrictMode double-invoke: lần mount đầu bị unmount trước
-  // khi Promise.all xong → cancelled=true → setState bị bỏ qua → không spam toast.
+  // Load metadata (categories and courses) once.
+  // The cancelled flag prevents duplicate StrictMode side effects and stale state updates.
   useEffect(() => {
     let cancelled = false;
     Promise.all([
@@ -1093,7 +1492,7 @@ export default function QuestionBankPage() {
     return () => { cancelled = true; };
   }, []);
 
-  // ── Load chapters khi chọn course filter ──────────────────────
+  // Load chapters when a course filter is selected.
   useEffect(() => {
     if (!courseFilter) { setAllChapters([]); setChapterFilter(''); return; }
     getCourseDetail(courseFilter)
@@ -1106,19 +1505,13 @@ export default function QuestionBankPage() {
     setChapterFilter('');
   }, [courseFilter]);
 
-  // Giới hạn fetch một lần — nếu ngân hàng vượt quá con số này thì hiện cảnh báo.
+  // Per-request fetch limit for the question bank.
   const FETCH_LIMIT = 200;
 
-  // refreshKey: tăng lên 1 để trigger reload thủ công (sau delete/save).
-  // Tách riêng khỏi logic fetch để không tạo vòng lặp phụ thuộc.
+  // refreshKey is incremented to trigger a manual reload after save/delete actions.
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // ── Load questions ────────────────────────────────────────────
-  // Dùng useEffect với cleanup (cancelled flag) thay vì useCallback + useEffect.
-  // Lý do: useCallback + useEffect(() => { fn() }, [fn]) vẫn double-fire trong
-  // StrictMode vì cleanup chỉ cancel fn reference cũ, không cancel in-flight request.
-  // cancelled flag đảm bảo chỉ lần mount cuối cùng (lần thứ 2 trong StrictMode)
-  // mới setState và show toast — lần mount đầu bị cleanup trước khi Promise resolve.
+  // Load questions with a cancellable effect to avoid stale updates in StrictMode.
   useEffect(() => {
     let cancelled = false;
     setLoadingQ(true);
@@ -1143,7 +1536,7 @@ export default function QuestionBankPage() {
         });
         setQuestions(filteredItems);
         setSelectedIds(prev => prev.filter(id => filteredItems.some(q => q.id === id)));
-        // Lưu tổng số thật từ BE để phát hiện trường hợp bị cắt ngầm
+        // Save the backend total to detect silent truncation at the fetch limit.
         setTotalItems(pageResult.totalItems);
       })
       .catch(() => { if (!cancelled) notify.error('Không tải được danh sách câu hỏi'); })
@@ -1152,8 +1545,7 @@ export default function QuestionBankPage() {
     return () => { cancelled = true; };
   }, [diffFilter, statusFilter, categoryFilter, gradeFilter, chapterFilter, refreshKey]);
 
-  // Dùng useCallback để các event handler (delete, save) có thể gọi reload.
-  // Không chứa logic fetch — chỉ trigger lại useEffect bên trên qua refreshKey.
+  // Expose a stable reload callback for save/delete flows.
   const loadQuestions = useCallback(() => setRefreshKey(k => k + 1), []);
 
   const filteredQuestions = typeFilter === 'all'
@@ -1164,7 +1556,7 @@ export default function QuestionBankPage() {
     setSelectedIds(prev => prev.filter(id => filteredQuestions.some(question => question.id === id)));
   }, [filteredQuestions]);
 
-  // ── Actions ───────────────────────────────────────────────────
+  // Actions
   function openAdd()  { setEditingQ(null); setPanelOpen(true); }
   function openEdit(q: QuestionResponse) { setEditingQ(q); setPanelOpen(true); }
 
@@ -1215,7 +1607,7 @@ export default function QuestionBankPage() {
 
   function handleLogout() { logout(); navigate('/login'); }
 
-  // ── Stats ──────────────────────────────────────────────────────
+  // Stats
   const stats = {
     total:  filteredQuestions.length,
     easy:   filteredQuestions.filter(q => q.difficulty === 'easy').length,
@@ -1225,9 +1617,7 @@ export default function QuestionBankPage() {
 
   const hasFilter = diffFilter !== 'all' || statusFilter !== 'all' || typeFilter !== 'all' || categoryFilter || gradeFilter || courseFilter || chapterFilter;
 
-  // ═══════════════════════════════════════════════════════════════
-  //  RENDER
-  // ═══════════════════════════════════════════════════════════════
+  // Render
   return (
     <div className="min-h-screen bg-surface flex font-sans">
 
@@ -1466,10 +1856,10 @@ export default function QuestionBankPage() {
             )}
           </motion.div>
 
-          {/* Cảnh báo khi ngân hàng vượt giới hạn fetch — GV cần dùng filter để thu hẹp */}
+          {/* Cảnh báo khi ngân hàng vượt giới hạn fetch để giáo viên thu hẹp bằng bộ lọc. */}
           {!loadingQ && totalItems > FETCH_LIMIT && (
             <div className="mb-4 flex items-start gap-2 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-sm text-amber-700">
-              <span className="font-bold whitespace-nowrap">⚠ Lưu ý:</span>
+              <span className="font-bold whitespace-nowrap">Lưu ý:</span>
               <span>
                 Ngân hàng có <strong>{totalItems}</strong> câu hỏi nhưng chỉ hiển thị{' '}
                 <strong>{FETCH_LIMIT}</strong> câu đầu tiên.
@@ -1566,12 +1956,12 @@ export default function QuestionBankPage() {
                             </td>
                             <td className="px-4 py-3"><DifficultyBadge difficulty={q.difficulty} /></td>
                             <td className="px-4 py-3 text-on-surface-variant hidden md:table-cell text-xs">
-                              {q.chapterTitle ?? <span className="opacity-30">—</span>}
+                              {q.chapterTitle ?? <span className="opacity-30">-</span>}
                             </td>
                             <td className="px-4 py-3 hidden md:table-cell">
                               {q.categoryName
                                 ? <span className="text-xs font-medium bg-primary/10 text-primary px-2 py-1 rounded-full">{q.categoryName}</span>
-                                : <span className="text-on-surface-variant/30 text-xs">—</span>}
+                                : <span className="text-on-surface-variant/30 text-xs">-</span>}
                             </td>
                             <td className="px-4 py-3 text-center hidden lg:table-cell">
                               <span className={`font-bold text-sm ${q.usageCount > 0 ? 'text-primary' : 'text-on-surface-variant/40'}`}>
@@ -1621,6 +2011,7 @@ export default function QuestionBankPage() {
         editing={editingQ}
         categories={categories}
         courses={courses}
+        questions={questions}
         onClose={() => setPanelOpen(false)}
         onSaved={loadQuestions}
       />

@@ -39,13 +39,8 @@ public class QuestionBankSchemaMigration implements ApplicationRunner {
         for (String type : new String[] {
                 "essay",
                 "fill_in_blank",
-                "matching",
-                "essay_short",
-                "essay_long",
                 "image_question",
-                "formula_question",
-                "audio_question",
-                "file_upload"
+                "audio_question"
         }) {
             jdbcTemplate.execute("""
                     DO $$

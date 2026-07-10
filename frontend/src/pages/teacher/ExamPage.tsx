@@ -38,6 +38,7 @@ import type {
   ExamConfigResponse,
   ExamQuestionPayload,
 } from '../../api/examService';
+import type { QuestionMetadata, QuestionType } from '../../api/questionService';
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle,
   Bell, LogOut, Menu, X, Trash2,
@@ -52,9 +53,6 @@ import {
 //  PHẦN 1 — TYPES
 // ═══════════════════════════════════════════════════════════════════
 
-// 2 loại câu hỏi (giống Quiz chương)
-type QuestionType = 'single' | 'multiple' | 'essay';
-
 // Mức độ khó của câu hỏi — đặc thù của Exam
 // Lý do thêm: bài kiểm tra cần phân bố câu Dễ/TB/Khó hợp lý
 // để đánh giá đúng năng lực HS, không phải tất cả cùng mức.
@@ -66,6 +64,7 @@ interface ExamQuestion {
   type: QuestionType;
   options: string[];
   correctIndices: number[];
+  metadata?: QuestionMetadata | null;
   explanation?: string;
   points: number;
   difficulty: Difficulty;  // ← thêm so với Quiz
@@ -150,10 +149,63 @@ function formatPoints(points: number): string {
   return points.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
 }
 
+const OBJECTIVE_EXAM_TYPES: QuestionType[] = [
+  'multiple_choice',
+  'true_false',
+  'image_question',
+  'formula_question',
+  'audio_question',
+];
+
+const TEXT_ANSWER_EXAM_TYPES: QuestionType[] = [
+  'fill_in_blank',
+  'matching',
+];
+
+const MANUAL_EXAM_TYPES: QuestionType[] = [
+  'essay',
+  'essay_short',
+  'essay_long',
+  'file_upload',
+];
+
+const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
+  multiple_choice: 'Trắc nghiệm',
+  true_false: 'Đúng / Sai',
+  fill_in_blank: 'Điền chỗ trống',
+  matching: 'Nối cột',
+  essay: 'Tự luận',
+  essay_short: 'Tự luận ngắn',
+  essay_long: 'Tự luận dài',
+  image_question: 'Câu hỏi hình ảnh',
+  formula_question: 'Câu hỏi công thức',
+  audio_question: 'Câu hỏi audio',
+  file_upload: 'Nộp file / ảnh',
+};
+
+function isObjectiveExamType(type: QuestionType) {
+  return OBJECTIVE_EXAM_TYPES.includes(type);
+}
+
+function isTextAnswerExamType(type: QuestionType) {
+  return TEXT_ANSWER_EXAM_TYPES.includes(type);
+}
+
+function isManualExamType(type: QuestionType) {
+  return MANUAL_EXAM_TYPES.includes(type);
+}
+
+function questionTypeLabel(type: QuestionType, correctCount = 0) {
+  if (type === 'multiple_choice') {
+    return correctCount > 1 ? 'Trắc nghiệm nhiều đáp án' : 'Trắc nghiệm 1 đáp án';
+  }
+  return QUESTION_TYPE_LABELS[type];
+}
+
 function orderExamQuestionsObjectiveFirst(questions: ExamQuestion[]): ExamQuestion[] {
   return [
-    ...questions.filter(question => question.type !== 'essay'),
-    ...questions.filter(question => question.type === 'essay'),
+    ...questions.filter(question => !isManualExamType(question.type)),
+    ...questions.filter(question => isManualExamType(question.type)),
   ];
 }
 
@@ -287,10 +339,10 @@ function defaultPlacementIndex(slotIndex: number, chapterCount: number): number 
 function examFromResponse(response: ExamConfigResponse): Exam {
   const questions = response.questions.map(questionFromPayload);
   const objectiveSectionPoints = questions
-    .filter(question => question.type !== 'essay')
+    .filter(question => !isManualExamType(question.type))
     .reduce((sum, question) => sum + question.points, 0);
   const essaySectionPoints = questions
-    .filter(question => question.type === 'essay')
+    .filter(question => isManualExamType(question.type))
     .reduce((sum, question) => sum + question.points, 0);
   return {
     name: response.name,
@@ -316,6 +368,7 @@ function questionFromPayload(payload: ExamQuestionPayload): ExamQuestion {
     type: payload.type,
     options: [...(payload.options ?? [])],
     correctIndices: [...(payload.correctIndices ?? [])],
+    metadata: payload.metadata ?? null,
     explanation: payload.explanation ?? '',
     points: payload.points,
     difficulty: payload.difficulty,
@@ -338,8 +391,9 @@ function examToRequest(exam: Exam): ExamConfigRequest {
       id: q.id,
       text: q.text.trim(),
       type: q.type,
-      options: q.type === 'essay' ? [] : q.options.map(opt => opt.trim()),
-      correctIndices: q.type === 'essay' ? [] : q.correctIndices,
+      options: isObjectiveExamType(q.type) ? q.options.map(opt => opt.trim()) : [],
+      correctIndices: isObjectiveExamType(q.type) ? q.correctIndices : [],
+      metadata: q.metadata ?? null,
       explanation: q.explanation?.trim() || null,
       points: q.points,
       difficulty: q.difficulty,
@@ -401,13 +455,13 @@ function ExamQuestionCard({ question, index, onChange, onDelete }: ExamQuestionC
 
   // ── Thêm 1 lựa chọn rỗng ────────────────────────────────────
   function addOption() {
-    if (question.type === 'essay') return;
+    if (!isObjectiveExamType(question.type)) return;
     onChange({ ...question, options: [...question.options, ''] });
   }
 
   // ── Sửa nội dung 1 option ───────────────────────────────────
   function updateOption(optionIdx: number, value: string) {
-    if (question.type === 'essay') return;
+    if (!isObjectiveExamType(question.type)) return;
     onChange({
       ...question,
       options: question.options.map((opt, i) => i === optionIdx ? value : opt),
@@ -420,7 +474,7 @@ function ExamQuestionCard({ question, index, onChange, onDelete }: ExamQuestionC
   //   - bỏ index vừa xóa
   //   - giảm các index lớn hơn xuống 1 (vì array thu nhỏ)
   function removeOption(optionIdx: number) {
-    if (question.type === 'essay') return;
+    if (!isObjectiveExamType(question.type)) return;
     if (question.options.length <= 2) {
       notify.error('Câu hỏi phải có ít nhất 2 lựa chọn');
       return;
@@ -436,8 +490,8 @@ function ExamQuestionCard({ question, index, onChange, onDelete }: ExamQuestionC
   // single: chỉ giữ 1 index → set [optionIdx]
   // multiple: toggle thêm/bỏ index
   function toggleCorrect(optionIdx: number) {
-    if (question.type === 'essay') return;
-    if (question.type === 'single') {
+    if (!isObjectiveExamType(question.type)) return;
+    if (question.type === 'true_false') {
       onChange({ ...question, correctIndices: [optionIdx] });
     } else {
       const isCorrect = question.correctIndices.includes(optionIdx);
@@ -450,19 +504,6 @@ function ExamQuestionCard({ question, index, onChange, onDelete }: ExamQuestionC
 
   // ── Đổi loại câu hỏi ───────────────────────────────────────
   // Multiple → single: chỉ giữ đáp án đúng đầu tiên
-  function changeType(newType: QuestionType) {
-    if (newType === 'essay') {
-      onChange({ ...question, type: newType, options: [], correctIndices: [] });
-      return;
-    }
-    let newCorrect = question.correctIndices;
-    let newOptions = question.options.length >= 2 ? question.options : ['', ''];
-    if (newType === 'single' && question.correctIndices.length > 1) {
-      newCorrect = [question.correctIndices[0]];
-    }
-    onChange({ ...question, type: newType, options: newOptions, correctIndices: newCorrect });
-  }
-
   return (
     <div className="border border-outline-variant/40 rounded-xl bg-surface-container/30 overflow-hidden">
 
@@ -488,7 +529,7 @@ function ExamQuestionCard({ question, index, onChange, onDelete }: ExamQuestionC
 
         {/* Badge loại */}
         <span className="text-xs font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full whitespace-nowrap">
-          {question.type === 'single' ? '1 đáp án' : 'Nhiều đáp án'}
+          {questionTypeLabel(question.type, question.correctIndices.length)}
         </span>
 
         <span className="text-xs font-bold text-on-surface-variant">{formatPoints(question.points)}đ</span>
@@ -515,6 +556,110 @@ function ExamQuestionCard({ question, index, onChange, onDelete }: ExamQuestionC
             <div className="p-4 space-y-4">
 
               {/* Nội dung câu hỏi */}
+              {question.type === 'fill_in_blank' && (
+                <div className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">
+                    Đáp án chấp nhận
+                  </p>
+                  <p className="mt-2 text-sm text-on-surface">
+                    {(question.metadata?.acceptedAnswers ?? []).join(', ') || 'Chưa có dữ liệu'}
+                  </p>
+                </div>
+              )}
+
+              {question.type === 'matching' && (
+                <div className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">
+                    Cặp nối
+                  </p>
+                  <div className="mt-2 space-y-2">
+                    {(question.metadata?.matchingPairs ?? []).map((pair, pairIndex) => (
+                      <div key={pairIndex} className="grid grid-cols-2 gap-2 rounded-lg border border-outline-variant/30 bg-surface px-3 py-2 text-sm text-on-surface">
+                        <span>{pair.left}</span>
+                        <span>{pair.right}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {question.metadata?.readingSetId && question.metadata?.sharedPrompt && (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-primary">
+                    Bài đọc chung
+                  </p>
+                  <p className="text-sm text-on-surface">
+                    Mã nhóm: {question.metadata.readingSetId}
+                  </p>
+                  {question.metadata.sharedPromptTitle && (
+                    <p className="text-sm text-on-surface">
+                      Tiêu đề: {question.metadata.sharedPromptTitle}
+                    </p>
+                  )}
+                  {question.metadata.questionOrderInSet != null && (
+                    <p className="text-sm text-on-surface">
+                      Thứ tự câu: {question.metadata.questionOrderInSet}
+                    </p>
+                  )}
+                  <p className="text-sm whitespace-pre-wrap text-on-surface">
+                    {question.metadata.sharedPrompt}
+                  </p>
+                </div>
+              )}
+
+              {(question.type === 'essay'
+                || question.type === 'essay_short'
+                || question.type === 'essay_long'
+                || question.type === 'file_upload') && (
+                <div className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-3 space-y-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">
+                    Thông tin chấm bài
+                  </p>
+                  {question.metadata?.sampleAnswer && (
+                    <p className="text-sm text-on-surface whitespace-pre-wrap">
+                      Đáp án mẫu: {question.metadata.sampleAnswer}
+                    </p>
+                  )}
+                  {question.metadata?.wordLimit != null && (
+                    <p className="text-sm text-on-surface">Giới hạn từ: {question.metadata.wordLimit}</p>
+                  )}
+                  {question.metadata?.gradingRubric && (
+                    <p className="text-sm text-on-surface whitespace-pre-wrap">
+                      Rubric: {question.metadata.gradingRubric}
+                    </p>
+                  )}
+                  {question.metadata?.allowedUploadTypes?.length ? (
+                    <p className="text-sm text-on-surface">
+                      Loại file: {question.metadata.allowedUploadTypes.join(', ')}
+                    </p>
+                  ) : null}
+                  {question.metadata?.maxFiles != null && (
+                    <p className="text-sm text-on-surface">Số file tối đa: {question.metadata.maxFiles}</p>
+                  )}
+                </div>
+              )}
+
+              {(question.type === 'image_question' || question.type === 'audio_question') && question.metadata?.promptAssetUrl && (
+                <div className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">
+                    Tài nguyên đính kèm
+                  </p>
+                  <p className="mt-2 text-sm break-all text-on-surface">{question.metadata.promptAssetUrl}</p>
+                  {question.type === 'audio_question' && question.metadata?.transcript && (
+                    <p className="mt-2 text-sm whitespace-pre-wrap text-on-surface">{question.metadata.transcript}</p>
+                  )}
+                </div>
+              )}
+
+              {question.type === 'formula_question' && question.metadata?.formulaLatex && (
+                <div className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">
+                    Công thức
+                  </p>
+                  <p className="mt-2 text-sm break-all text-on-surface">{question.metadata.formulaLatex}</p>
+                </div>
+              )}
+
               <label className="block">
                 <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
                   Nội dung câu hỏi <span className="text-red-500">*</span>
@@ -536,12 +681,10 @@ function ExamQuestionCard({ question, index, onChange, onDelete }: ExamQuestionC
                   </span>
                   <select
                     value={question.type}
-                    onChange={e => changeType(e.target.value as QuestionType)}
+                    disabled
                     className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
                   >
-                    <option value="single">1 đáp án</option>
-                    <option value="multiple">Nhiều đáp án</option>
-                    <option value="essay">Tự luận</option>
+                    <option value={question.type}>{questionTypeLabel(question.type, question.correctIndices.length)}</option>
                   </select>
                 </label>
                 <label className="block">
@@ -574,7 +717,7 @@ function ExamQuestionCard({ question, index, onChange, onDelete }: ExamQuestionC
               </div>
 
               {/* Lựa chọn + Đáp án đúng */}
-              {question.type !== 'essay' && (
+              {isObjectiveExamType(question.type) && (
               <div>
                 <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5 block">
                   Lựa chọn & đáp án đúng
@@ -591,7 +734,7 @@ function ExamQuestionCard({ question, index, onChange, onDelete }: ExamQuestionC
                         <button
                           onClick={() => toggleCorrect(optIdx)}
                           title={isCorrect ? 'Đáp án đúng' : 'Click để chọn làm đáp án đúng'}
-                          className={`flex-shrink-0 w-7 h-7 rounded-${question.type === 'single' ? 'full' : 'md'} flex items-center justify-center transition-colors ${
+                          className={`flex-shrink-0 w-7 h-7 ${question.type === 'multiple_choice' ? 'rounded-md' : 'rounded-full'} flex items-center justify-center transition-colors ${
                             isCorrect
                               ? 'bg-green-500 text-white'
                               : 'bg-surface-container-lowest border border-outline-variant hover:border-green-500'
@@ -751,10 +894,10 @@ export default function TeacherExamPage() {
   // Tổng điểm — hiển thị để GV biết bài kiểm tra đáng bao nhiêu
   const totalPoints = form?.questions.reduce((sum, q) => sum + q.points, 0) ?? 0;
   const objectivePoints = form?.questions
-    .filter(q => q.type !== 'essay')
+    .filter(q => !isManualExamType(q.type))
     .reduce((sum, q) => sum + q.points, 0) ?? 0;
   const essayPoints = form?.questions
-    .filter(q => q.type === 'essay')
+    .filter(q => isManualExamType(q.type))
     .reduce((sum, q) => sum + q.points, 0) ?? 0;
   const selectedScopeChapters = currentCourse && currentSlot
     ? chaptersForExamSlot(
@@ -933,11 +1076,11 @@ export default function TeacherExamPage() {
       return;
     }
     if (objectiveRandomTotal <= 0 || essayRandomTotal <= 0) {
-      notify.error('Bài kiểm tra phải có cả phần trắc nghiệm và phần tự luận');
+      notify.error('Bài kiểm tra phải có cả phần tự động chấm và phần cần giáo viên chấm');
       return;
     }
     if (!randomSplitValid) {
-      notify.error('Điểm phần trắc nghiệm và tự luận phải cộng lại đúng 10 điểm');
+      notify.error('Điểm phần tự động chấm và phần chấm tay phải cộng lại đúng 10 điểm');
       return;
     }
     if (chapterRandomWarnings.length > 0) {
@@ -1018,17 +1161,17 @@ export default function TeacherExamPage() {
       return;
     }
     const objectiveTotal = form.questions
-      .filter(q => q.type !== 'essay')
+      .filter(q => !isManualExamType(q.type))
       .reduce((sum, q) => sum + q.points, 0);
     const essayTotal = form.questions
-      .filter(q => q.type === 'essay')
+      .filter(q => isManualExamType(q.type))
       .reduce((sum, q) => sum + q.points, 0);
     if (objectiveTotal <= 0 || essayTotal <= 0) {
-      notify.error('Bài kiểm tra phải có cả phần trắc nghiệm và phần tự luận');
+      notify.error('Bài kiểm tra phải có cả phần tự động chấm và phần cần giáo viên chấm');
       return;
     }
     if (Math.abs(objectiveTotal + essayTotal - 10) > 0.001) {
-      notify.error('Tổng điểm trắc nghiệm và tự luận phải bằng 10 điểm');
+      notify.error('Tổng điểm phần tự động chấm và phần chấm tay phải bằng 10 điểm');
       return;
     }
     for (let i = 0; i < form.questions.length; i++) {
@@ -1037,7 +1180,7 @@ export default function TeacherExamPage() {
         notify.error(`Câu ${i + 1}: chưa nhập nội dung`);
         return;
       }
-      if (q.type === 'essay') {
+      if (!isObjectiveExamType(q.type)) {
         continue;
       }
       if (q.options.some(opt => !opt.trim())) {
@@ -1630,7 +1773,7 @@ export default function TeacherExamPage() {
                             </div>
                           ) : (
                             <span className="text-on-surface-variant">
-                              Sẽ random {objectiveRandomTotal} câu trắc nghiệm ({formatPoints(objectivePointPerQuestion)} điểm/câu) và {essayRandomTotal} câu tự luận ({formatPoints(essayPointPerQuestion)} điểm/câu).
+                              Sẽ random {objectiveRandomTotal} câu tự động chấm ({formatPoints(objectivePointPerQuestion)} điểm/câu) và {essayRandomTotal} câu chấm tay ({formatPoints(essayPointPerQuestion)} điểm/câu).
                             </span>
                           )}
                         </div>

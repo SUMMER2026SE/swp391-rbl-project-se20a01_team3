@@ -89,6 +89,16 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
+function isManualExamQuestionType(type: string) {
+  return ['essay', 'essay_short', 'essay_long', 'file_upload'].includes(type);
+}
+
+function objectiveAnswerLabel(question: TeacherExamAttemptResponse['questions'][number]) {
+  return question.correctAnswers
+    .map(index => String.fromCharCode(65 + index))
+    .join(', ');
+}
+
 function studentName(submission: AssignmentSubmissionResponse): string {
   return submission.studentName?.trim() || 'Học sinh';
 }
@@ -475,7 +485,7 @@ export default function TeacherGradesPage() {
                       {selectedExam.questions.map((question, index) => (
                         <div key={question.id} className="rounded-xl border border-outline-variant/30 bg-surface-container/30 p-3">
                           <p className="text-sm font-bold">Câu {index + 1}: {question.text}</p>
-                          {question.type === 'essay' ? (
+                          {isManualExamQuestionType(question.type) ? (
                             <div className="mt-2 space-y-2">
                               <p className="text-sm whitespace-pre-wrap">
                                 {question.textAnswer || 'Học sinh không nhập văn bản.'}
@@ -489,11 +499,48 @@ export default function TeacherGradesPage() {
                                   ))}
                                 </div>
                               )}
+                              {question.type === 'file_upload' && question.answerData && (
+                                <p className="text-xs text-on-surface-variant">
+                                  Dạng bài nộp file đã được ghi nhận trong bài làm thủ công.
+                                </p>
+                              )}
+                            </div>
+                          ) : question.type === 'fill_in_blank' ? (
+                            <div className="mt-2 space-y-1 text-sm">
+                              <p><span className="font-bold">Học sinh trả lời:</span> {question.textAnswer || 'Không có'}</p>
+                              <p className="text-on-surface-variant">
+                                Đáp án chấp nhận: {(question.metadata?.acceptedAnswers ?? []).join(', ') || 'Không có'}
+                              </p>
+                              <p className="text-xs text-on-surface-variant">
+                                Tự chấm: {question.earnedPoints}/{question.points} điểm
+                              </p>
+                            </div>
+                          ) : question.type === 'matching' ? (
+                            <div className="mt-2 space-y-2">
+                              {(((question.answerData?.matchingPairs as Array<{ left: string; right: string }> | undefined) ?? []))
+                                .map((pair, pairIndex) => (
+                                  <div key={pairIndex} className="grid grid-cols-2 gap-2 text-sm">
+                                    <span className="rounded-lg bg-surface px-2 py-1">{pair.left}</span>
+                                    <span className="rounded-lg bg-surface px-2 py-1">{pair.right}</span>
+                                  </div>
+                                ))}
+                              {(question.metadata?.matchingPairs?.length ?? 0) > 0 && (
+                                <div className="rounded-lg bg-surface px-3 py-2 text-xs text-on-surface-variant">
+                                  Đáp án đúng:
+                                  {' '}
+                                  {question.metadata?.matchingPairs?.map(pair => `${pair.left} -> ${pair.right}`).join(' | ')}
+                                </div>
+                              )}
+                              <p className="text-xs text-on-surface-variant">
+                                Tự chấm: {question.earnedPoints}/{question.points} điểm
+                              </p>
                             </div>
                           ) : (
-                            <p className="mt-2 text-xs text-on-surface-variant">
-                              Trắc nghiệm: {question.earnedPoints}/{question.points} điểm
-                            </p>
+                            <div className="mt-2 space-y-1 text-xs text-on-surface-variant">
+                              <p>Trắc nghiệm: {question.earnedPoints}/{question.points} điểm</p>
+                              <p>Đáp án đúng: {objectiveAnswerLabel(question) || 'Không có'}</p>
+                              <p>Học sinh chọn: {question.studentAnswers.map(index => String.fromCharCode(65 + index)).join(', ') || 'Không chọn'}</p>
+                            </div>
                           )}
                         </div>
                       ))}

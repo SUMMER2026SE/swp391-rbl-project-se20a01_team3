@@ -2,6 +2,7 @@ package com.beeacademy.backend.dto.response;
 
 import com.beeacademy.backend.model.ExamConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
@@ -34,6 +35,7 @@ public record ExamConfigResponse(
             String type,
             List<String> options,
             List<Integer> correctIndices,
+            JsonNode metadata,
             String explanation,
             Double points,
             String difficulty

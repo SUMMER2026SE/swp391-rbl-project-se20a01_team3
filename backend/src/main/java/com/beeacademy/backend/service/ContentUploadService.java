@@ -44,6 +44,7 @@ public class ContentUploadService {
     private static final String VIDEO_BUCKET = "course-videos";
     private static final String DOCS_BUCKET  = "course-docs";
     private static final String THUMBNAIL_BUCKET = DOCS_BUCKET;
+    private static final String QUESTION_ASSET_BUCKET = DOCS_BUCKET;
 
     private static final Set<String> ALLOWED_VIDEO_MIME = Set.of(
             "video/mp4", "video/webm", "video/quicktime");
@@ -55,10 +56,21 @@ public class ContentUploadService {
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     private static final Set<String> ALLOWED_THUMBNAIL_MIME = Set.of(
             "image/jpeg", "image/png", "image/webp");
+    private static final Set<String> ALLOWED_QUESTION_IMAGE_MIME = Set.of(
+            "image/jpeg", "image/jpg", "image/png", "image/webp");
+    private static final Set<String> ALLOWED_QUESTION_AUDIO_MIME = Set.of(
+            "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav",
+            "audio/ogg", "audio/mp4", "audio/x-m4a", "audio/aac", "audio/m4a");
+    private static final Set<String> ALLOWED_QUESTION_IMAGE_EXT = Set.of(
+            "jpg", "jpeg", "png", "webp");
+    private static final Set<String> ALLOWED_QUESTION_AUDIO_EXT = Set.of(
+            "mp3", "wav", "ogg", "m4a", "aac");
 
     private static final long MAX_VIDEO_BYTES = 2L * 1024 * 1024 * 1024; // 2 GB
     private static final long MAX_DOC_BYTES   = 100L * 1024 * 1024;      // 100 MB
     private static final long MAX_THUMBNAIL_BYTES = 5L * 1024 * 1024; // 5 MB
+    private static final long MAX_QUESTION_IMAGE_BYTES = 5L * 1024 * 1024;
+    private static final long MAX_QUESTION_AUDIO_BYTES = 20L * 1024 * 1024;
 
     private final SupabaseStorageClient  storageClient;
     private final CourseRepository       courseRepository;
@@ -243,6 +255,40 @@ public class ContentUploadService {
         return new UploadResponse(path, publicUrl, file.getContentType(), file.getSize());
     }
 
+    @Transactional
+    public UploadResponse uploadQuestionImage(UUID teacherId, MultipartFile file) {
+        validateFileByMimeOrExtension(file,
+                ALLOWED_QUESTION_IMAGE_MIME, ALLOWED_QUESTION_IMAGE_EXT, MAX_QUESTION_IMAGE_BYTES,
+                "anh JPEG, PNG hoac WEBP", "5MB");
+
+        String contentType = normalizeQuestionImageContentType(file);
+        String ext = imageExtension(contentType);
+        String path = "question-assets/" + teacherId + "/images/" + UUID.randomUUID() + "." + ext;
+        String publicUrl = storageClient.upload(QUESTION_ASSET_BUCKET, path,
+                contentType, file.getResource(), file.getSize());
+
+        log.info("Upload question image thanh cong: teacherId={} path={} url={}",
+                teacherId, path, publicUrl);
+        return new UploadResponse(path, publicUrl, contentType, file.getSize());
+    }
+
+    @Transactional
+    public UploadResponse uploadQuestionAudio(UUID teacherId, MultipartFile file) {
+        validateFileByMimeOrExtension(file,
+                ALLOWED_QUESTION_AUDIO_MIME, ALLOWED_QUESTION_AUDIO_EXT, MAX_QUESTION_AUDIO_BYTES,
+                "audio MP3, WAV, OGG, M4A hoac AAC", "20MB");
+
+        String contentType = normalizeQuestionAudioContentType(file);
+        String ext = audioExtension(contentType, file.getOriginalFilename());
+        String path = "question-assets/" + teacherId + "/audio/" + UUID.randomUUID() + "." + ext;
+        String publicUrl = storageClient.upload(QUESTION_ASSET_BUCKET, path,
+                contentType, file.getResource(), file.getSize());
+
+        log.info("Upload question audio thanh cong: teacherId={} path={} url={}",
+                teacherId, path, publicUrl);
+        return new UploadResponse(path, publicUrl, contentType, file.getSize());
+    }
+
     public String generateSignedVideoUrl(String storagePath) {
         return storageClient.generateSignedUrl(VIDEO_BUCKET, storagePath, 3600);
     }
@@ -366,9 +412,61 @@ public class ContentUploadService {
      * Lấy phần mở rộng file từ tên gốc.
      * Trả defaultExt nếu không xác định được (null, không có dấu chấm).
      */
+    private void validateFileByMimeOrExtension(MultipartFile file,
+                                               Set<String> allowedMime,
+                                               Set<String> allowedExtensions,
+                                               long maxBytes, String typeDesc,
+                                               String sizeDesc) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException("FILE_REQUIRED", "Vui lÃ²ng chá»n file Ä‘á»ƒ upload.");
+        }
+        String mime = file.getContentType() == null ? "" : file.getContentType().trim().toLowerCase();
+        String ext = getExtension(file.getOriginalFilename(), "").toLowerCase();
+        boolean mimeAllowed = !mime.isBlank() && allowedMime.contains(mime);
+        boolean extAllowed = !ext.isBlank() && allowedExtensions.contains(ext);
+        if (!mimeAllowed && !extAllowed) {
+            throw new BusinessException("INVALID_FILE_TYPE",
+                    "Chá»‰ cháº¥p nháº­n " + typeDesc + ".");
+        }
+        if (file.getSize() > maxBytes) {
+            throw new BusinessException("FILE_TOO_LARGE",
+                    "File khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ " + sizeDesc + ".");
+        }
+    }
+
     private String getExtension(String filename, String defaultExt) {
         if (filename == null || !filename.contains(".")) return defaultExt;
         return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+    }
+
+    private String normalizeQuestionImageContentType(MultipartFile file) {
+        String mime = file.getContentType() == null ? "" : file.getContentType().trim().toLowerCase();
+        if (!mime.isBlank()) {
+            if ("image/jpg".equals(mime)) return "image/jpeg";
+            return mime;
+        }
+        return switch (getExtension(file.getOriginalFilename(), "").toLowerCase()) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "webp" -> "image/webp";
+            default -> "image/jpeg";
+        };
+    }
+
+    private String normalizeQuestionAudioContentType(MultipartFile file) {
+        String mime = file.getContentType() == null ? "" : file.getContentType().trim().toLowerCase();
+        if (!mime.isBlank()) {
+            if ("audio/m4a".equals(mime)) return "audio/x-m4a";
+            return mime;
+        }
+        return switch (getExtension(file.getOriginalFilename(), "").toLowerCase()) {
+            case "mp3" -> "audio/mpeg";
+            case "wav" -> "audio/wav";
+            case "ogg" -> "audio/ogg";
+            case "m4a" -> "audio/x-m4a";
+            case "aac" -> "audio/aac";
+            default -> "audio/mpeg";
+        };
     }
 
     private String imageExtension(String contentType) {
@@ -377,6 +475,17 @@ public class ContentUploadService {
             case "image/png" -> "png";
             case "image/webp" -> "webp";
             default -> "jpg";
+        };
+    }
+
+    private String audioExtension(String contentType, String originalFilename) {
+        return switch (contentType) {
+            case "audio/mpeg", "audio/mp3" -> "mp3";
+            case "audio/wav", "audio/x-wav" -> "wav";
+            case "audio/ogg" -> "ogg";
+            case "audio/mp4", "audio/x-m4a" -> "m4a";
+            case "audio/aac" -> "aac";
+            default -> getExtension(originalFilename, "mp3");
         };
     }
 }

@@ -34,7 +34,7 @@ public record CreateQuestionRequest(
 
         @NotNull
         @Pattern(
-                regexp = "multiple_choice|true_false|fill_in_blank|matching|essay|essay_short|essay_long|image_question|formula_question|audio_question|file_upload",
+                regexp = "multiple_choice|true_false|fill_in_blank|essay|image_question|audio_question",
                 message = "Loai cau hoi khong hop le")
         String type,
 

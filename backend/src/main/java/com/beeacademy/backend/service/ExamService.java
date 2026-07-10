@@ -5,6 +5,7 @@ import com.beeacademy.backend.dto.request.ExamQuestionRandomRequest;
 import com.beeacademy.backend.dto.request.GradeExamAttemptRequest;
 import com.beeacademy.backend.dto.request.SubmitExamRequest;
 import com.beeacademy.backend.dto.response.ExamConfigResponse;
+import com.beeacademy.backend.dto.response.QuestionResponse;
 import com.beeacademy.backend.dto.response.QuestionStatsResponse;
 import com.beeacademy.backend.dto.response.StudentExamResponse;
 import com.beeacademy.backend.dto.response.StudentExamSubmissionResponse;
@@ -31,6 +32,7 @@ import com.beeacademy.backend.security.AuthenticatedUser;
 import com.beeacademy.backend.client.SupabaseStorageClient;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,7 +62,17 @@ public class ExamService {
     private static final String EXAM_ANSWER_IMAGE_BUCKET = "course-docs";
     private static final long MAX_EXAM_ANSWER_IMAGE_BYTES = 5L * 1024 * 1024;
     private static final Set<String> ALLOWED_EXAM_ANSWER_IMAGE_MIME = Set.of(
-            "image/png", "image/jpeg", "image/webp");
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "text/plain");
+    private static final Set<String> OBJECTIVE_EXAM_TYPES = Set.of(
+            "multiple_choice", "true_false", "image_question", "audio_question");
+    private static final Set<String> TEXT_ANSWER_EXAM_TYPES = Set.of("fill_in_blank");
+    private static final Set<String> MANUAL_EXAM_TYPES = Set.of("essay");
     private final ExamConfigRepository examRepository;
     private final ExamAttemptRepository examAttemptRepository;
     private final CourseRepository courseRepository;
@@ -216,12 +228,16 @@ public class ExamService {
         String contentType = file.getContentType();
         if (contentType == null || !ALLOWED_EXAM_ANSWER_IMAGE_MIME.contains(contentType)) {
             throw new BusinessException("UNSUPPORTED_FILE_TYPE",
-                    "Chi ho tro anh PNG, JPG hoac WEBP.", HttpStatus.BAD_REQUEST);
+                    "Chi ho tro PNG, JPG, WEBP, PDF, DOC, DOCX hoac TXT.", HttpStatus.BAD_REQUEST);
         }
 
         String extension = switch (contentType) {
             case "image/png" -> ".png";
             case "image/webp" -> ".webp";
+            case "application/pdf" -> ".pdf";
+            case "application/msword" -> ".doc";
+            case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> ".docx";
+            case "text/plain" -> ".txt";
             default -> ".jpg";
         };
         String path = "exam-answer-images/" + me.userId() + "/" + UUID.randomUUID() + extension;
@@ -269,10 +285,11 @@ public class ExamService {
             }
             Collections.shuffle(selectedQuestions);
             int objectiveTotal = (int) selectedQuestions.stream()
-                    .filter(question -> !"essay".equals(question.getType()))
+                    .filter(question -> OBJECTIVE_EXAM_TYPES.contains(question.getType())
+                            || TEXT_ANSWER_EXAM_TYPES.contains(question.getType()))
                     .count();
             int essayTotal = (int) selectedQuestions.stream()
-                    .filter(question -> "essay".equals(question.getType()))
+                    .filter(question -> MANUAL_EXAM_TYPES.contains(question.getType()))
                     .count();
             double objectivePoint = objectiveTotal > 0
                     ? req.objectivePoints() / objectiveTotal
@@ -282,7 +299,7 @@ public class ExamService {
                     : 0.0;
             result.addAll(selectedQuestions.stream()
                     .map(question -> toExamQuestion(question,
-                            "essay".equals(question.getType()) ? essayPoint : objectivePoint))
+                            MANUAL_EXAM_TYPES.contains(question.getType()) ? essayPoint : objectivePoint))
                     .toList());
             return result;
         }
@@ -383,17 +400,22 @@ public class ExamService {
                             answer != null ? answer.selectedIndices() : null);
                     String textAnswer = answer != null ? trimToNull(answer.textAnswer()) : null;
                     List<String> imageUrls = normalizeImageUrls(answer != null ? answer.imageUrls() : null);
+                    JsonNode answerData = answer != null ? answer.answerData() : null;
                     List<Integer> correctAnswers = normalizeAnswer(question.correctIndices());
-                    Boolean correct = isEssayQuestion(question) ? null : studentAnswers.equals(correctAnswers);
+                    Boolean correct = isManualQuestion(question)
+                            ? null
+                            : isAnswerCorrect(question, studentAnswers, textAnswer, answerData);
                     double points = question.points() != null ? question.points() : 0.0;
                     return new TeacherExamAttemptResponse.QuestionReview(
                             question.id(),
                             question.text(),
                             question.type(),
                             question.options(),
+                            question.metadata(),
                             studentAnswers,
                             textAnswer,
                             imageUrls,
+                            answerData,
                             correctAnswers,
                             correct,
                             points,
@@ -488,8 +510,16 @@ public class ExamService {
                 .toList();
     }
 
-    private boolean isEssayQuestion(SnapshotExamQuestion question) {
-        return "essay".equals(question.type());
+    private boolean isManualQuestion(SnapshotExamQuestion question) {
+        return MANUAL_EXAM_TYPES.contains(question.type());
+    }
+
+    private boolean isObjectiveQuestion(SnapshotExamQuestion question) {
+        return OBJECTIVE_EXAM_TYPES.contains(question.type());
+    }
+
+    private boolean isTextAnswerQuestion(SnapshotExamQuestion question) {
+        return TEXT_ANSWER_EXAM_TYPES.contains(question.type());
     }
 
     private void validateAnswerImages(
@@ -532,19 +562,20 @@ public class ExamService {
         double earnedObjectivePoints = 0.0;
         int correctObjectiveCount = 0;
         int totalObjectiveCount = 0;
-        boolean hasEssay = false;
+        boolean hasManualQuestion = false;
 
         for (SnapshotExamQuestion question : questions) {
-            if (isEssayQuestion(question)) {
-                hasEssay = true;
+            if (isManualQuestion(question)) {
+                hasManualQuestion = true;
                 continue;
             }
             totalObjectiveCount++;
             SubmitExamRequest.ExamAnswerRequest answer = answers.get(question.id());
             List<Integer> studentAnswers = normalizeAnswer(
                     answer != null ? answer.selectedIndices() : null);
-            List<Integer> correctAnswers = normalizeAnswer(question.correctIndices());
-            if (studentAnswers.equals(correctAnswers)) {
+            String textAnswer = answer != null ? trimToNull(answer.textAnswer()) : null;
+            JsonNode answerData = answer != null ? answer.answerData() : null;
+            if (isAnswerCorrect(question, studentAnswers, textAnswer, answerData)) {
                 correctObjectiveCount++;
                 earnedObjectivePoints += question.points() != null ? question.points() : 0.0;
             }
@@ -555,7 +586,42 @@ public class ExamService {
                 autoScorePercent,
                 correctObjectiveCount,
                 totalObjectiveCount,
-                hasEssay);
+                hasManualQuestion);
+    }
+
+    private boolean isAnswerCorrect(
+            SnapshotExamQuestion question,
+            List<Integer> studentAnswers,
+            String textAnswer,
+            JsonNode answerData) {
+        if (isObjectiveQuestion(question)) {
+            return studentAnswers.equals(normalizeAnswer(question.correctIndices()));
+        }
+        if ("fill_in_blank".equals(question.type())) {
+            return isFillInBlankCorrect(question.metadata(), textAnswer);
+        }
+        return false;
+    }
+
+    private boolean isFillInBlankCorrect(JsonNode metadata, String textAnswer) {
+        if (textAnswer == null || textAnswer.isBlank() || metadata == null) {
+            return false;
+        }
+        JsonNode acceptedAnswers = metadata.get("acceptedAnswers");
+        if (acceptedAnswers == null || !acceptedAnswers.isArray()) {
+            return false;
+        }
+        String normalizedAnswer = normalizeText(textAnswer);
+        for (JsonNode node : acceptedAnswers) {
+            if (node != null && node.isTextual() && normalizedAnswer.equals(normalizeText(node.asText()))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String normalizeText(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     private int nullToZero(Integer value) {
@@ -577,6 +643,7 @@ public class ExamService {
             String type,
             List<String> options,
             List<Integer> correctIndices,
+            JsonNode metadata,
             String explanation,
             Double points,
             String difficulty
@@ -658,39 +725,53 @@ public class ExamService {
                         "Câu " + (i + 1) + " không hợp lệ.");
             }
             validateQuestionComesFromBank(q, teacherId);
-            if ("essay".equals(q.type())) {
+            if (MANUAL_EXAM_TYPES.contains(q.type())) {
                 continue;
             }
-            if (q.options() == null || q.options().size() < 2
-                    || q.correctIndices() == null || q.correctIndices().isEmpty()) {
-                throw new BusinessException("INVALID_QUESTIONS",
-                        "Cau " + (i + 1) + " trac nghiem phai co lua chon va dap an dung.");
-            }
-            if ("single".equals(q.type()) && q.correctIndices().size() != 1) {
-                throw new BusinessException("INVALID_QUESTIONS",
-                        "Câu " + (i + 1) + " dạng một đáp án phải có đúng 1 đáp án đúng.");
-            }
-            int optionCount = q.options().size();
-            for (Integer correctIndex : q.correctIndices()) {
-                if (correctIndex == null || correctIndex < 0 || correctIndex >= optionCount) {
+            if (OBJECTIVE_EXAM_TYPES.contains(q.type())) {
+                if (q.options() == null || q.options().size() < 2
+                        || q.correctIndices() == null || q.correctIndices().isEmpty()) {
                     throw new BusinessException("INVALID_QUESTIONS",
-                            "Câu " + (i + 1) + " có đáp án đúng không hợp lệ.");
+                            "Cau " + (i + 1) + " trac nghiem phai co lua chon va dap an dung.");
                 }
+                if ("true_false".equals(q.type()) && q.correctIndices().size() != 1) {
+                    throw new BusinessException("INVALID_QUESTIONS",
+                            "Cau " + (i + 1) + " dung sai phai co dung 1 dap an dung.");
+                }
+                int optionCount = q.options().size();
+                for (Integer correctIndex : q.correctIndices()) {
+                    if (correctIndex == null || correctIndex < 0 || correctIndex >= optionCount) {
+                        throw new BusinessException("INVALID_QUESTIONS",
+                                "Cau " + (i + 1) + " co dap an dung khong hop le.");
+                    }
+                }
+                continue;
             }
+            if ("fill_in_blank".equals(q.type())) {
+                if (q.metadata() == null || q.metadata().get("acceptedAnswers") == null
+                        || !q.metadata().get("acceptedAnswers").isArray()
+                        || q.metadata().get("acceptedAnswers").isEmpty()) {
+                    throw new BusinessException("INVALID_QUESTIONS",
+                            "Cau " + (i + 1) + " dien cho trong phai co dap an chap nhan.");
+                }
+                continue;
+            }
+            throw new BusinessException("INVALID_QUESTIONS",
+                    "Cau " + (i + 1) + " co loai cau hoi khong duoc ho tro.");
         }
         validateExamPointsAndSections(req);
     }
 
     private void validateExamPointsAndSections(ExamConfigRequest req) {
         long objectiveCount = req.questions().stream()
-                .filter(q -> !"essay".equals(q.type()))
+                .filter(q -> OBJECTIVE_EXAM_TYPES.contains(q.type()) || TEXT_ANSWER_EXAM_TYPES.contains(q.type()))
                 .count();
-        long essayCount = req.questions().stream()
-                .filter(q -> "essay".equals(q.type()))
+        long manualCount = req.questions().stream()
+                .filter(q -> MANUAL_EXAM_TYPES.contains(q.type()))
                 .count();
-        if (objectiveCount == 0 || essayCount == 0) {
+        if (objectiveCount == 0 || manualCount == 0) {
             throw new BusinessException("INVALID_QUESTIONS",
-                    "Bai kiem tra phai co ca phan trac nghiem va phan tu luan.");
+                    "Bai kiem tra phai co ca phan tu dong cham va phan can giao vien cham.");
         }
         double totalPoints = req.questions().stream()
                 .map(ExamConfigRequest.ExamQuestionRequest::points)
@@ -753,7 +834,7 @@ public class ExamService {
         }
         int total = 0;
         int objectiveTotal = 0;
-        int essayTotal = 0;
+        int manualTotal = 0;
         for (ExamQuestionRandomRequest.ChapterQuestionRandomRequest chapterReq
                 : req.chapterConfigs()) {
             if (chapterReq.chapterId() == null
@@ -768,11 +849,11 @@ public class ExamService {
                         "Tong so cau trac nghiem va tu luan phai bang so cau cua chuong.");
             }
             objectiveTotal += nullToZero(chapterReq.objectiveCount());
-            essayTotal += nullToZero(chapterReq.essayCount());
+            manualTotal += nullToZero(chapterReq.essayCount());
         }
-        if (objectiveTotal <= 0 || essayTotal <= 0) {
+        if (objectiveTotal <= 0 || manualTotal <= 0) {
             throw new BusinessException("INVALID_RANDOM_CONFIG",
-                    "Bai kiem tra phai co ca phan trac nghiem va phan tu luan.");
+                    "Bai kiem tra phai co ca phan tu dong cham va phan can giao vien cham.");
         }
         if (Math.abs(req.objectivePoints() + req.essayPoints() - EXAM_TOTAL_POINTS) > 0.001) {
             throw new BusinessException("INVALID_POINTS",
@@ -822,10 +903,12 @@ public class ExamService {
         if (objectiveCount + essayCount > 0) {
             List<Question> selected = new ArrayList<>();
             selected.addAll(pickRandomQuestionsByChapterAndTypes(
-                    teacherId, chapterId, List.of("multiple_choice", "true_false"),
+                    teacherId, chapterId, List.copyOf(Set.of(
+                            "multiple_choice", "true_false", "image_question",
+                            "audio_question", "fill_in_blank")),
                     objectiveCount, "trac nghiem"));
             selected.addAll(pickRandomQuestionsByChapterAndTypes(
-                    teacherId, chapterId, List.of("essay"),
+                    teacherId, chapterId, List.copyOf(MANUAL_EXAM_TYPES),
                     essayCount, "tu luan"));
             Collections.shuffle(selected);
             return selected;
@@ -876,15 +959,13 @@ public class ExamService {
                 .filter(i -> Boolean.TRUE.equals(choices.get(i).getIsCorrect()))
                 .boxed()
                 .toList();
-        String examQuestionType = "essay".equals(question.getType())
-                ? "essay"
-                : correctIndices.size() > 1 ? "multiple" : "single";
         return new ExamConfigResponse.ExamQuestionResponse(
                 question.getId().toString(),
                 question.getContent(),
-                examQuestionType,
+                question.getType(),
                 options,
                 correctIndices,
+                QuestionResponse.forStudent(question, objectMapper).metadata(),
                 question.getExplanation(),
                 pointsPerQuestion,
                 question.getDifficulty()

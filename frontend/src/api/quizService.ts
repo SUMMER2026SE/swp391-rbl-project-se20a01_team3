@@ -62,9 +62,9 @@ export interface QuizAttemptStartResponse {
 export interface QuizResultDetail {
   questionId: string;
   content: string;
-  studentAnswer: string | null;
+  studentAnswers: string[];
   studentAnswerText?: string | null;
-  correctAnswer: string | null;
+  correctAnswers: string[];
   correctAnswerText?: string | null;
   isCorrect: boolean;
   explanation: string | null;
@@ -105,7 +105,7 @@ export async function startQuiz(chapterId: string): Promise<QuizAttemptStartResp
 
 export async function submitQuiz(
     attemptId: string,
-    answers: Record<string, string | null>): Promise<QuizResultResponse> {
+    answers: Record<string, string[]>): Promise<QuizResultResponse> {
   const res = await apiClient.post<ApiResponse<QuizResultResponse>>(
     `/api/student/quiz/${attemptId}/submit`, { answers });
   return unwrap(res.data);

@@ -41,20 +41,15 @@ import java.util.UUID;
 public class QuestionService {
 
     private static final Set<String> OBJECTIVE_TYPES = Set.of(
-            "multiple_choice", "true_false", "image_question", "formula_question", "audio_question");
-    private static final Set<String> ESSAY_TYPES = Set.of("essay", "essay_short", "essay_long");
+            "multiple_choice", "true_false", "image_question", "audio_question");
+    private static final Set<String> ESSAY_TYPES = Set.of("essay");
     private static final Set<String> SUPPORTED_TYPES = Set.of(
             "multiple_choice",
             "true_false",
             "fill_in_blank",
-            "matching",
             "essay",
-            "essay_short",
-            "essay_long",
             "image_question",
-            "formula_question",
-            "audio_question",
-            "file_upload");
+            "audio_question");
 
     private final QuestionRepository questionRepository;
     private final CategoryRepository categoryRepository;
@@ -285,13 +280,11 @@ public class QuestionService {
             validateObjectiveQuestion(req);
         } else if ("fill_in_blank".equals(req.type())) {
             validateFillInBlank(req);
-        } else if ("matching".equals(req.type())) {
-            validateMatching(req);
         } else if (ESSAY_TYPES.contains(req.type())) {
             validateEssay(req);
-        } else if ("file_upload".equals(req.type())) {
-            validateFileUpload(req);
         }
+
+        validateReadingMetadata(req.metadata());
     }
 
     private void validateObjectiveQuestion(CreateQuestionRequest req) {
@@ -319,11 +312,6 @@ public class QuestionService {
         if ("audio_question".equals(req.type())) {
             requireMetadataText(req.metadata(), "promptAssetUrl", "Cau hoi audio can co URL audio.");
         }
-        if ("formula_question".equals(req.type())
-                && !hasMetadataText(req.metadata(), "formulaLatex")
-                && (req.content() == null || !req.content().contains("$"))) {
-            throw new BusinessException("FORMULA_REQUIRED", "Cau hoi cong thuc can co formulaLatex hoac cong thuc trong noi dung.");
-        }
     }
 
     private void validateFillInBlank(CreateQuestionRequest req) {
@@ -336,44 +324,13 @@ public class QuestionService {
         }
     }
 
-    private void validateMatching(CreateQuestionRequest req) {
-        if (hasChoices(req)) {
-            throw new BusinessException("INVALID_CHOICES", "Cau noi cot khong dung danh sach dap an objective.");
-        }
-        JsonNode pairs = req.metadata() != null ? req.metadata().path("matchingPairs") : null;
-        if (pairs == null || !pairs.isArray() || pairs.size() < 2) {
-            throw new BusinessException("MATCHING_PAIRS_REQUIRED", "Cau noi cot can it nhat 2 cap noi.");
-        }
-        for (JsonNode pair : pairs) {
-            if (!hasText(pair, "left") || !hasText(pair, "right")) {
-                throw new BusinessException("MATCHING_PAIRS_REQUIRED", "Moi cap noi phai co ve trai va ve phai.");
-            }
-        }
-    }
-
     private void validateEssay(CreateQuestionRequest req) {
         if (hasChoices(req)) {
             throw new BusinessException("INVALID_CHOICES", "Cau tu luan khong dung danh sach dap an objective.");
         }
-        if ("essay_short".equals(req.type())) {
-            Integer wordLimit = integerValue(req.metadata(), "wordLimit");
-            if (wordLimit != null && wordLimit <= 0) {
-                throw new BusinessException("INVALID_WORD_LIMIT", "wordLimit phai lon hon 0.");
-            }
-        }
-    }
-
-    private void validateFileUpload(CreateQuestionRequest req) {
-        if (hasChoices(req)) {
-            throw new BusinessException("INVALID_CHOICES", "Cau nop file khong dung danh sach dap an objective.");
-        }
-        List<String> allowedUploadTypes = stringList(req.metadata(), "allowedUploadTypes");
-        if (allowedUploadTypes.isEmpty()) {
-            throw new BusinessException("UPLOAD_TYPES_REQUIRED", "Cau nop file can danh sach dinh dang duoc phep.");
-        }
-        Integer maxFiles = integerValue(req.metadata(), "maxFiles");
-        if (maxFiles != null && maxFiles <= 0) {
-            throw new BusinessException("INVALID_MAX_FILES", "maxFiles phai lon hon 0.");
+        Integer wordLimit = integerValue(req.metadata(), "wordLimit");
+        if (wordLimit != null && wordLimit <= 0) {
+            throw new BusinessException("INVALID_WORD_LIMIT", "wordLimit phai lon hon 0.");
         }
     }
 
@@ -413,6 +370,28 @@ public class QuestionService {
         if (metadata == null || !metadata.hasNonNull(field)) return null;
         JsonNode value = metadata.get(field);
         return value.isNumber() ? value.intValue() : null;
+    }
+
+    private void validateReadingMetadata(JsonNode metadata) {
+        if (metadata == null) return;
+
+        boolean hasReadingSetId = hasText(metadata, "readingSetId");
+        boolean hasSharedPrompt = hasText(metadata, "sharedPrompt");
+        boolean hasSharedPromptTitle = hasText(metadata, "sharedPromptTitle");
+        Integer questionOrderInSet = integerValue(metadata, "questionOrderInSet");
+
+        if (!hasReadingSetId && !hasSharedPrompt && !hasSharedPromptTitle && questionOrderInSet == null) {
+            return;
+        }
+        if (!hasReadingSetId) {
+            throw new BusinessException("READING_SET_REQUIRED", "Cau hoi bai doc can co readingSetId.");
+        }
+        if (!hasSharedPrompt) {
+            throw new BusinessException("SHARED_PROMPT_REQUIRED", "Cau hoi bai doc can co doan van chung.");
+        }
+        if (questionOrderInSet != null && questionOrderInSet <= 0) {
+            throw new BusinessException("INVALID_READING_ORDER", "questionOrderInSet phai lon hon 0.");
+        }
     }
 
     private String serializeMetadata(JsonNode metadata) {

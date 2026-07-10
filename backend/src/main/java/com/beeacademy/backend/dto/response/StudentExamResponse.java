@@ -2,6 +2,7 @@ package com.beeacademy.backend.dto.response;
 
 import com.beeacademy.backend.model.ExamConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
@@ -23,6 +24,7 @@ public record StudentExamResponse(
         Integer maxAttempts,
         Boolean shuffleQuestions,
         Boolean shuffleOptions,
+        Boolean showAnswerAfterSubmit,
         Integer questionCount,
         Double totalPoints,
         List<StudentExamQuestionResponse> questions,
@@ -33,6 +35,7 @@ public record StudentExamResponse(
             String text,
             String type,
             List<String> options,
+            JsonNode metadata,
             Double points,
             String difficulty
     ) {}
@@ -43,6 +46,7 @@ public record StudentExamResponse(
             String type,
             List<String> options,
             List<Integer> correctIndices,
+            JsonNode metadata,
             String explanation,
             Double points,
             String difficulty
@@ -70,6 +74,7 @@ public record StudentExamResponse(
                 config.getMaxAttempts(),
                 config.getShuffleQuestions(),
                 config.getShuffleOptions(),
+                config.getShowAnswerAfterSubmit(),
                 questions.size(),
                 totalPoints,
                 questions,
@@ -86,6 +91,7 @@ public record StudentExamResponse(
                             question.text(),
                             question.type(),
                             question.options() != null ? question.options() : List.of(),
+                            question.metadata(),
                             question.points(),
                             question.difficulty()
                     ))
