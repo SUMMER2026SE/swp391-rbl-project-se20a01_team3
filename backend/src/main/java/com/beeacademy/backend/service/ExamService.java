@@ -72,6 +72,7 @@ public class ExamService {
     private final SupabaseStorageClient storageClient;
     private final UserNotificationService userNotificationService;
     private final RewardService rewardService;
+    private final CertificateService certificateService;
 
     @Transactional(readOnly = true)
     public List<ExamConfigResponse> listExams(UUID courseId, AuthenticatedUser me) {
@@ -161,6 +162,7 @@ public class ExamService {
                     RewardAssessmentType.EXAM,
                     config.getId(),
                     scoringSummary.autoScorePercent());
+            certificateService.tryIssueAfterProgress(me.userId(), courseId);
         }
 
         log.info("Student {} submitted exam course={} slot={} attempt={} autoScore={}",
@@ -368,6 +370,7 @@ public class ExamService {
                 RewardAssessmentType.EXAM,
                 saved.getExamConfig().getId(),
                 request.scorePercent());
+        certificateService.handleFinalExamGradeChanged(saved);
         log.info("Teacher {} graded exam attempt {} with score={}",
                 me.userId(), attemptId, request.scorePercent());
         return toTeacherExamAttemptResponse(saved);

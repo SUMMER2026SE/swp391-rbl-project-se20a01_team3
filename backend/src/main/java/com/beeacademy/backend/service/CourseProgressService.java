@@ -53,6 +53,7 @@ public class CourseProgressService {
     private final QuizConfigRepository quizConfigRepository;
     private final QuizAttemptRepository quizAttemptRepository;
     private final OrderItemRepository orderItemRepository;
+    private final CertificateService certificateService;
 
     @Transactional(readOnly = true)
     public CourseProgressResponse getProgress(UUID courseId, AuthenticatedUser me) {
@@ -148,6 +149,9 @@ public class CourseProgressService {
         int progressPct = calculateProgressPct(me.userId(), courseId);
         enrollmentRepository.findByStudentIdAndCourseId(me.userId(), courseId)
                 .ifPresent(enrollment -> enrollment.updateProgress(progressPct));
+        if (progressPct >= 100) {
+            certificateService.tryIssueAfterProgress(me.userId(), courseId);
+        }
 
         return buildResponse(me.userId(), courseId);
     }
