@@ -46,6 +46,9 @@ class CourseProgressServiceTest {
     @Mock
     private QuizConfigRepository quizConfigRepository;
 
+    @Mock
+    private CertificateService certificateService;
+
     @InjectMocks
     private CourseProgressService service;
 
@@ -105,6 +108,7 @@ class CourseProgressServiceTest {
                 new CompleteCourseProgressItemRequest(chapterId, "quiz"));
 
         verify(progressRepository, never()).save(any());
+        verify(certificateService).tryIssueAfterProgress(studentId, courseId);
         assertThat(enrollment.getProgressPct()).isEqualTo(100);
     }
 

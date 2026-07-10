@@ -65,4 +65,23 @@ public interface ExamAttemptRepository extends JpaRepository<ExamAttempt, UUID> 
     Optional<ExamAttempt> findSubmittedAttemptForTeacher(
             @Param("attemptId") UUID attemptId,
             @Param("teacherId") UUID teacherId);
+
+    @Query("""
+            SELECT attempt
+            FROM ExamAttempt attempt
+            JOIN FETCH attempt.student
+            JOIN FETCH attempt.examConfig config
+            JOIN FETCH config.course course
+            WHERE attempt.student.id = :studentId
+              AND course.id = :courseId
+              AND config.slotIndex = :slotIndex
+              AND attempt.submittedAt IS NOT NULL
+              AND attempt.passed = true
+            ORDER BY COALESCE(attempt.manualScorePercent, attempt.scorePercent) DESC,
+                     attempt.submittedAt DESC
+            """)
+    List<ExamAttempt> findPassedFinalAttempts(
+            @Param("studentId") UUID studentId,
+            @Param("courseId") UUID courseId,
+            @Param("slotIndex") Integer slotIndex);
 }

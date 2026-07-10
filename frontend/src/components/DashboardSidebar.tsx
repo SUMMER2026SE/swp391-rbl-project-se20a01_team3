@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart2,
+  Award,
   Bell,
   BookOpen,
   Camera,
@@ -26,6 +27,7 @@ const STUDENT_MENU_ITEMS = [
   { icon: BookOpen, label: 'Khóa học và Bài tập', path: '/courses' },
   { icon: TrendingUp, label: 'Kết quả học tập', path: '/progress' },
   { icon: Coins, label: 'Điểm tích lũy', path: '/rewards' },
+  { icon: Award, label: 'Chứng chỉ', path: '/certificates' },
   { icon: CreditCard, label: 'Loại tài khoản', path: '/account/type' },
   { icon: Heart, label: 'Danh sách yêu thích', path: '/favorites' },
   { icon: MessageSquare, label: 'Tin nhắn', path: '/messages' },

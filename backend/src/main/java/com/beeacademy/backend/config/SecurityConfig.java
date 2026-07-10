@@ -95,6 +95,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/system/status").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/courses/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categories/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/certificates/verify/**").permitAll()
 
                         // PayOS gọi vào không có JWT — xác thực bằng HMAC signature trong controller
                         .requestMatchers(HttpMethod.POST, "/api/webhooks/payos").permitAll()
