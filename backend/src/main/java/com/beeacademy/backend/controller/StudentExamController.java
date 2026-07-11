@@ -2,6 +2,7 @@ package com.beeacademy.backend.controller;
 
 import com.beeacademy.backend.dto.response.ApiResponse;
 import com.beeacademy.backend.dto.response.StudentExamResponse;
+import com.beeacademy.backend.dto.request.SaveExamDraftRequest;
 import com.beeacademy.backend.dto.request.SubmitExamRequest;
 import com.beeacademy.backend.dto.response.StudentExamSubmissionResponse;
 import com.beeacademy.backend.dto.response.UploadResponse;
@@ -60,5 +61,14 @@ public class StudentExamController {
         return ApiResponse.ok(
                 examService.submitStudentExam(courseId, slotIndex, CurrentUser.required(), request),
                 "Nop bai kiem tra thanh cong");
+    }
+
+    @PostMapping("/{slotIndex}/draft")
+    public ApiResponse<Void> saveCourseExamDraft(
+            @PathVariable UUID courseId,
+            @PathVariable Integer slotIndex,
+            @Valid @RequestBody SaveExamDraftRequest request) {
+        examService.saveStudentExamDraft(courseId, slotIndex, CurrentUser.required(), request);
+        return ApiResponse.ok(null, "Da luu nhap bai kiem tra");
     }
 }

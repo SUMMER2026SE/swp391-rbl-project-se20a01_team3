@@ -10,6 +10,7 @@ import com.beeacademy.backend.model.Category;
 import com.beeacademy.backend.model.Chapter;
 import com.beeacademy.backend.model.Profile;
 import com.beeacademy.backend.model.Question;
+import com.beeacademy.backend.model.QuestionBank;
 import com.beeacademy.backend.model.QuestionChoice;
 import com.beeacademy.backend.repository.CategoryRepository;
 import com.beeacademy.backend.repository.ChapterRepository;
@@ -42,20 +43,27 @@ public class QuestionService {
 
     private static final Set<String> OBJECTIVE_TYPES = Set.of(
             "multiple_choice", "true_false", "image_question", "audio_question");
-    private static final Set<String> ESSAY_TYPES = Set.of("essay");
+    private static final Set<String> ESSAY_TYPES = Set.of(
+            "essay", "essay_short", "essay_long");
     private static final Set<String> SUPPORTED_TYPES = Set.of(
             "multiple_choice",
             "true_false",
             "fill_in_blank",
+            "matching",
             "essay",
+            "essay_short",
+            "essay_long",
             "image_question",
-            "audio_question");
+            "formula_question",
+            "audio_question",
+            "file_upload");
 
     private final QuestionRepository questionRepository;
     private final CategoryRepository categoryRepository;
     private final ProfileRepository profileRepository;
     private final ChapterRepository chapterRepository;
     private final ObjectMapper objectMapper;
+    private final QuestionBankService questionBankService;
 
     @Lazy
     @Autowired
@@ -68,12 +76,14 @@ public class QuestionService {
         Profile teacher = loadProfile(me.userId());
         Category category = loadCategory(req.categoryId());
         Chapter chapter = req.chapterId() != null ? loadChapter(req.chapterId()) : null;
+        QuestionBank questionBank = resolveQuestionBank(req.questionBankId(), me.userId(), req.categoryId(), req.grade());
 
         validateCategoryMatchesChapter(req.categoryId(), chapter);
         validateGradeMatchesChapter(req.categoryId(), req.grade(), chapter);
 
         Question question = Question.create(
                 teacher,
+                questionBank,
                 category,
                 req.grade(),
                 chapter,
@@ -95,6 +105,7 @@ public class QuestionService {
             AuthenticatedUser me,
             UUID categoryId,
             Integer grade,
+            UUID questionBankId,
             UUID chapterId,
             String difficulty,
             String status,
@@ -110,6 +121,9 @@ public class QuestionService {
         }
         if (grade != null) {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("grade"), grade));
+        }
+        if (questionBankId != null) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("questionBank").get("id"), questionBankId));
         }
         if (chapterId != null) {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("chapter").get("id"), chapterId));
@@ -135,11 +149,13 @@ public class QuestionService {
         Question question = loadAndVerifyOwner(questionId, me.userId());
         Category category = loadCategory(req.categoryId());
         Chapter chapter = req.chapterId() != null ? loadChapter(req.chapterId()) : null;
+        QuestionBank questionBank = resolveQuestionBank(req.questionBankId(), me.userId(), req.categoryId(), req.grade());
 
         validateCategoryMatchesChapter(req.categoryId(), chapter);
         validateGradeMatchesChapter(req.categoryId(), req.grade(), chapter);
 
         question.update(
+                questionBank,
                 category,
                 req.grade(),
                 chapter,
@@ -205,6 +221,7 @@ public class QuestionService {
     public QuestionStatsResponse getStatsForChapter(AuthenticatedUser me, UUID chapterId) {
         loadChapter(chapterId);
         List<Object[]> rows = questionRepository.countActiveByDifficultyForTeacherAndChapter(me.userId(), chapterId);
+        List<Object[]> typeRows = questionRepository.countActiveByTypeForTeacherAndChapter(me.userId(), chapterId);
 
         int easy = 0;
         int medium = 0;
@@ -220,7 +237,33 @@ public class QuestionService {
                 }
             }
         }
-        return new QuestionStatsResponse(easy, medium, hard, easy + medium + hard);
+        int multipleChoiceCount = 0;
+        int trueFalseCount = 0;
+        int fillInBlankCount = 0;
+        int essayCount = 0;
+        for (Object[] row : typeRows) {
+            String type = (String) row[0];
+            long count = (Long) row[1];
+            switch (type) {
+                case "multiple_choice" -> multipleChoiceCount = (int) count;
+                case "true_false" -> trueFalseCount = (int) count;
+                case "fill_in_blank" -> fillInBlankCount = (int) count;
+                case "essay", "essay_short", "essay_long" -> essayCount += (int) count;
+                default -> {
+                }
+            }
+        }
+        int totalExamSupported = multipleChoiceCount + trueFalseCount + fillInBlankCount + essayCount;
+        return new QuestionStatsResponse(
+                easy,
+                medium,
+                hard,
+                easy + medium + hard,
+                multipleChoiceCount,
+                trueFalseCount,
+                fillInBlankCount,
+                essayCount,
+                totalExamSupported);
     }
 
     private void addChoices(Question question, List<CreateQuestionRequest.ChoiceRequest> choiceReqs) {
@@ -256,6 +299,22 @@ public class QuestionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Chapter", chapterId));
     }
 
+    private QuestionBank resolveQuestionBank(UUID questionBankId, UUID teacherId, UUID categoryId, Integer grade) {
+        if (questionBankId == null) {
+            return null;
+        }
+        QuestionBank questionBank = questionBankService.getOwnedQuestionBank(questionBankId, teacherId);
+        if (!questionBank.getCategory().getId().equals(categoryId)) {
+            throw new BusinessException("QUESTION_BANK_CATEGORY_MISMATCH",
+                    "Mon hoc cua cau hoi phai khop voi ngan hang da chon.");
+        }
+        if (!questionBank.getGrade().equals(grade)) {
+            throw new BusinessException("QUESTION_BANK_GRADE_MISMATCH",
+                    "Lop cua cau hoi phai khop voi ngan hang da chon.");
+        }
+        return questionBank;
+    }
+
     private void validateQuestionRequest(CreateQuestionRequest req) {
         if (req == null) {
             throw new BusinessException("INVALID_REQUEST", "Du lieu cau hoi khong hop le.");
@@ -280,6 +339,12 @@ public class QuestionService {
             validateObjectiveQuestion(req);
         } else if ("fill_in_blank".equals(req.type())) {
             validateFillInBlank(req);
+        } else if ("matching".equals(req.type())) {
+            validateMatching(req);
+        } else if ("formula_question".equals(req.type())) {
+            validateFormulaQuestion(req);
+        } else if ("file_upload".equals(req.type())) {
+            validateFileUpload(req);
         } else if (ESSAY_TYPES.contains(req.type())) {
             validateEssay(req);
         }
@@ -331,6 +396,33 @@ public class QuestionService {
         Integer wordLimit = integerValue(req.metadata(), "wordLimit");
         if (wordLimit != null && wordLimit <= 0) {
             throw new BusinessException("INVALID_WORD_LIMIT", "wordLimit phai lon hon 0.");
+        }
+    }
+
+    private void validateMatching(CreateQuestionRequest req) {
+        if (hasChoices(req)) {
+            throw new BusinessException("INVALID_CHOICES", "Cau noi cot khong dung danh sach dap an objective.");
+        }
+        JsonNode pairs = req.metadata() != null ? req.metadata().get("matchingPairs") : null;
+        if (pairs == null || !pairs.isArray() || pairs.size() < 2) {
+            throw new BusinessException("MATCHING_PAIRS_REQUIRED",
+                    "Cau noi cot can it nhat 2 cap hop le.");
+        }
+    }
+
+    private void validateFormulaQuestion(CreateQuestionRequest req) {
+        requireMetadataText(req.metadata(), "formulaLatex",
+                "Cau hoi cong thuc can co noi dung cong thuc.");
+    }
+
+    private void validateFileUpload(CreateQuestionRequest req) {
+        if (hasChoices(req)) {
+            throw new BusinessException("INVALID_CHOICES", "Cau nop file khong dung danh sach dap an objective.");
+        }
+        List<String> allowedUploadTypes = stringList(req.metadata(), "allowedUploadTypes");
+        if (allowedUploadTypes.isEmpty()) {
+            throw new BusinessException("UPLOAD_TYPES_REQUIRED",
+                    "Cau nop file can khai bao loai file duoc phep.");
         }
     }
 

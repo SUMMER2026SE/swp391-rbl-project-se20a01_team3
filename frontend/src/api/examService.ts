@@ -4,6 +4,7 @@ import type { QuestionMetadata, QuestionType } from './questionService';
 
 export type ExamQuestionType = QuestionType;
 export type ExamDifficulty = 'easy' | 'medium' | 'hard';
+export type ExamType = 'quiz' | 'chapter_test' | 'final_exam';
 
 export interface ExamQuestionPayload {
   id: string;
@@ -21,6 +22,7 @@ export interface ExamConfigRequest {
   name: string;
   scopeStartChapterId: string;
   placementChapterId: string;
+  examType: ExamType;
   description?: string | null;
   durationMinutes: number;
   passScorePercent: number;
@@ -28,6 +30,9 @@ export interface ExamConfigRequest {
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
   showAnswerAfterSubmit: boolean;
+  requireFullscreen: boolean;
+  blockCopyPaste: boolean;
+  confirmUnderTenQuestions?: boolean;
   questions: ExamQuestionPayload[];
 }
 
@@ -60,7 +65,45 @@ export interface ExamQuestionRandomRequest {
     totalCount: number;
     objectiveCount?: number;
     essayCount?: number;
+    multipleChoiceCount?: number;
+    trueFalseCount?: number;
+    fillInBlankCount?: number;
   }>;
+}
+
+export interface ExamAiDraftRequest {
+  chapterId?: string;
+  prompt: string;
+  material?: string;
+  questionCount: number;
+  questionType: 'multiple_choice' | 'true_false' | 'fill_in_blank' | 'essay';
+  difficulty: ExamDifficulty;
+}
+
+export interface ExamAiDraftQuestion {
+  status: 'draft' | 'approved' | 'rejected';
+  text: string;
+  type: ExamQuestionType;
+  options: string[];
+  correctIndices: number[];
+  metadata?: QuestionMetadata | null;
+  explanation?: string | null;
+  difficulty: ExamDifficulty;
+  sourceRefs: string[];
+  rejectionReason?: string | null;
+}
+
+export interface ExamAiDraftResponse {
+  promptId: string;
+  questions: ExamAiDraftQuestion[];
+  createdAt: string;
+}
+
+export interface ExamAiReviewRequest {
+  promptId: string;
+  action: 'APPROVED_AI_QUESTION' | 'REJECTED_AI_QUESTION';
+  questionText: string;
+  sourceRefs?: string[];
 }
 
 export interface TeacherExamQuestionReview {
@@ -136,6 +179,27 @@ export async function randomizeCourseExamQuestions(
     req,
   );
   return unwrap(res.data);
+}
+
+export async function generateCourseExamAiDraft(
+    courseId: string,
+    req: ExamAiDraftRequest,
+): Promise<ExamAiDraftResponse> {
+  const res = await apiClient.post<ApiResponse<ExamAiDraftResponse>>(
+    `/api/teacher/courses/${courseId}/exams/ai-draft`,
+    req,
+  );
+  return unwrap(res.data);
+}
+
+export async function recordCourseExamAiReview(
+    courseId: string,
+    req: ExamAiReviewRequest,
+): Promise<void> {
+  await apiClient.post<ApiResponse<void>>(
+    `/api/teacher/courses/${courseId}/exams/ai-review`,
+    req,
+  );
 }
 
 export async function saveCourseExam(

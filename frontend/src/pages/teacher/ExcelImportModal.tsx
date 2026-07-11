@@ -20,6 +20,7 @@ import * as XLSX from 'xlsx';
 import { notify } from '../../lib/toast';
 import * as questionService from '../../api/questionService';
 import type { CreateQuestionRequest, QuestionMetadata } from '../../api/questionService';
+import type { QuestionBankResponse } from '../../api/questionBankService';
 import { isApiError } from '../../api/client';
 import { listCategories } from '../../api/courseService';
 import { listMyCourses, getCourseDetail } from '../../api/teacherCourseService';
@@ -284,9 +285,15 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onImported: () => void;
+  selectedQuestionBank?: QuestionBankResponse | null;
 }
 
-export default function ExcelImportModal({ open, onClose, onImported }: Props) {
+export default function ExcelImportModal({
+  open,
+  onClose,
+  onImported,
+  selectedQuestionBank = null,
+}: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Context selectors
@@ -316,6 +323,12 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
       .catch(() => notify.error('Không tải được danh mục'))
       .finally(() => setLoadingMeta(false));
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !selectedQuestionBank) return;
+    setCategoryId(selectedQuestionBank.categoryId);
+    setGrade(String(selectedQuestionBank.grade));
+  }, [open, selectedQuestionBank]);
 
   // Load chapters and lock category when a course is selected.
   useEffect(() => {
@@ -379,12 +392,33 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
   const errorRows  = rows.filter(r => r.error);
 
   function handleCourseChange(nextCourseId: string) {
+    const selectedCourse = courses.find(c => c.id === nextCourseId);
+    if (selectedCourse && selectedQuestionBank) {
+      const matchesBank = selectedCourse.categoryId === selectedQuestionBank.categoryId
+        && (selectedCourse.grades?.includes(selectedQuestionBank.grade) ?? false);
+      if (!matchesBank) {
+        notify.error('Khóa học phải cùng môn học và lớp với ngân hàng câu hỏi đang chọn');
+        return;
+      }
+    }
+
     setCourseId(nextCourseId);
     setChapterId('');
 
-    if (!nextCourseId) return;
+    if (!nextCourseId) {
+      if (selectedQuestionBank) {
+        setCategoryId(selectedQuestionBank.categoryId);
+        setGrade(String(selectedQuestionBank.grade));
+      }
+      return;
+    }
 
-    const selectedCourse = courses.find(c => c.id === nextCourseId);
+    if (selectedQuestionBank) {
+      setCategoryId(selectedQuestionBank.categoryId);
+      setGrade(String(selectedQuestionBank.grade));
+      return;
+    }
+
     if (selectedCourse?.categoryId) setCategoryId(selectedCourse.categoryId);
     setGrade(selectedCourse?.grades?.[0] ? String(selectedCourse.grades[0]) : '');
   }
@@ -397,6 +431,7 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
     const requests: CreateQuestionRequest[] = validRows.map(r => ({
       categoryId,
       grade: Number(grade),
+      questionBankId: selectedQuestionBank?.id || undefined,
       chapterId: chapterId || undefined,
       content:     r.content,
       explanation: r.explanation || undefined,
@@ -490,9 +525,15 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
                 <p className="text-sm font-bold text-on-surface mb-2">
                   Bước 2 - Gắn nhãn cho toàn bộ câu hỏi trong file
                 </p>
+                {selectedQuestionBank && (
+                  <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Đang nhập vào question bank <span className="font-bold">{selectedQuestionBank.title}</span>.
+                    Môn học và lớp sẽ được khóa theo bank này.
+                  </div>
+                )}
                 {(() => {
-                  const isCategoryLocked = Boolean(courseId);
-                  const isGradeLocked = Boolean(courseId);
+                  const isCategoryLocked = Boolean(courseId || selectedQuestionBank);
+                  const isGradeLocked = Boolean(courseId || selectedQuestionBank);
                   return (
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                       {/* Khóa học */}
@@ -532,7 +573,9 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
                           }
                         </div>
                         {isCategoryLocked && (
-                          <p className="text-xs text-primary/70 mt-1">Lấy từ khóa học</p>
+                          <p className="text-xs text-primary/70 mt-1">
+                            {selectedQuestionBank ? 'Lấy từ question bank' : 'Lấy từ khóa học'}
+                          </p>
                         )}
                       </div>
 
@@ -555,7 +598,9 @@ export default function ExcelImportModal({ open, onClose, onImported }: Props) {
                           }
                         </div>
                         {isGradeLocked && (
-                          <p className="text-xs text-primary/70 mt-1">Lấy từ khóa học</p>
+                          <p className="text-xs text-primary/70 mt-1">
+                            {selectedQuestionBank ? 'Lấy từ question bank' : 'Lấy từ khóa học'}
+                          </p>
                         )}
                       </div>
 

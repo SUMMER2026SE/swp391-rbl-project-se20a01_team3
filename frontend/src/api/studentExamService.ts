@@ -31,6 +31,8 @@ export interface StudentExam {
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
   showAnswerAfterSubmit: boolean;
+  requireFullscreen: boolean;
+  blockCopyPaste: boolean;
   questionCount: number;
   totalPoints: number;
   questions: StudentExamQuestion[];
@@ -82,6 +84,17 @@ export async function submitStudentExam(
     { answers },
   );
   return unwrap(res.data);
+}
+
+export async function saveStudentExamDraft(
+  courseId: string,
+  slotIndex: number,
+  answers: Record<string, SubmitExamAnswer>,
+): Promise<void> {
+  await apiClient.post<ApiResponse<void>>(
+    `/api/student/courses/${encodeURIComponent(courseId)}/exams/${slotIndex}/draft`,
+    { answers },
+  );
 }
 
 export async function uploadStudentExamAnswerImage(

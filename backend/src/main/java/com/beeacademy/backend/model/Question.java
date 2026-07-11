@@ -56,6 +56,10 @@ public class Question {
     @JoinColumn(name = "teacher_id", nullable = false)
     private Profile teacher;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "question_bank_id")
+    private QuestionBank questionBank;
+
     /** Môn học — bắt buộc. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
@@ -139,12 +143,14 @@ public class Question {
     // Factory + business methods
     // ========================================================================
 
-    public static Question create(Profile teacher, Category category, Integer grade, Chapter chapter,
+    public static Question create(Profile teacher, QuestionBank questionBank,
+                                  Category category, Integer grade, Chapter chapter,
                                    String content, String explanation, String metadataJson,
                                    String difficulty, String type) {
         Question q     = new Question();
         q.id           = UUID.randomUUID();
         q.teacher      = teacher;
+        q.questionBank = questionBank;
         q.category     = category;
         q.grade        = grade;
         q.chapter      = chapter;
@@ -158,9 +164,10 @@ public class Question {
         return q;
     }
 
-    public void update(Category category, Integer grade, Chapter chapter,
+    public void update(QuestionBank questionBank, Category category, Integer grade, Chapter chapter,
                        String content, String explanation, String metadataJson,
                        String difficulty, String type) {
+        this.questionBank = questionBank;
         if (category != null) this.category = category;
         if (grade != null) this.grade = grade;
         this.chapter = chapter;
