@@ -15,6 +15,8 @@ export interface CertificateResponse {
   issuedAt: string | null;
   revokedAt: string | null;
   reviewNote: string | null;
+  viewUrl: string | null;
+  downloadFileName: string | null;
   downloadUrl: string | null;
 }
 

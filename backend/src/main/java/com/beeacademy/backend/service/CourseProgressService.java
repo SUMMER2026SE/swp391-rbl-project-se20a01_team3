@@ -17,6 +17,7 @@ import com.beeacademy.backend.repository.ChapterRepository;
 import com.beeacademy.backend.repository.CourseProgressItemRepository;
 import com.beeacademy.backend.repository.CourseRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
+import com.beeacademy.backend.repository.ExamAttemptRepository;
 import com.beeacademy.backend.repository.LessonRepository;
 import com.beeacademy.backend.repository.OrderItemRepository;
 import com.beeacademy.backend.repository.QuizAttemptRepository;
@@ -44,6 +45,7 @@ public class CourseProgressService {
 
     private static final String ITEM_LESSON = "lesson";
     private static final String ITEM_QUIZ = "quiz";
+    private static final int FINAL_EXAM_SLOT_INDEX = 3;
 
     private final CourseProgressItemRepository progressRepository;
     private final EnrollmentRepository enrollmentRepository;
@@ -52,6 +54,7 @@ public class CourseProgressService {
     private final LessonRepository lessonRepository;
     private final QuizConfigRepository quizConfigRepository;
     private final QuizAttemptRepository quizAttemptRepository;
+    private final ExamAttemptRepository examAttemptRepository;
     private final OrderItemRepository orderItemRepository;
     private final CertificateService certificateService;
 
@@ -78,6 +81,8 @@ public class CourseProgressService {
         List<UUID> courseIds = ownedCourseIds.stream().toList();
         List<Course> courses = courseRepository.findByIdIn(courseIds);
         Map<UUID, Integer> progressByCourse = calculateProgressForCourses(studentId, courseIds);
+        java.util.Set<UUID> passedFinalCourseIds = new java.util.HashSet<>(
+                examAttemptRepository.findPassedFinalCourseIds(studentId, courseIds, FINAL_EXAM_SLOT_INDEX));
 
         List<CourseProgressItem> completedItems =
                 progressRepository.findByStudentIdAndCourseIdIn(studentId, courseIds);
@@ -106,7 +111,8 @@ public class CourseProgressService {
                         progressByCourse.getOrDefault(course.getId(), 0),
                         completedByItemId,
                         quizByChapter,
-                        latestQuizByConfig))
+                        latestQuizByConfig,
+                        passedFinalCourseIds.contains(course.getId())))
                 .toList();
 
         int totalLessons = courseDetails.stream().mapToInt(StudentLearningProgressResponse.CourseProgressDetail::totalLessons).sum();
@@ -137,12 +143,48 @@ public class CourseProgressService {
         requireEnrolled(me.userId(), courseId);
         validateItemBelongsToCourse(courseId, request.itemId(), request.itemType());
 
+        if (ITEM_LESSON.equals(request.itemType())) {
+            Lesson lesson = lessonRepository.findById(request.itemId()).orElse(null);
+            // existsByIdAndCourseId đã xác nhận ownership; null chỉ xảy ra ở
+            // mock/legacy schema, khi đó giữ tương thích với flow cũ.
+            if (lesson != null && isVideoLesson(lesson)) {
+                throw new BusinessException(
+                        "VIDEO_COMPLETION_REQUIRES_WATCH_THRESHOLD",
+                        "Video chỉ được hoàn thành sau khi đã xem đủ ít nhất 90% thời lượng duy nhất.",
+                        HttpStatus.BAD_REQUEST);
+            }
+            if (lesson != null) validateNonVideoCompletionRule(lesson);
+        }
+
+        return recordProgressItem(courseId, me, request.itemId(), request.itemType());
+    }
+
+    /** Chỉ được gọi sau khi StudentVideoProgressService đã xác nhận đủ 90% đoạn xem duy nhất. */
+    @Transactional
+    public CourseProgressResponse completeVideoLessonAfterWatch(
+            UUID courseId, UUID lessonId, AuthenticatedUser me) {
+        requireEnrolled(me.userId(), courseId);
+        validateItemBelongsToCourse(courseId, lessonId, ITEM_LESSON);
+        Lesson lesson = lessonRepository.findById(lessonId)
+                .orElseThrow(() -> new ResourceNotFoundException("Lesson", lessonId));
+        if (!isVideoLesson(lesson)) {
+            throw new BusinessException(
+                    "INVALID_VIDEO_LESSON",
+                    "Nội dung này không phải video.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        return recordProgressItem(courseId, me, lessonId, ITEM_LESSON);
+    }
+
+    private CourseProgressResponse recordProgressItem(
+            UUID courseId, AuthenticatedUser me, UUID itemId, String itemType) {
+
         boolean exists = progressRepository.existsByStudentIdAndCourseIdAndItemIdAndItemType(
-                me.userId(), courseId, request.itemId(), request.itemType()
+                me.userId(), courseId, itemId, itemType
         );
         if (!exists) {
             progressRepository.save(CourseProgressItem.create(
-                    me.userId(), courseId, request.itemId(), request.itemType()
+                    me.userId(), courseId, itemId, itemType
             ));
         }
 
@@ -154,6 +196,28 @@ public class CourseProgressService {
         }
 
         return buildResponse(me.userId(), courseId);
+    }
+
+    private boolean isVideoLesson(Lesson lesson) {
+        return lesson.getVideoStoragePath() != null
+                || lesson.getVideoUrl() != null
+                || lesson.getVideoEmbedUrl() != null;
+    }
+
+    private void validateNonVideoCompletionRule(Lesson lesson) {
+        String rule = lesson.getCompletionRule();
+        if (rule == null || rule.isBlank()) {
+            throw new BusinessException(
+                    "COMPLETION_RULE_MISSING",
+                    "Bài học chưa được cấu hình điều kiện hoàn thành.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        if (!"DOCUMENT_OPENED".equals(rule) && !"MARK_AS_COMPLETE".equals(rule)) {
+            throw new BusinessException(
+                    "COMPLETION_RULE_REQUIRES_ASSIGNMENT",
+                    "Bài học chỉ được hoàn thành sau khi nộp hoặc đạt bài tập.",
+                    HttpStatus.BAD_REQUEST);
+        }
     }
 
     public Map<UUID, Integer> calculateProgressForCourses(UUID studentId, List<UUID> courseIds) {
@@ -185,6 +249,32 @@ public class CourseProgressService {
         ));
     }
 
+    /**
+     * Tiến độ dùng riêng cho UC13: số bài học đã hoàn thành / tổng số bài học.
+     * Quiz không được tính vào mẫu số của thẻ danh sách khóa đã mua.
+     */
+    public Map<UUID, Integer> calculateLessonProgressForCourses(UUID studentId, List<UUID> courseIds) {
+        if (courseIds == null || courseIds.isEmpty()) return Map.of();
+
+        Map<UUID, Long> completedByCourse = progressRepository
+                .countCompletedLessonsByStudentAndCourseIds(studentId, courseIds)
+                .stream()
+                .collect(Collectors.toMap(row -> (UUID) row[0], row -> (Long) row[1]));
+        Map<UUID, Long> totalByCourse = courseRepository.countLessonsByCourseIds(courseIds)
+                .stream()
+                .collect(Collectors.toMap(row -> (UUID) row[0], row -> (Long) row[1]));
+
+        return courseIds.stream().collect(Collectors.toMap(
+                courseId -> courseId,
+                courseId -> {
+                    long total = totalByCourse.getOrDefault(courseId, 0L);
+                    if (total == 0) return 0;
+                    long completed = Math.min(completedByCourse.getOrDefault(courseId, 0L), total);
+                    return (int) Math.round((completed * 100.0) / total);
+                }
+        ));
+    }
+
     private CourseProgressResponse buildResponse(UUID studentId, UUID courseId) {
         List<CourseProgressItem> items = progressRepository.findByStudentIdAndCourseId(studentId, courseId);
         List<UUID> lessonIds = items.stream()
@@ -204,7 +294,8 @@ public class CourseProgressService {
             Integer progressPct,
             Map<UUID, CourseProgressItem> completedByItemId,
             Map<UUID, QuizConfig> quizByChapter,
-            Map<UUID, QuizAttempt> latestQuizByConfig
+            Map<UUID, QuizAttempt> latestQuizByConfig,
+            boolean finalExamPassed
     ) {
         List<Chapter> chapters = chapterRepository.findWithLessonsByCourseId(course.getId());
         List<StudentLearningProgressResponse.ChapterProgressDetail> chapterDetails = chapters.stream()
@@ -244,6 +335,7 @@ public class CourseProgressService {
                 completedQuizzes,
                 totalQuizzes,
                 latestQuizScore,
+                finalExamPassed,
                 enrollment != null ? enrollment.getEnrolledAt() : null,
                 chapterDetails);
     }

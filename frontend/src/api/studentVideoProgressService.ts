@@ -6,11 +6,20 @@ export interface StudentVideoProgress {
   positionSec: number;
   durationSec: number;
   updatedAt: string | null;
+  watchedSegments: VideoWatchedSegment[];
+  watchedDurationSec: number;
+  completed: boolean;
+}
+
+export interface VideoWatchedSegment {
+  startSec: number;
+  endSec: number;
 }
 
 export interface SaveStudentVideoProgressPayload {
   positionSec: number;
   durationSec: number;
+  watchedSegments: VideoWatchedSegment[];
 }
 
 function progressPath(courseId: string, lessonId: string): string {

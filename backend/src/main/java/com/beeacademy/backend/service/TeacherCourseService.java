@@ -386,6 +386,8 @@ public class TeacherCourseService {
 
         Lesson lesson = Lesson.createNew(chapter, req.title(), req.description(),
                                          position, req.isFree());
+        lesson.updateLearningMetadata(req.completionRule(), req.transcript(), req.subtitleUrl(),
+                normalizeSlideCueSeconds(req.slideCueSeconds()), trimToNull(req.videoFallbackUrl()));
         if (req.videoEmbedUrl() != null && !req.videoEmbedUrl().isBlank()) {
             lesson.setVideoEmbedUrl(req.videoEmbedUrl());
         }
@@ -418,6 +420,8 @@ public class TeacherCourseService {
                 req.description(),
                 req.position(),
                 req.isFree() != null ? req.isFree() : lesson.getIsFree());
+        lesson.updateLearningMetadata(req.completionRule(), req.transcript(), req.subtitleUrl(),
+                normalizeSlideCueSeconds(req.slideCueSeconds()), trimToNull(req.videoFallbackUrl()));
 
         if ("embed".equals(videoSource)) {
             String embedUrl = trimToNull(req.videoEmbedUrl());
@@ -649,7 +653,34 @@ public class TeacherCourseService {
         row.put("videoStoragePath", lesson.getVideoStoragePath());
         row.put("videoUrl", lesson.getVideoUrl());
         row.put("durationSec", lesson.getDurationSec());
+        row.put("videoFallbackUrl", lesson.getVideoFallbackUrl());
+        row.put("slideCueSeconds", lesson.getSlideCueSeconds());
         return row;
+    }
+
+    private String normalizeSlideCueSeconds(String value) {
+        String normalized = trimToNull(value);
+        if (normalized == null) return null;
+        String[] parts = normalized.split(",");
+        int previous = -1;
+        StringBuilder result = new StringBuilder();
+        for (String part : parts) {
+            int second;
+            try {
+                second = Integer.parseInt(part.trim());
+            } catch (NumberFormatException ex) {
+                throw new BusinessException("INVALID_SLIDE_CUES",
+                        "Moc dong bo slide phai la cac so giay, cach nhau bang dau phay.", HttpStatus.BAD_REQUEST);
+            }
+            if (second < 0 || second <= previous) {
+                throw new BusinessException("INVALID_SLIDE_CUES",
+                        "Moc dong bo slide phai tang dan va khong am.", HttpStatus.BAD_REQUEST);
+            }
+            if (result.length() > 0) result.append(',');
+            result.append(second);
+            previous = second;
+        }
+        return result.toString();
     }
 
     /**

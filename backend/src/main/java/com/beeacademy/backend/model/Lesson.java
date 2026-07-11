@@ -77,6 +77,10 @@ public class Lesson {
     @Column(name = "video_url")
     private String videoUrl;
 
+    /** Nguồn/CDN dự phòng (thường là bản bitrate thấp hơn) khi video chính lỗi. */
+    @Column(name = "video_fallback_url")
+    private String videoFallbackUrl;
+
     /** Thời lượng tính bằng giây. Mặc định 0 trước khi upload xong. */
     @Column(name = "duration_sec", nullable = false)
     private Integer durationSec;
@@ -88,6 +92,19 @@ public class Lesson {
     /** Cho guest xem thử mà không cần mua khoá. */
     @Column(name = "is_free", nullable = false)
     private Boolean isFree;
+
+    @Column(name = "completion_rule")
+    private String completionRule;
+
+    @Column(name = "transcript", columnDefinition = "text")
+    private String transcript;
+
+    @Column(name = "subtitle_url")
+    private String subtitleUrl;
+
+    /** Các mốc giây, phân tách bằng dấu phẩy; mốc thứ n ứng với trang slide n + 1. */
+    @Column(name = "slide_cue_seconds")
+    private String slideCueSeconds;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -125,6 +142,19 @@ public class Lesson {
         if (description != null) this.description = description;
         if (position != null && position > 0) this.position = position;
         this.isFree = isFree;
+    }
+
+    public void updateLearningMetadata(String completionRule, String transcript, String subtitleUrl,
+                                       String slideCueSeconds, String videoFallbackUrl) {
+        this.completionRule = normalize(completionRule);
+        this.transcript = normalize(transcript);
+        this.subtitleUrl = normalize(subtitleUrl);
+        this.slideCueSeconds = normalize(slideCueSeconds);
+        this.videoFallbackUrl = normalize(videoFallbackUrl);
+    }
+
+    private String normalize(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     /** Chuyển bài học sang dùng video nhúng công khai. */

@@ -37,6 +37,8 @@ interface LessonFormData {
   videoSource: 'upload' | 'embed' | 'none';
   videoEmbedUrl: string;
   videoStoragePath: string;
+  videoFallbackUrl: string;
+  slideCueSeconds: string;
   existingPdfName: string;
   existingSlideName: string;
   existingPdfId: string;
@@ -78,6 +80,7 @@ function emptyLessonForm(position = 1): LessonFormData {
   return {
     title: '', description: '', position, isFree: false,
     videoSource: 'none', videoEmbedUrl: '', videoStoragePath: '',
+    videoFallbackUrl: '', slideCueSeconds: '',
     existingPdfName: '', existingSlideName: '',
     existingPdfId: '', existingSlideId: '',
   };
@@ -103,6 +106,8 @@ function lessonToForm(l: TeacherLessonResponse): LessonFormData {
     videoSource: l.videoEmbedUrl ? 'embed' : (l.videoStoragePath ? 'upload' : 'none'),
     videoEmbedUrl: l.videoEmbedUrl ?? '',
     videoStoragePath: l.videoStoragePath ?? '',
+    videoFallbackUrl: l.videoFallbackUrl ?? '',
+    slideCueSeconds: l.slideCueSeconds ?? '',
     existingPdfName: pdfDocument?.name ?? '',
     existingSlideName: slideDocument?.name ?? '',
     existingPdfId: pdfDocument?.id ?? '',
@@ -644,6 +649,8 @@ export default function TeacherContentPage() {
         // Chỉ gửi embedUrl khi user chọn tab embed và đã nhập URL
         videoEmbedUrl: lessonForm.videoSource === 'embed' && lessonForm.videoEmbedUrl.trim()
           ? lessonForm.videoEmbedUrl.trim() : undefined,
+        videoFallbackUrl: lessonForm.videoFallbackUrl.trim() || undefined,
+        slideCueSeconds: lessonForm.slideCueSeconds.trim() || undefined,
       };
 
       // Bước 1: Tạo / cập nhật metadata bài giảng
@@ -983,6 +990,18 @@ export default function TeacherContentPage() {
                   }}
                 />
 
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-bold text-on-surface">Nguồn video dự phòng</span>
+                  <input
+                    type="url"
+                    value={lessonForm.videoFallbackUrl}
+                    onChange={event => setLessonForm({ ...lessonForm, videoFallbackUrl: event.target.value })}
+                    placeholder="URL CDN/bitrate thấp hơn, dùng khi video chính lỗi"
+                    className="w-full rounded-lg border border-outline-variant bg-surface-container px-4 py-2.5 text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none"
+                  />
+                  <p className="mt-1 text-xs text-on-surface-variant">Nên dùng MP4/WebM cùng nội dung, bitrate thấp hơn.</p>
+                </label>
+
                 <FileSlot
                   label="Tài liệu PDF"
                   icon={<FileImage className="w-5 h-5" />}
@@ -1008,12 +1027,24 @@ export default function TeacherContentPage() {
                   }}
                 />
 
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-bold text-on-surface">Mốc đồng bộ slide (giây)</span>
+                  <input
+                    type="text"
+                    value={lessonForm.slideCueSeconds}
+                    onChange={event => setLessonForm({ ...lessonForm, slideCueSeconds: event.target.value })}
+                    placeholder="Ví dụ: 0,45,90,135"
+                    className="w-full rounded-lg border border-outline-variant bg-surface-container px-4 py-2.5 text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none"
+                  />
+                  <p className="mt-1 text-xs text-on-surface-variant">Mỗi mốc tăng dần tương ứng trang slide PDF 1, 2, 3... .</p>
+                </label>
+
                 <FileSlot
-                  label="Slide bài giảng"
+                  label="Slide PDF đồng bộ"
                   icon={<Presentation className="w-5 h-5" />}
-                  accept=".pptx,.ppt,.key,.pdf"
+                  accept=".pdf"
                   existingName={lessonForm.existingSlideName
-                    ? `(Slide bài giảng đã tải lên) ${lessonForm.existingSlideName}`
+                    ? `(Slide PDF đã tải lên) ${lessonForm.existingSlideName}`
                     : undefined}
                   file={slideFile}
                   onSelect={f => setSlideFile(f)}

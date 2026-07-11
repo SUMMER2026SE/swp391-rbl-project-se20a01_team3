@@ -50,6 +50,7 @@ export interface LearningCourseProgress {
   completedQuizzes: number;
   totalQuizzes: number;
   latestQuizScore: number | null;
+  finalExamPassed: boolean | null;
   enrolledAt: string | null;
   chapters: LearningChapterProgress[];
 }
@@ -199,6 +200,7 @@ async function getStudentLearningProgressFallback(): Promise<StudentLearningProg
         completedQuizzes,
         totalQuizzes,
         latestQuizScore: null,
+        finalExamPassed: null,
         enrolledAt: null,
         chapters,
       };
@@ -253,6 +255,7 @@ function emptyCourseProgress(course: CourseSummary): LearningCourseProgress {
     completedQuizzes: 0,
     totalQuizzes: 0,
     latestQuizScore: null,
+    finalExamPassed: null,
     enrolledAt: null,
     chapters: [],
   };

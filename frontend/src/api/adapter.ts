@@ -111,6 +111,8 @@ function adaptLesson(lesson: ApiLesson): UiLesson {
     url,
     isFree: lesson.isFree,
     isCompleted: false,
+    videoFallbackUrl: lesson.videoFallbackUrl,
+    slideCueSeconds: lesson.slideCueSeconds,
     questions: undefined, // luôn undefined — câu hỏi thật load qua StudentQuizPage
     documents: lesson.documents ?? [],
   };
@@ -137,6 +139,11 @@ export function adaptCourseSummary(summary: ApiCourseSummary, isEnrolled = false
     objective: summary.objective ?? undefined,
     audience: summary.audience ?? undefined,
     price: formatPriceVnd(summary.effectivePriceVnd),
+    originalPrice: summary.isOnSale ? formatPriceVnd(summary.priceVnd) : undefined,
+    isOnSale: summary.isOnSale,
+    categorySlug: summary.categorySlug ?? undefined,
+    totalDurationSec: summary.totalDurationSec,
+    totalChapters: summary.totalChapters,
     subject: SLUG_TO_SUBJECT[summary.categorySlug ?? ''] ?? 'Tất cả',
     grade: gradesToLabel(summary.grades),
     image: summary.thumbnailUrl ?? '',
@@ -147,6 +154,10 @@ export function adaptCourseSummary(summary: ApiCourseSummary, isEnrolled = false
     isEnrolled,
     hasFreePreview: summary.hasFreePreview,
     reviewCount: summary.reviewCount,
+    purchasedAt: summary.purchasedAt ?? null,
+    lastAccessedAt: summary.lastAccessedAt ?? null,
+    learningStatus: summary.learningStatus ?? null,
+    finalExamPassed: summary.finalExamPassed ?? null,
   };
 }
 
@@ -166,6 +177,11 @@ export function adaptCourseDetail(detail: ApiCourseDetail): UiCourse {
     objective: detail.objective ?? undefined,
     audience: detail.audience ?? undefined,
     price: formatPriceVnd(detail.effectivePriceVnd),
+    originalPrice: detail.isOnSale ? formatPriceVnd(detail.priceVnd) : undefined,
+    isOnSale: detail.isOnSale,
+    categorySlug: detail.categorySlug ?? undefined,
+    totalDurationSec: detail.totalDurationSec,
+    totalChapters: detail.totalChapters,
     subject: SLUG_TO_SUBJECT[detail.categorySlug ?? ''] ?? 'Tất cả',
     grade: gradesToLabel(detail.grades),
     image: detail.thumbnailUrl ?? '',

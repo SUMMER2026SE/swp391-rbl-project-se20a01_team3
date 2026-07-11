@@ -18,9 +18,12 @@ public record CertificateResponse(
         Instant issuedAt,
         Instant revokedAt,
         String reviewNote,
+        String viewUrl,
+        String downloadFileName,
         String downloadUrl
 ) {
-    public static CertificateResponse from(Certificate certificate, String downloadUrl) {
+    public static CertificateResponse from(Certificate certificate, String viewUrl,
+                                           String downloadFileName, String downloadUrl) {
         return new CertificateResponse(
                 certificate.getId(),
                 certificate.getCourse().getId(),
@@ -35,6 +38,8 @@ public record CertificateResponse(
                 certificate.getIssuedAt(),
                 certificate.getRevokedAt(),
                 certificate.getReviewNote(),
+                viewUrl,
+                downloadFileName,
                 downloadUrl
         );
     }

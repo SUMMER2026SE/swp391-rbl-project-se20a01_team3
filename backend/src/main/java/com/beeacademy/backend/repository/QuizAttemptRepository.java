@@ -64,6 +64,18 @@ public interface QuizAttemptRepository extends JpaRepository<QuizAttempt, UUID> 
             @Param("courseIds") Collection<UUID> courseIds);
 
     @Query("""
+           SELECT config.chapter.course.id, MAX(COALESCE(attempt.submittedAt, attempt.startedAt))
+           FROM QuizAttempt attempt
+           JOIN attempt.quizConfig config
+           WHERE attempt.student.id = :studentId
+             AND config.chapter.course.id IN :courseIds
+           GROUP BY config.chapter.course.id
+           """)
+    List<Object[]> findLatestActivityByStudentAndCourseIds(
+            @Param("studentId") UUID studentId,
+            @Param("courseIds") Collection<UUID> courseIds);
+
+    @Query("""
            SELECT attempt
            FROM QuizAttempt attempt
            JOIN FETCH attempt.quizConfig config
