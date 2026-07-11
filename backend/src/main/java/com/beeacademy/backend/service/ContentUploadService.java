@@ -67,8 +67,17 @@ public class ContentUploadService {
     private static final Set<String> ALLOWED_QUESTION_AUDIO_EXT = Set.of(
             "mp3", "wav", "ogg", "m4a", "aac");
 
+    private static final Set<String> ALLOWED_SUBMISSION_MIME = Set.of(
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "image/jpeg", "image/png", "image/webp");
+
     private static final long MAX_VIDEO_BYTES = 2L * 1024 * 1024 * 1024; // 2 GB
     private static final long MAX_DOC_BYTES   = 100L * 1024 * 1024;      // 100 MB
+    private static final long MAX_SUBMISSION_BYTES = 20L * 1024 * 1024;  // 20 MB
     private static final long MAX_THUMBNAIL_BYTES = 5L * 1024 * 1024; // 5 MB
     private static final long MAX_QUESTION_IMAGE_BYTES = 5L * 1024 * 1024;
     private static final long MAX_QUESTION_AUDIO_BYTES = 20L * 1024 * 1024;
@@ -191,6 +200,28 @@ public class ContentUploadService {
 
         log.info("Upload tài liệu private thành công: lessonId={} path={}", lessonId, path);
         return new UploadResponse(path, null, fileType, file.getSize());
+    }
+
+    /**
+     * Upload file bài làm của học sinh (UC16) lên public bucket.
+     * Enrollment check thực hiện ở AssignmentService.verifyCanSubmit trước khi gọi.
+     */
+    @Transactional
+    public UploadResponse uploadAssignmentFile(UUID assignmentId, UUID studentId,
+                                                MultipartFile file) {
+        validateFile(file, ALLOWED_SUBMISSION_MIME, MAX_SUBMISSION_BYTES,
+                     "PDF, DOCX, PPTX hoặc ảnh JPEG/PNG/WEBP", "20MB");
+
+        String ext  = getExtension(file.getOriginalFilename(), "pdf");
+        String path = "assignment-submissions/" + assignmentId + "/" + studentId + "/"
+                + UUID.randomUUID() + "." + ext;
+
+        String publicUrl = storageClient.upload(DOCS_BUCKET, path,
+                                                file.getContentType(), file.getResource(), file.getSize());
+
+        log.info("Upload file bài làm thành công: assignmentId={} studentId={} path={}",
+                 assignmentId, studentId, path);
+        return new UploadResponse(path, publicUrl, ext, file.getSize());
     }
 
     /** Xóa đúng tài liệu theo id sau khi xác minh giáo viên sở hữu bài giảng. */

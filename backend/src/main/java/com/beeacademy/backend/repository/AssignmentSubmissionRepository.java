@@ -62,4 +62,10 @@ public interface AssignmentSubmissionRepository
     Optional<AssignmentSubmission> findOwned(
             @Param("submissionId") UUID submissionId,
             @Param("teacherId") UUID teacherId);
+
+    Optional<AssignmentSubmission> findByAssignmentIdAndStudentId(
+            UUID assignmentId, UUID studentId);
+
+    List<AssignmentSubmission> findByAssignmentIdInAndStudentId(
+            List<UUID> assignmentIds, UUID studentId);
 }
