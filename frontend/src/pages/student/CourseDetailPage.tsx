@@ -1365,6 +1365,17 @@ function watchedDurationSec(segments: VideoWatchedSegment[]): number {
   return segments.reduce((total, segment) => total + segment.endSec - segment.startSec, 0);
 }
 
+function continuousWatchedEndSec(segments: VideoWatchedSegment[]): number {
+  let end = 0;
+  const tolerance = 1;
+  const orderedSegments = [...segments].sort((left, right) => left.startSec - right.startSec);
+  for (const segment of orderedSegments) {
+    if (segment.startSec > end + tolerance) break;
+    end = Math.max(end, segment.endSec);
+  }
+  return end;
+}
+
 function getOrderedVideoLessons(
   sections: Array<{ lessons: Lesson[] }>,
 ): Lesson[] {
@@ -2385,6 +2396,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const [currentVideoDuration, setCurrentVideoDuration] = useState(0);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
+  const [maxSeekablePosition, setMaxSeekablePosition] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
 
   // State cục bộ cho Q&A
@@ -2409,6 +2421,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const isResettingSeekRef = useRef(false);
   const currentPositionRef = useRef(0);
   const currentDurationRef = useRef(0);
+  const maxSeekablePositionRef = useRef(0);
   const lastLocalProgressRef = useRef(-1);
   const lastRemoteSaveAtRef = useRef(0);
 
@@ -2587,15 +2600,21 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       : undefined;
     const localPosition = localProgress?.positionSec ?? 0;
     watchedSegmentsRef.current = localProgress?.watchedSegments ?? [];
+    const localMaxSeekablePosition = Math.max(
+      localPosition,
+      continuousWatchedEndSec(watchedSegmentsRef.current),
+    );
     lastObservedPositionRef.current = null;
     lastObservedAtRef.current = 0;
     currentPositionRef.current = localPosition;
     currentDurationRef.current = localProgress?.durationSec ?? 0;
+    maxSeekablePositionRef.current = localMaxSeekablePosition;
     lastLocalProgressRef.current = localPosition;
     lastRemoteSaveAtRef.current = 0;
     isResettingSeekRef.current = false;
     setCurrentVideoTime(localPosition);
     setCurrentVideoDuration(localProgress?.durationSec ?? 0);
+    setMaxSeekablePosition(localMaxSeekablePosition);
     setIsVideoPlaying(false);
     setIsVideoMuted(false);
     setPlaybackRate(1);
@@ -2626,8 +2645,14 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
         currentPositionRef.current = remoteProgress.positionSec;
         currentDurationRef.current = remoteProgress.durationSec;
         watchedSegmentsRef.current = remoteProgress.watchedSegments ?? [];
+        const remoteMaxSeekablePosition = Math.max(
+          remoteProgress.positionSec,
+          continuousWatchedEndSec(remoteProgress.watchedSegments ?? []),
+        );
+        maxSeekablePositionRef.current = remoteMaxSeekablePosition;
         setCurrentVideoTime(remoteProgress.positionSec);
         setCurrentVideoDuration(remoteProgress.durationSec);
+        setMaxSeekablePosition(remoteMaxSeekablePosition);
         setResumePositionSec(remoteProgress.positionSec);
         saveVideoPosition(
           videoProgressStorageKey,
@@ -2837,6 +2862,34 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     });
   }
 
+  function updateMaxSeekablePosition(positionSec: number) {
+    if (!Number.isFinite(positionSec)) return;
+    const normalizedPosition = Math.max(0, positionSec);
+    if (normalizedPosition <= maxSeekablePositionRef.current) return;
+    maxSeekablePositionRef.current = normalizedPosition;
+    setMaxSeekablePosition(normalizedPosition);
+  }
+
+  function clampForwardSeek(video: HTMLVideoElement) {
+    const maxAllowed = Math.min(
+      Math.max(0, video.duration || maxSeekablePositionRef.current),
+      maxSeekablePositionRef.current,
+    );
+    if (video.currentTime <= maxAllowed + 1) return false;
+
+    isResettingSeekRef.current = true;
+    video.currentTime = maxAllowed;
+    currentPositionRef.current = maxAllowed;
+    lastObservedPositionRef.current = maxAllowed;
+    lastObservedAtRef.current = Date.now();
+    setCurrentVideoTime(maxAllowed);
+    window.setTimeout(() => {
+      isResettingSeekRef.current = false;
+    }, 0);
+    notify.error('KhÃ´ng thá»ƒ tua tá»›i pháº§n chÆ°a xem.');
+    return true;
+  }
+
   function recordVideoProgress(positionSec: number, durationSec: number) {
     if (!Number.isFinite(positionSec) || !Number.isFinite(durationSec)) return;
     const normalizedPosition = Math.max(0, positionSec);
@@ -2853,12 +2906,27 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       : 0;
     const contentDelta = previousPosition == null ? 0 : normalizedPosition - previousPosition;
     const maxContinuousDelta = Math.max(3, elapsedSec * playbackRate * 2 + 1);
+    const isForwardJump = previousPosition != null
+      && contentDelta > maxContinuousDelta
+      && normalizedPosition > maxSeekablePositionRef.current + 1;
+    if (isForwardJump) {
+      const clampedPosition = Math.max(0, maxSeekablePositionRef.current);
+      currentPositionRef.current = clampedPosition;
+      setCurrentVideoTime(clampedPosition);
+      lastObservedPositionRef.current = clampedPosition;
+      lastObservedAtRef.current = now;
+      return;
+    }
+
     if (previousPosition != null && contentDelta >= 0 && contentDelta <= maxContinuousDelta) {
       watchedSegmentsRef.current = mergeWatchedSegments(
         watchedSegmentsRef.current,
         [{ startSec: previousPosition, endSec: normalizedPosition }],
         normalizedDuration,
       );
+      updateMaxSeekablePosition(normalizedPosition);
+    } else if (previousPosition == null || normalizedPosition <= maxSeekablePositionRef.current + 1) {
+      updateMaxSeekablePosition(normalizedPosition);
     }
     lastObservedPositionRef.current = normalizedPosition;
     lastObservedAtRef.current = now;
@@ -2988,8 +3056,10 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       return;
     }
 
-    // Cho phép tua. Lần timeupdate kế tiếp sẽ nhận diện bước nhảy và không
-    // cộng đoạn bị tua vào watchedSegments.
+    if (clampForwardSeek(video)) {
+      return;
+    }
+
     currentPositionRef.current = video.currentTime;
     lastObservedPositionRef.current = video.currentTime;
     lastObservedAtRef.current = Date.now();
@@ -3320,6 +3390,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                     url={playableVideoUrl}
                     title={activeLesson.title}
                     initialPositionSec={resumePositionSec}
+                    maxAllowedPositionSec={maxSeekablePosition}
                     playbackRate={playbackRate}
                     onProgress={recordVideoProgress}
                     onPause={() => persistCurrentVideoProgress()}
@@ -3377,23 +3448,6 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                   </video>
 
                   <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-4 pb-3 pt-10 text-white">
-                    <input
-                      type="range"
-                      min={0}
-                      max={Math.max(0, currentVideoDuration)}
-                      step={0.1}
-                      value={Math.min(currentVideoTime, Math.max(0, currentVideoDuration))}
-                      onChange={(event) => {
-                        const nextPosition = Number(event.target.value);
-                        if (videoRef.current) videoRef.current.currentTime = nextPosition;
-                        setCurrentVideoTime(nextPosition);
-                        currentPositionRef.current = nextPosition;
-                        lastObservedPositionRef.current = nextPosition;
-                        lastObservedAtRef.current = Date.now();
-                      }}
-                      aria-label="Tua video"
-                      className="mb-3 h-2 w-full cursor-pointer accent-primary"
-                    />
                     <div
                       role="progressbar"
                       aria-label="Tiến trình video"

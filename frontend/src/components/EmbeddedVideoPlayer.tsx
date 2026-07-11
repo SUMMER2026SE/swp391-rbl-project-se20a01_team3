@@ -4,6 +4,7 @@ interface EmbeddedVideoPlayerProps {
   url: string;
   title: string;
   initialPositionSec: number;
+  maxAllowedPositionSec?: number;
   playbackRate?: number;
   onProgress: (positionSec: number, durationSec: number) => void;
   onPause: () => void;
@@ -42,6 +43,7 @@ declare global {
 }
 
 let youTubeApiPromise: Promise<YouTubeNamespace> | null = null;
+const SEEK_TOLERANCE_SEC = 2.5;
 
 function loadYouTubeApi(): Promise<YouTubeNamespace> {
   if (window.YT?.Player) return Promise.resolve(window.YT);
@@ -86,12 +88,14 @@ function VimeoPlayer(props: EmbeddedVideoPlayerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const playerId = useMemo(() => `bee-vimeo-${crypto.randomUUID()}`, []);
   const callbackRef = useRef(props);
+  const maxAllowedPositionRef = useRef(Math.max(0, props.initialPositionSec));
   callbackRef.current = props;
 
   const source = useMemo(() => {
     const parsed = new URL(props.url);
     parsed.searchParams.set('api', '1');
     parsed.searchParams.set('player_id', playerId);
+    parsed.searchParams.set('controls', '0');
     return parsed.toString();
   }, [playerId, props.url]);
 
@@ -115,6 +119,17 @@ function VimeoPlayer(props: EmbeddedVideoPlayerProps) {
       } else if (message?.event === 'timeupdate') {
         const position = Number(message.data?.seconds ?? 0);
         const duration = Number(message.data?.duration ?? 0);
+        const allowedPosition = Math.max(
+          maxAllowedPositionRef.current,
+          callbackRef.current.maxAllowedPositionSec ?? 0,
+          callbackRef.current.initialPositionSec,
+        );
+        if (position > allowedPosition + SEEK_TOLERANCE_SEC) {
+          send('setCurrentTime', allowedPosition);
+          callbackRef.current.onProgress(allowedPosition, duration);
+          return;
+        }
+        maxAllowedPositionRef.current = Math.max(maxAllowedPositionRef.current, position);
         callbackRef.current.onProgress(position, duration);
       } else if (message?.event === 'play') {
       } else if (message?.event === 'pause') {
@@ -146,6 +161,7 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const callbackRef = useRef(props);
+  const maxAllowedPositionRef = useRef(Math.max(0, props.initialPositionSec));
   callbackRef.current = props;
 
   useEffect(() => {
@@ -162,7 +178,8 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
         playerVars: {
           playsinline: 1,
           rel: 0,
-          disablekb: 0,
+          controls: 0,
+          disablekb: 1,
           start: Math.max(0, Math.floor(props.initialPositionSec)),
         },
         events: {
@@ -175,6 +192,17 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
               const position = target.getCurrentTime();
               const duration = target.getDuration();
               if (Number.isFinite(position) && Number.isFinite(duration)) {
+                const allowedPosition = Math.max(
+                  maxAllowedPositionRef.current,
+                  callbackRef.current.maxAllowedPositionSec ?? 0,
+                  callbackRef.current.initialPositionSec,
+                );
+                if (position > allowedPosition + SEEK_TOLERANCE_SEC) {
+                  target.seekTo(allowedPosition, false);
+                  callbackRef.current.onProgress(allowedPosition, duration);
+                  return;
+                }
+                maxAllowedPositionRef.current = Math.max(maxAllowedPositionRef.current, position);
                 callbackRef.current.onProgress(position, duration);
               }
             }, 500);
