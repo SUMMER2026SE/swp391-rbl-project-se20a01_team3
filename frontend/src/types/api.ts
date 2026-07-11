@@ -122,6 +122,11 @@ export interface CourseSummary {
   totalLessons: number;
   totalDurationSec: number;
   progressPct?: number | null;
+  /** Các field UC13, chỉ có giá trị với GET /api/me/courses. */
+  purchasedAt?: string | null;
+  lastAccessedAt?: string | null;
+  learningStatus?: 'not_started' | 'in_progress' | 'completed' | null;
+  finalExamPassed?: boolean | null;
 }
 
 export interface CourseProgress {
@@ -155,10 +160,12 @@ export interface UpdateSystemSettingsPayload {
 }
 
 export interface LessonDocumentDto {
+  id: string;
   name: string;
-  fileUrl: string;
+  fileUrl: string | null;
   fileType: string;
   fileSizeBytes: number;
+  position: number;
 }
 
 export interface LessonDetail {
@@ -166,9 +173,14 @@ export interface LessonDetail {
   title: string;
   videoUrl: string | null;
   videoEmbedUrl: string | null;
+  videoFallbackUrl: string | null;
   durationSec: number;
   position: number;
   isFree: boolean;
+  completionRule: 'DOCUMENT_OPENED' | 'MARK_AS_COMPLETE' | 'ASSIGNMENT_SUBMITTED' | 'ASSIGNMENT_PASSED' | null;
+  transcript: string | null;
+  subtitleUrl: string | null;
+  slideCueSeconds: string | null;
   documents: LessonDocumentDto[];
 }
 
@@ -199,6 +211,7 @@ export interface CourseReview {
   studentAvatarUrl: string | null;
   rating: number;
   comment: string | null;
+  moderationStatus: 'PUBLISHED' | 'PENDING_MODERATION' | 'REJECTED';
   createdAt: string;
   updatedAt: string;
 }
@@ -261,6 +274,11 @@ export interface SearchCoursesParams {
   grade?: number;
   /** Từ khoá tìm trong title/description. */
   q?: string;
+  /** Giá thực tế tối thiểu/tối đa (VND). */
+  minPrice?: number;
+  maxPrice?: number;
+  /** Điểm đánh giá trung bình tối thiểu (0-5). */
+  minRating?: number;
   /** Chỉ lấy khoá nổi bật (is_featured=true) cho trang chủ. */
   featured?: boolean;
   page?: number;

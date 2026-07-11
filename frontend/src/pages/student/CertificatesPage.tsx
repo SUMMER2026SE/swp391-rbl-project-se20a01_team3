@@ -4,6 +4,7 @@ import {
   Award,
   CheckCircle2,
   Download,
+  ExternalLink,
   FileCheck2,
   Loader2,
   RefreshCw,
@@ -66,6 +67,7 @@ export default function CertificatesPage() {
   const [loading, setLoading] = useState(true);
   const [busyCourseId, setBusyCourseId] = useState<string | null>(null);
   const [busyCertificateId, setBusyCertificateId] = useState<string | null>(null);
+  const [retryBlockedCourseId, setRetryBlockedCourseId] = useState<string | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -93,7 +95,7 @@ export default function CertificatesPage() {
     return map;
   }, [certificates]);
 
-  const completedCourses = courses.filter(course => course.progressPct >= 100);
+  const certificateCourses = courses;
 
   async function handleIssue(course: LearningCourseProgress) {
     setBusyCourseId(course.courseId);
@@ -103,27 +105,43 @@ export default function CertificatesPage() {
         const others = prev.filter(item => item.id !== certificate.id && item.courseId !== certificate.courseId);
         return [certificate, ...others];
       });
+      setRetryBlockedCourseId(null);
       notify.success('Đã cấp chứng chỉ khóa học.');
     } catch (error) {
+      setRetryBlockedCourseId(course.courseId);
+      window.setTimeout(() => {
+        setRetryBlockedCourseId(current => current === course.courseId ? null : current);
+      }, 30_000);
       notify.error(error instanceof Error ? error.message : 'Chưa đủ điều kiện cấp chứng chỉ');
     } finally {
       setBusyCourseId(null);
     }
   }
 
-  async function handleDownload(certificate: CertificateResponse) {
+  async function handleOpenPdf(certificate: CertificateResponse, action: 'view' | 'download') {
     setBusyCertificateId(certificate.id);
     try {
       const detail = await getCertificate(certificate.id);
-      if (!detail.downloadUrl) {
-        notify.error('Chứng chỉ chưa có file tải xuống.');
+      const url = action === 'view' ? detail.viewUrl : detail.downloadUrl;
+      if (!url) {
+        notify.error('Chứng chỉ chưa có file PDF khả dụng.');
         return;
       }
-      window.open(detail.downloadUrl, '_blank', 'noopener,noreferrer');
+      window.open(url, '_blank', 'noopener,noreferrer');
     } catch (error) {
-      notify.error(error instanceof Error ? error.message : 'Không tạo được link tải chứng chỉ');
+      notify.error(error instanceof Error ? error.message : 'Không tạo được liên kết chứng chỉ');
     } finally {
       setBusyCertificateId(null);
+    }
+  }
+
+  async function handleShare(certificate: CertificateResponse) {
+    const verificationUrl = `${window.location.origin}/certificates/verify/${certificate.verificationCode}`;
+    try {
+      await navigator.clipboard.writeText(verificationUrl);
+      notify.success('Đã sao chép liên kết xác minh công khai.');
+    } catch {
+      notify.error('Không thể sao chép liên kết xác minh.');
     }
   }
 
@@ -161,18 +179,19 @@ export default function CertificatesPage() {
         ) : (
           <div className="grid gap-6 lg:grid-cols-[1fr_0.85fr]">
             <section className="space-y-4">
-              <h2 className="text-lg font-extrabold text-on-surface">Khóa học đủ tiến độ</h2>
-              {completedCourses.length === 0 ? (
+              <h2 className="text-lg font-extrabold text-on-surface">Điều kiện chứng chỉ theo khóa học</h2>
+              {certificateCourses.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-outline-variant/60 bg-surface-container-lowest p-8 text-center">
                   <Award className="mx-auto mb-3 h-12 w-12 text-on-surface-variant/45" />
                   <p className="font-semibold text-on-surface-variant">
-                    Chưa có khóa học hoàn thành 100%.
+                    Chưa có khóa học đã mua để kiểm tra điều kiện chứng chỉ.
                   </p>
                 </div>
               ) : (
-                completedCourses.map(course => {
+                certificateCourses.map(course => {
                   const certificate = certificateByCourse.get(course.courseId);
                   const canDownload = certificate?.status === 'ISSUED' || certificate?.status === 'REISSUED';
+                  const eligibleForCertificate = course.progressPct >= 100 && course.finalExamPassed === true;
 
                   return (
                     <article
@@ -186,6 +205,9 @@ export default function CertificatesPage() {
                           <p className="mt-1 text-sm text-on-surface-variant">
                             Giáo viên: {course.teacherName ?? 'Đang cập nhật'} · Tiến độ {course.progressPct}%
                           </p>
+                          <p className={`mt-1 text-xs font-semibold ${course.finalExamPassed ? 'text-green-700' : 'text-amber-700'}`}>
+                            Final exam: {course.finalExamPassed ? 'Đã đạt' : 'Chưa đạt hoặc chưa có kết quả'}
+                          </p>
                           {certificate && (
                             <span className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(certificate.status)}`}>
                               {canDownload ? <CheckCircle2 className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />}
@@ -195,25 +217,52 @@ export default function CertificatesPage() {
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {canDownload && certificate ? (
+                            <>
                             <button
                               type="button"
-                              onClick={() => handleDownload(certificate)}
+                              onClick={() => handleOpenPdf(certificate, 'view')}
+                              disabled={busyCertificateId === certificate.id}
+                              className="inline-flex items-center gap-2 rounded-xl border border-primary px-4 py-2 text-sm font-bold text-primary hover:bg-primary/5 disabled:opacity-60"
+                            >
+                              <ExternalLink className="h-4 w-4" /> Xem PDF
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPdf(certificate, 'download')}
                               disabled={busyCertificateId === certificate.id}
                               className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-on-primary hover:bg-primary/90 disabled:opacity-60"
                             >
                               {busyCertificateId === certificate.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                               Tải PDF
                             </button>
-                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleShare(certificate)}
+                              className="inline-flex items-center rounded-xl border border-outline-variant px-3 py-2 text-xs font-bold text-on-surface hover:bg-surface"
+                            >
+                              Chia sẻ
+                            </button>
+                            </>
+                          ) : eligibleForCertificate && !certificate ? (
                             <button
                               type="button"
                               onClick={() => handleIssue(course)}
-                              disabled={busyCourseId === course.courseId}
+                              disabled={busyCourseId === course.courseId || retryBlockedCourseId === course.courseId}
                               className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-on-primary hover:bg-primary/90 disabled:opacity-60"
                             >
                               {busyCourseId === course.courseId ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
-                              Cấp chứng chỉ
+                              {retryBlockedCourseId === course.courseId ? 'Thử lại sau 30 giây' : 'Cấp chứng chỉ'}
                             </button>
+                          ) : certificate ? (
+                            <p className="max-w-xs self-center text-xs font-semibold text-amber-700">
+                              {certificate.status === 'NEEDS_REVIEW'
+                                ? 'Chung chi dang duoc ra soat do ket qua hoc tap da thay doi.'
+                                : 'Chung chi da bi thu hoi va khong con hieu luc.'}
+                            </p>
+                          ) : (
+                            <p className="max-w-xs self-center text-xs font-semibold text-amber-700">
+                              Hoan thanh 100% noi dung va dat final exam de xem chung chi.
+                            </p>
                           )}
                           <Link
                             to={`/courses/${course.courseId}`}

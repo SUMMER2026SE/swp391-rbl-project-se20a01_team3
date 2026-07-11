@@ -37,4 +37,29 @@ public interface CourseProgressItemRepository extends JpaRepository<CourseProgre
             @Param("studentId") UUID studentId,
             @Param("courseIds") Collection<UUID> courseIds
     );
+
+    @Query("""
+           SELECT p.courseId, COUNT(p)
+           FROM CourseProgressItem p
+           WHERE p.studentId = :studentId
+             AND p.courseId IN :courseIds
+             AND p.itemType = 'lesson'
+           GROUP BY p.courseId
+           """)
+    List<Object[]> countCompletedLessonsByStudentAndCourseIds(
+            @Param("studentId") UUID studentId,
+            @Param("courseIds") Collection<UUID> courseIds
+    );
+
+    @Query("""
+           SELECT p.courseId, MAX(p.completedAt)
+           FROM CourseProgressItem p
+           WHERE p.studentId = :studentId
+             AND p.courseId IN :courseIds
+           GROUP BY p.courseId
+           """)
+    List<Object[]> findLatestCompletedAtByStudentAndCourseIds(
+            @Param("studentId") UUID studentId,
+            @Param("courseIds") Collection<UUID> courseIds
+    );
 }

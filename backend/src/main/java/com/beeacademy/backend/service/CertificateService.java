@@ -30,6 +30,11 @@ import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Rectangle;
 import com.lowagie.text.pdf.PdfWriter;
+import com.lowagie.text.pdf.ColumnText;
+import com.lowagie.text.pdf.PdfContentByte;
+import com.lowagie.text.pdf.PdfGState;
+import com.lowagie.text.pdf.PdfReader;
+import com.lowagie.text.pdf.PdfStamper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,6 +45,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.text.Normalizer;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -68,7 +74,7 @@ public class CertificateService {
     @Transactional(readOnly = true)
     public List<CertificateResponse> listMyCertificates(AuthenticatedUser me) {
         return certificateRepository.findByStudentWithCourse(me.userId()).stream()
-                .map(certificate -> CertificateResponse.from(certificate, null))
+                .map(certificate -> CertificateResponse.from(certificate, null, null, null))
                 .toList();
     }
 
@@ -80,14 +86,14 @@ public class CertificateService {
                         "CERTIFICATE_NOT_ELIGIBLE",
                         "Ban can hoan thanh 100% khoa hoc va dat bai kiem tra cuoi ky 2 de nhan chung chi.",
                         HttpStatus.BAD_REQUEST));
-        return CertificateResponse.from(certificate, signedDownloadUrl(certificate));
+        return certificateResponseWithUrls(certificate);
     }
 
     @Transactional(readOnly = true)
     public CertificateResponse getMyCertificate(UUID certificateId, AuthenticatedUser me) {
         Certificate certificate = certificateRepository.findDetailByIdAndStudentId(certificateId, me.userId())
                 .orElseThrow(() -> new ResourceNotFoundException("Certificate", certificateId));
-        return CertificateResponse.from(certificate, signedDownloadUrl(certificate));
+        return certificateResponseWithUrls(certificate);
     }
 
     @Transactional(readOnly = true)
@@ -201,7 +207,16 @@ public class CertificateService {
                 && FINAL_EXAM_SLOT_INDEX == attempt.getExamConfig().getSlotIndex();
     }
 
-    private String signedDownloadUrl(Certificate certificate) {
+    private CertificateResponse certificateResponseWithUrls(Certificate certificate) {
+        String filename = certificateFilename(certificate);
+        return CertificateResponse.from(
+                certificate,
+                signedViewUrl(certificate),
+                filename,
+                signedDownloadUrl(certificate, filename));
+    }
+
+    private String signedViewUrl(Certificate certificate) {
         if (certificate.getPdfStoragePath() == null
                 || !(certificate.getStatus() == CertificateStatus.ISSUED
                 || certificate.getStatus() == CertificateStatus.REISSUED)) {
@@ -211,6 +226,19 @@ public class CertificateService {
                 CERTIFICATE_BUCKET,
                 certificate.getPdfStoragePath(),
                 CERTIFICATE_SIGNED_URL_TTL_SECONDS);
+    }
+
+    private String signedDownloadUrl(Certificate certificate, String filename) {
+        if (certificate.getPdfStoragePath() == null
+                || !(certificate.getStatus() == CertificateStatus.ISSUED
+                || certificate.getStatus() == CertificateStatus.REISSUED)) {
+            return null;
+        }
+        return storageClient.generateSignedDownloadUrl(
+                CERTIFICATE_BUCKET,
+                certificate.getPdfStoragePath(),
+                CERTIFICATE_SIGNED_URL_TTL_SECONDS,
+                filename);
     }
 
     private byte[] buildCertificatePdf(
@@ -272,7 +300,7 @@ public class CertificateService {
             document.add(centered("Certificate No: " + certificate.getCertificateNo(), smallFont));
             document.add(centered("Verify: " + verificationUrl(certificate), smallFont));
             document.close();
-            return output.toByteArray();
+            return watermarkPdf(output.toByteArray(), safeText(student.getFullName(), "Student"), issuedDate);
         } catch (Exception ex) {
             throw new BusinessException("CERTIFICATE_PDF_FAILED",
                     "Khong the tao file chung chi.", HttpStatus.INTERNAL_SERVER_ERROR);
@@ -293,6 +321,35 @@ public class CertificateService {
         return paragraph;
     }
 
+    /** Watermark de ban PDF tai ve luon gan voi hoc sinh va ngay phat hanh. */
+    private byte[] watermarkPdf(byte[] source, String studentName, String issuedDate) {
+        try {
+            PdfReader reader = new PdfReader(source);
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            PdfStamper stamper = new PdfStamper(reader, output);
+            Font watermarkFont = new Font(Font.HELVETICA, 18, Font.BOLD, new Color(120, 120, 120));
+            String watermark = "BEE ACADEMY | " + studentName + " | " + issuedDate;
+            for (int page = 1; page <= reader.getNumberOfPages(); page++) {
+                Rectangle pageSize = reader.getPageSizeWithRotation(page);
+                PdfContentByte canvas = stamper.getOverContent(page);
+                PdfGState opacity = new PdfGState();
+                opacity.setFillOpacity(0.13f);
+                canvas.saveState();
+                canvas.setGState(opacity);
+                ColumnText.showTextAligned(canvas, Element.ALIGN_CENTER,
+                        new com.lowagie.text.Phrase(watermark, watermarkFont),
+                        pageSize.getWidth() / 2f, pageSize.getHeight() / 2f, 35f);
+                canvas.restoreState();
+            }
+            stamper.close();
+            reader.close();
+            return output.toByteArray();
+        } catch (Exception ex) {
+            throw new BusinessException("CERTIFICATE_PDF_FAILED",
+                    "Khong the dong dau file chung chi.", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
     private String safeText(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value.trim();
     }
@@ -310,5 +367,20 @@ public class CertificateService {
                 courseId,
                 certificateNo.toLowerCase(),
                 versionNo);
+    }
+
+    private String certificateFilename(Certificate certificate) {
+        String courseCode = safeFilenamePart(certificate.getCourse().getSlug(), "course");
+        String studentName = safeFilenamePart(certificate.getStudent().getFullName(), "student");
+        return "CERT-" + courseCode + "-" + studentName + ".pdf";
+    }
+
+    private String safeFilenamePart(String value, String fallback) {
+        if (value == null || value.isBlank()) return fallback;
+        String normalized = Normalizer.normalize(value.replace('đ', 'd').replace('Đ', 'D'), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .replaceAll("[^A-Za-z0-9]+", "-")
+                .replaceAll("^-+|-+$", "");
+        return normalized.isBlank() ? fallback : normalized;
     }
 }

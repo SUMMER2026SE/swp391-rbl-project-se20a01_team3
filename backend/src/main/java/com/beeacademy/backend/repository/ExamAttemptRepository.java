@@ -44,6 +44,33 @@ public interface ExamAttemptRepository extends JpaRepository<ExamAttempt, UUID> 
             @Param("courseIds") Collection<UUID> courseIds);
 
     @Query("""
+           SELECT config.course.id, MAX(COALESCE(attempt.submittedAt, attempt.startedAt))
+           FROM ExamAttempt attempt
+           JOIN attempt.examConfig config
+           WHERE attempt.student.id = :studentId
+             AND config.course.id IN :courseIds
+           GROUP BY config.course.id
+           """)
+    List<Object[]> findLatestActivityByStudentAndCourseIds(
+            @Param("studentId") UUID studentId,
+            @Param("courseIds") Collection<UUID> courseIds);
+
+    @Query("""
+           SELECT DISTINCT config.course.id
+           FROM ExamAttempt attempt
+           JOIN attempt.examConfig config
+           WHERE attempt.student.id = :studentId
+             AND config.course.id IN :courseIds
+             AND config.slotIndex = :finalSlotIndex
+             AND attempt.submittedAt IS NOT NULL
+             AND attempt.passed = true
+           """)
+    List<UUID> findPassedFinalCourseIds(
+            @Param("studentId") UUID studentId,
+            @Param("courseIds") Collection<UUID> courseIds,
+            @Param("finalSlotIndex") Integer finalSlotIndex);
+
+    @Query("""
             SELECT attempt
             FROM ExamAttempt attempt
             JOIN FETCH attempt.student

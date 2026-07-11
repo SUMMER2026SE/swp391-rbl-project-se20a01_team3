@@ -26,6 +26,7 @@ public record StudentLearningProgressResponse(
             Integer completedQuizzes,
             Integer totalQuizzes,
             Double latestQuizScore,
+            Boolean finalExamPassed,
             Instant enrolledAt,
             List<ChapterProgressDetail> chapters
     ) {}

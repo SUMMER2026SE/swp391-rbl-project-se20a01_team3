@@ -45,6 +45,7 @@ public class StudentVideoProgressSchemaMigration implements ApplicationRunner {
                 ON public.student_video_progress (student_id, updated_at DESC)
                 """);
         jdbcTemplate.execute("ALTER TABLE public.student_video_progress ENABLE ROW LEVEL SECURITY");
+        jdbcTemplate.execute("ALTER TABLE public.student_video_progress ADD COLUMN IF NOT EXISTS watched_segments JSONB NOT NULL DEFAULT '[]'::jsonb");
         jdbcTemplate.execute("""
                 DO $$
                 BEGIN

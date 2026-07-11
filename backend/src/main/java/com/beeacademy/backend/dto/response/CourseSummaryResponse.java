@@ -3,6 +3,7 @@ package com.beeacademy.backend.dto.response;
 import com.beeacademy.backend.model.Course;
 
 import java.util.Arrays;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -62,7 +63,12 @@ public record CourseSummaryResponse(
         Integer totalChapters,
         Integer totalLessons,
         Integer totalDurationSec,
-        Integer progressPct
+        Integer progressPct,
+        /** Chỉ có dữ liệu ở endpoint /api/me/courses. */
+        Instant purchasedAt,
+        Instant lastAccessedAt,
+        String learningStatus,
+        Boolean finalExamPassed
 ) {
 
     /**
@@ -97,7 +103,8 @@ public record CourseSummaryResponse(
             long reviewCount,
             int studentCount
     ) {
-        return fromEntity(course, hasFreePreview, averageRating, reviewCount, studentCount, null);
+        return fromEntity(course, hasFreePreview, averageRating, reviewCount, studentCount,
+                null, null, null, null, null);
     }
 
     public static CourseSummaryResponse fromEntity(
@@ -107,6 +114,22 @@ public record CourseSummaryResponse(
             long reviewCount,
             int studentCount,
             Integer progressPct
+    ) {
+        return fromEntity(course, hasFreePreview, averageRating, reviewCount, studentCount,
+                progressPct, null, null, null, null);
+    }
+
+    public static CourseSummaryResponse fromEntity(
+            Course course,
+            boolean hasFreePreview,
+            double averageRating,
+            long reviewCount,
+            int studentCount,
+            Integer progressPct,
+            Instant purchasedAt,
+            Instant lastAccessedAt,
+            String learningStatus,
+            Boolean finalExamPassed
     ) {
         // Boxing int[] → List<Integer> để JSON ra mảng JSON chuẩn
         List<Integer> grades = Arrays.stream(course.getGrades()).boxed().collect(Collectors.toList());
@@ -140,7 +163,11 @@ public record CourseSummaryResponse(
                 course.getTotalChapters(),
                 course.getTotalLessons(),
                 course.getTotalDurationSec(),
-                progressPct
+                progressPct,
+                purchasedAt,
+                lastAccessedAt,
+                learningStatus,
+                finalExamPassed
         );
     }
 }

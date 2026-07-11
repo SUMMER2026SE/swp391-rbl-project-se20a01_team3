@@ -32,8 +32,8 @@ import java.util.UUID;
  * <ul>
  *   <li>{@code course-videos} — PRIVATE. Video phải được truy cập qua
  *       signed URL (TTL 1 giờ). Lưu {@code storagePath}, không lưu URL.</li>
- *   <li>{@code course-docs}   — PUBLIC. PDF/slide truy cập trực tiếp
- *       qua public URL, không cần signed URL.</li>
+ *   <li>{@code course-documents} — PRIVATE. PDF/slide chỉ được tải qua
+ *       one-time download link do UC15 cấp.</li>
  * </ul>
  */
 @Slf4j
@@ -42,9 +42,10 @@ import java.util.UUID;
 public class ContentUploadService {
 
     private static final String VIDEO_BUCKET = "course-videos";
-    private static final String DOCS_BUCKET  = "course-docs";
-    private static final String THUMBNAIL_BUCKET = DOCS_BUCKET;
-    private static final String QUESTION_ASSET_BUCKET = DOCS_BUCKET;
+    private static final String DOCS_BUCKET  = "course-documents";
+    private static final String PUBLIC_ASSET_BUCKET = "course-docs";
+    private static final String THUMBNAIL_BUCKET = PUBLIC_ASSET_BUCKET;
+    private static final String QUESTION_ASSET_BUCKET = PUBLIC_ASSET_BUCKET;
 
     private static final Set<String> ALLOWED_VIDEO_MIME = Set.of(
             "video/mp4", "video/webm", "video/quicktime");
@@ -133,7 +134,7 @@ public class ContentUploadService {
     // ========================================================================
 
     /**
-     * Upload tài liệu (PDF/slide) lên public bucket và lưu metadata vào DB.
+     * Upload tài liệu (PDF/slide) lên private bucket và lưu metadata vào DB.
      *
      * <p>BUG FIX so với phiên bản cũ:
      * <ol>
@@ -142,7 +143,7 @@ public class ContentUploadService {
      *       — trước đây chỉ trả URL, không persist → reload trang là mất dữ liệu.</li>
      * </ol>
      *
-     * @return UploadResponse với publicUrl truy cập trực tiếp
+     * @return UploadResponse không chứa public URL
      */
     @Transactional
     public UploadResponse uploadDocument(UUID lessonId, UUID teacherId,
@@ -169,8 +170,8 @@ public class ContentUploadService {
         String path     = lessonId + "/" + UUID.randomUUID() + "." + ext;
         String fileType = ext;
 
-        String publicUrl = storageClient.upload(DOCS_BUCKET, path,
-                                                file.getContentType(), file.getResource(), file.getSize());
+        storageClient.upload(DOCS_BUCKET, path,
+                             file.getContentType(), file.getResource(), file.getSize());
         deleteUploadedObjectOnRollback(DOCS_BUCKET, path);
 
         // DATA FIX: lưu CourseDocument vào DB để lesson detail có thể load lại được.
@@ -184,12 +185,12 @@ public class ContentUploadService {
         String name   = (displayName != null && !displayName.isBlank())
                         ? displayName.trim()
                         : file.getOriginalFilename();
-        CourseDocument doc = CourseDocument.create(lesson, name, publicUrl,
+        CourseDocument doc = CourseDocument.create(lesson, name, null, path, DOCS_BUCKET,
                                                    fileType, file.getSize(), position);
         documentRepository.save(doc);
 
-        log.info("Upload tài liệu thành công: lessonId={} path={} url={}", lessonId, path, publicUrl);
-        return new UploadResponse(path, publicUrl, fileType, file.getSize());
+        log.info("Upload tài liệu private thành công: lessonId={} path={}", lessonId, path);
+        return new UploadResponse(path, null, fileType, file.getSize());
     }
 
     /** Xóa đúng tài liệu theo id sau khi xác minh giáo viên sở hữu bài giảng. */
@@ -247,7 +248,7 @@ public class ContentUploadService {
         String ext = getExtension(file.getOriginalFilename(), "mp4");
         String path = "course-intros/" + teacherId + "/" + UUID.randomUUID() + "." + ext;
 
-        String publicUrl = storageClient.upload(DOCS_BUCKET, path,
+        String publicUrl = storageClient.upload(PUBLIC_ASSET_BUCKET, path,
                                                 file.getContentType(), file.getResource(), file.getSize());
 
         log.info("Upload course intro video thanh cong: teacherId={} path={} url={}",
@@ -309,16 +310,17 @@ public class ContentUploadService {
         }
         videoPaths.forEach(path -> scheduleDeleteAfterCommit(VIDEO_BUCKET, path));
 
-        LinkedHashSet<String> docPaths = new LinkedHashSet<>();
+        LinkedHashSet<String> docObjects = new LinkedHashSet<>();
         if (documents != null) {
             documents.stream()
-                    .map(CourseDocument::getFileUrl)
-                    .map(url -> extractPublicObjectPath(DOCS_BUCKET, url))
+                    .map(this::documentStorageObject)
                     .filter(Objects::nonNull)
-                    .filter(path -> !path.isBlank())
-                    .forEach(docPaths::add);
+                    .forEach(docObjects::add);
         }
-        docPaths.forEach(path -> scheduleDeleteAfterCommit(DOCS_BUCKET, path));
+        docObjects.forEach(object -> {
+            int separator = object.indexOf('|');
+            scheduleDeleteAfterCommit(object.substring(0, separator), object.substring(separator + 1));
+        });
     }
 
     // ========================================================================
@@ -356,6 +358,16 @@ public class ContentUploadService {
                 cleanup.run();
             }
         });
+    }
+
+    private String documentStorageObject(CourseDocument document) {
+        String bucket = document.getStorageBucket();
+        String path = document.getStoragePath();
+        if (bucket == null || bucket.isBlank()) bucket = PUBLIC_ASSET_BUCKET;
+        if (path == null || path.isBlank()) {
+            path = extractPublicObjectPath(PUBLIC_ASSET_BUCKET, document.getFileUrl());
+        }
+        return path == null || path.isBlank() ? null : bucket + "|" + path;
     }
 
     private void deleteObjectQuietly(String bucket, String path) {
