@@ -57,7 +57,7 @@ export default function App() {
       <Toaster />
       <MaintenanceGate>
       <Routes>
-        {/* -- Public -- */}
+        {/* ── Public ── */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
@@ -66,9 +66,11 @@ export default function App() {
         <Route path="/certificates/verify/:verificationCode" element={<CertificateVerifyPage />} />
 
 
-        {/* -- Student (c?n dang nh?p) -- */}
+        {/* ── Student (cần đăng nhập) ── */}
         <Route path="/quiz" element={<ProtectedRoute><QuizPage /></ProtectedRoute>} />
-        {/* Giữ public (không ProtectedRoute): khách vãng lai duyệt danh sách + chi tiết`n            + học thử khóa miễn phí khi chưa đăng nhập. Không gắn role="student" như team3`n            để không chặn luồng học thử/SEO trang khóa học. */}
+        {/* Giữ public (không ProtectedRoute): khách vãng lai duyệt danh sách + chi tiết
+            + học thử khóa miễn phí khi chưa đăng nhập. Không gắn role="student" như team3
+            để không chặn luồng học thử/SEO trang khóa học. */}
         <Route path="/courses" element={<CoursesPage />} />
         <Route path="/courses/:id" element={<CourseDetailPage />} />
         <Route path="/courses/:courseId/chapters/:chapterId/quiz" element={<ProtectedRoute><StudentQuizPage /></ProtectedRoute>} />
@@ -88,7 +90,7 @@ export default function App() {
         <Route path="/complaints"    element={<ProtectedRoute><ComplaintsPage /></ProtectedRoute>} />
         <Route path="/notifications" element={<ProtectedRoute role="student"><NotificationsPage /></ProtectedRoute>} />
 
-        {/* -- Parent (ch? role=parent) -- */}
+        {/* ── Parent (chỉ role=parent) ── */}
         <Route path="/parent"          element={<ProtectedRoute role="parent"><ParentDashboard /></ProtectedRoute>} />
         <Route path="/parent/courses"  element={<ProtectedRoute role="parent"><ParentCourses /></ProtectedRoute>} />
         <Route path="/parent/progress" element={<ProtectedRoute role="parent"><ParentProgress /></ProtectedRoute>} />
@@ -96,7 +98,7 @@ export default function App() {
         <Route path="/parent/messages" element={<ProtectedRoute role="parent"><ParentMessages /></ProtectedRoute>} />
         <Route path="/parent/link"     element={<ProtectedRoute role="parent"><ParentStudentLink /></ProtectedRoute>} />
 
-        {/* -- Teacher (ch? role=teacher) -- */}
+        {/* ── Teacher (chỉ role=teacher) ── */}
         <Route path="/teacher"            element={<ProtectedRoute role="teacher"><DashboardTeacher /></ProtectedRoute>} />
         <Route path="/teacher/courses"    element={<ProtectedRoute role="teacher"><TeacherCoursesPage /></ProtectedRoute>} />
         <Route path="/teacher/reviews"    element={<ProtectedRoute role="teacher"><TeacherReviewsPage /></ProtectedRoute>} />
@@ -113,7 +115,7 @@ export default function App() {
         <Route path="/teacher/profile"    element={<ProtectedRoute role="teacher"><TeacherProfilePage /></ProtectedRoute>} />
         <Route path="/teacher/account"    element={<ProtectedRoute role="teacher"><TeacherAccountPage /></ProtectedRoute>} />
 
-        {/* -- Admin (ch? role=admin) -- */}
+        {/* ── Admin (chỉ role=admin) ── */}
         <Route path="/admin"                     element={<ProtectedRoute role="admin"><DashboardAdmin /></ProtectedRoute>} />
         <Route path="/admin/complaints"          element={<ProtectedRoute role="admin"><DashboardAdmin /></ProtectedRoute>} />
         <Route path="/admin/approvals"           element={<ProtectedRoute role="admin"><ApprovalsPage /></ProtectedRoute>} />
