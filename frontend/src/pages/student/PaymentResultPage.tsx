@@ -30,7 +30,9 @@ export default function PaymentResultPage() {
   const { enrollCourses } = useCourseStore();
 
   const initialStatus = resolveInitialStatus(searchParams);
-  const orderId = searchParams.get('orderId') ?? sessionStorage.getItem('pendingOrderId');
+  const orderId = searchParams.get('orderId')
+    ?? localStorage.getItem('pendingOrderId')
+    ?? sessionStorage.getItem('pendingOrderId');
 
   const [status, setStatus] = useState<ResultStatus>(initialStatus ?? 'loading');
   const [order, setOrder] = useState<OrderResponse | null>(null);
@@ -42,6 +44,7 @@ export default function PaymentResultPage() {
     const handlePaidOrder = (o: OrderResponse) => {
       setOrder(o);
       clearCart();
+      localStorage.removeItem('pendingOrderId');
       sessionStorage.removeItem('pendingOrderId');
       // Sync courseIds vào Zustand để CourseDetailPage nhận ngay không cần reload
       if (o.items?.length) {

@@ -52,3 +52,11 @@ export async function cancelOrder(orderId: string): Promise<OrderResponse> {
   const res = await apiClient.post(`/api/orders/${orderId}/cancel`);
   return res.data.data;
 }
+
+// Đối soát tất cả đơn PENDING với PayOS — fix bug thanh toán xong nhưng đóng
+// tab/reload trước khi về payment-result nên enrollment chưa được tạo.
+// Trả về danh sách đơn có thay đổi trạng thái (PAID/CANCELLED/EXPIRED).
+export async function reconcileOrders(): Promise<OrderResponse[]> {
+  const res = await apiClient.post('/api/orders/reconcile');
+  return res.data.data;
+}

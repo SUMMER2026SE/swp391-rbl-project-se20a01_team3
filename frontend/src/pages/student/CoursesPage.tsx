@@ -25,6 +25,9 @@ import {
 } from '../../api/courseService';
 import { adaptCourseSummary } from '../../api/adapter';
 import { isApiError } from '../../api/client';
+import { reconcileOrders } from '../../api/orderService';
+import { useAuthStore } from '../../store/useAuthStore';
+import { notify } from '../../lib/toast';
 import type { Category, CourseSummary } from '../../types/api';
 
 const GRADE_OPTIONS = [
@@ -36,6 +39,10 @@ const GRADE_OPTIONS = [
 ] as const;
 
 const PAGE_SIZE = 12;
+
+// Chỉ đối soát đơn PENDING một lần mỗi lần load app — flag module-level
+// sống qua các lần navigate nội bộ, reset khi user refresh trang.
+let didReconcileOrders = false;
 
 function isVideoUrl(url: string): boolean {
   return /\.(mp4|webm|mov)(\?|#|$)/i.test(url);
@@ -151,11 +158,36 @@ export default function CoursesPage() {
   );
 
   useEffect(() => {
-    getEnrolledCourses()
-      .then(setEnrolledCourseSummaries)
-      .catch(() => {
-        // Không cần chặn UX nếu user chưa có khóa học đã mua.
-      });
+    const loadEnrolled = () => {
+      getEnrolledCourses()
+        .then(setEnrolledCourseSummaries)
+        .catch(() => {
+          // Không cần chặn UX nếu user chưa có khóa học đã mua.
+        });
+    };
+
+    // BUG FIX: user thanh toán xong nhưng đóng tab/reload app trước khi về
+    // trang payment-result → webhook không đến (local dev) và verifyPayment
+    // không chạy → đơn kẹt PENDING, khóa học không mở. Đối soát với PayOS
+    // một lần khi vào trang để tự hoàn tất các đơn như vậy.
+    const { isLoggedIn, user } = useAuthStore.getState();
+    if (isLoggedIn && user?.role === 'student' && !didReconcileOrders) {
+      didReconcileOrders = true;
+      reconcileOrders()
+        .then(updatedOrders => {
+          const paidOrders = updatedOrders.filter(order => order.status === 'PAID');
+          if (paidOrders.length > 0) {
+            notify.success('Đã xác nhận thanh toán — khóa học của bạn đã được mở');
+          }
+        })
+        .catch(() => {
+          // Đối soát thất bại không được chặn trang; lần load sau sẽ thử lại.
+          didReconcileOrders = false;
+        })
+        .finally(loadEnrolled);
+    } else {
+      loadEnrolled();
+    }
   }, []);
 
   useEffect(() => {

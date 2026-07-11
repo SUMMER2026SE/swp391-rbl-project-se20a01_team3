@@ -208,12 +208,86 @@ public class OrderService {
             return OrderResponse.from(order, null, loadCourseMap(List.of(order)));
         }
 
-        // Bước 1: Gọi PayOS API — chỉ bọc lỗi network/JSON trong try-catch
-        boolean payosConfirmedPaid = false;
+        // Bước 1: Gọi PayOS API — lỗi network/JSON đã được nuốt trong fetchPayOSStatus
+        // Bước 2: Xử lý enrollment + revenue — tách khỏi try-catch network
+        // để lỗi DB không bị nuốt lẫn với lỗi network
+        if ("PAID".equals(fetchPayOSStatus(order.getOrderCode()))) {
+            handlePayOSWebhook(order.getOrderCode());
+        }
+
+        Order refreshed = orderRepository.findById(orderId).orElse(order);
+        return OrderResponse.from(refreshed, null, loadCourseMap(List.of(refreshed)));
+    }
+
+    /**
+     * Đối soát TẤT CẢ đơn PENDING của user với PayOS (fix bug: thanh toán xong
+     * nhưng đóng tab/reload app trước khi về trang payment-result → webhook không
+     * đến được localhost và verifyPayment không bao giờ chạy → đơn kẹt PENDING,
+     * khóa học không mở dù tiền đã thu).
+     *
+     * <p>Frontend gọi một lần khi app khởi động (CoursesPage). Idempotent —
+     * đơn không còn PENDING sẽ bị bỏ qua ngay, không gọi PayOS.
+     *
+     * @return danh sách đơn có thay đổi trạng thái sau đối soát
+     */
+    @Transactional
+    public List<OrderResponse> reconcilePendingOrders(UUID userId) {
+        List<Order> pendingOrders = orderRepository.findByUserIdAndStatus(userId, OrderStatus.PENDING);
+        List<Order> updated = new ArrayList<>();
+
+        for (Order order : pendingOrders) {
+            if (order.getOrderCode() == null) continue;
+            String payosStatus = fetchPayOSStatus(order.getOrderCode());
+            if (payosStatus == null) continue; // network lỗi — thử lại lần sau
+
+            switch (payosStatus) {
+                case "PAID" -> {
+                    handlePayOSWebhook(order.getOrderCode());
+                    updated.add(order);
+                }
+                case "CANCELLED" -> {
+                    order.markCancelled();
+                    orderRepository.save(order);
+                    rewardService.releaseVoucherReservation(
+                            order.getRewardVoucherId(), order.getUserId(), order.getId());
+                    updated.add(order);
+                }
+                case "EXPIRED" -> {
+                    order.markExpired();
+                    orderRepository.save(order);
+                    // Giải phóng voucher đang RESERVED — trước đây đơn hết hạn
+                    // giữ voucher vĩnh viễn, học sinh không dùng lại được
+                    rewardService.releaseVoucherReservation(
+                            order.getRewardVoucherId(), order.getUserId(), order.getId());
+                    updated.add(order);
+                }
+                default -> log.debug("Reconcile: order {} vẫn {} trên PayOS",
+                        order.getOrderCode(), payosStatus);
+            }
+        }
+
+        if (updated.isEmpty()) return List.of();
+        List<Order> refreshed = updated.stream()
+                .map(order -> orderRepository.findById(order.getId()).orElse(order))
+                .toList();
+        Map<UUID, Course> coursesById = loadCourseMap(refreshed);
+        return refreshed.stream()
+                .map(order -> OrderResponse.from(order, null, coursesById))
+                .toList();
+    }
+
+    /**
+     * Hỏi PayOS trạng thái thanh toán của một orderCode.
+     * Package-private để test stub được (network call).
+     *
+     * @return status từ PayOS ("PAID"/"PENDING"/"CANCELLED"/"EXPIRED"/...)
+     *         hoặc null nếu lỗi network/parse
+     */
+    String fetchPayOSStatus(long orderCode) {
         try {
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://api-merchant.payos.vn/v2/payment-requests/" + order.getOrderCode()))
+                .uri(URI.create("https://api-merchant.payos.vn/v2/payment-requests/" + orderCode))
                 .header("x-client-id", payosClientId)
                 .header("x-api-key", payosApiKey)
                 .GET()
@@ -224,20 +298,12 @@ public class OrderService {
             JsonNode root = mapper.readTree(response.body());
 
             String payosStatus = root.path("data").path("status").asText("");
-            log.info("PayOS verify orderCode={} status={}", order.getOrderCode(), payosStatus);
-            payosConfirmedPaid = "PAID".equals(payosStatus);
+            log.info("PayOS status orderCode={} status={}", orderCode, payosStatus);
+            return payosStatus;
         } catch (Exception e) {
-            log.warn("PayOS verify thất bại cho order {}: {}", orderId, e.getMessage());
+            log.warn("PayOS status check thất bại cho orderCode {}: {}", orderCode, e.getMessage());
+            return null;
         }
-
-        // Bước 2: Xử lý enrollment + revenue — KHÔNG bọc trong try-catch PayOS ở trên
-        // để lỗi DB không bị nuốt lẫn với lỗi network
-        if (payosConfirmedPaid) {
-            handlePayOSWebhook(order.getOrderCode());
-        }
-
-        Order refreshed = orderRepository.findById(orderId).orElse(order);
-        return OrderResponse.from(refreshed, null, loadCourseMap(List.of(refreshed)));
     }
 
     @Transactional(readOnly = true)
@@ -260,11 +326,20 @@ public class OrderService {
             throw new BusinessException("FORBIDDEN", "Bạn không có quyền hủy đơn hàng này");
         }
         if (order.getStatus() == OrderStatus.PENDING) {
-            order.markCancelled();
-            orderRepository.save(order);
-            rewardService.releaseVoucherReservation(order.getRewardVoucherId(), order.getUserId(), order.getId());
+            // RACE FIX: xác nhận với PayOS trước khi hủy. Nếu tiền đã thu mà mình
+            // đánh dấu CANCELLED, webhook PAID đến sau sẽ bị bỏ qua (chỉ xử lý PENDING)
+            // → user mất tiền mà không có khóa học.
+            if (order.getOrderCode() != null
+                    && "PAID".equals(fetchPayOSStatus(order.getOrderCode()))) {
+                handlePayOSWebhook(order.getOrderCode());
+            } else {
+                order.markCancelled();
+                orderRepository.save(order);
+                rewardService.releaseVoucherReservation(order.getRewardVoucherId(), order.getUserId(), order.getId());
+            }
         }
-        return OrderResponse.from(order, null, loadCourseMap(List.of(order)));
+        Order refreshed = orderRepository.findById(orderId).orElse(order);
+        return OrderResponse.from(refreshed, null, loadCourseMap(List.of(refreshed)));
     }
 
     @Transactional(readOnly = true)
@@ -292,7 +367,9 @@ public class OrderService {
 
     @Transactional
     public void handlePayOSWebhook(long orderCode) {
-        Order order = orderRepository.findByOrderCode(orderCode).orElse(null);
+        // PESSIMISTIC_WRITE: webhook + verify + reconcile có thể chạy đồng thời —
+        // khóa row để chỉ 1 transaction xử lý, các transaction sau thấy status != PENDING
+        Order order = orderRepository.findByOrderCodeForUpdate(orderCode).orElse(null);
 
         if (order == null) {
             log.warn("PayOS webhook: không tìm thấy đơn hàng với orderCode={}", orderCode);

@@ -71,7 +71,7 @@ export default function CheckoutPage() {
 
       if (!order.checkoutUrl) {
         if (order.status === 'PAID') {
-          sessionStorage.setItem('pendingOrderId', order.id);
+          localStorage.setItem('pendingOrderId', order.id);
           navigate(`/payment-result?status=success&orderId=${order.id}`);
           return;
         }
@@ -79,8 +79,9 @@ export default function CheckoutPage() {
         return;
       }
 
-      // Lưu orderId vào sessionStorage để PaymentResultPage lấy khi PayOS redirect về
-      sessionStorage.setItem('pendingOrderId', order.id);
+      // Lưu orderId vào localStorage (không dùng sessionStorage — mất khi user
+      // đóng tab trong lúc thanh toán trên PayOS) để PaymentResultPage lấy khi redirect về
+      localStorage.setItem('pendingOrderId', order.id);
 
       // Redirect sang trang thanh toán PayOS
       window.location.href = order.checkoutUrl;
