@@ -23,6 +23,7 @@ import StudentQuizPage from './pages/student/StudentQuizPage';
 import StudentExamPage from './pages/student/StudentExamPage';
 import NotificationsPage from './pages/student/NotificationsPage';
 import CertificatesPage from './pages/student/CertificatesPage';
+import AiTutorPage from './pages/student/AiTutorPage';
 import DashboardAdmin from './pages/admin/DashboardAdmin';
 import DashboardTeacher from './pages/teacher/DashboardTeacher';
 import TeacherCoursesPage from './pages/teacher/CoursesPage';
@@ -82,6 +83,7 @@ export default function App() {
         <Route path="/progress"      element={<ProtectedRoute role="student"><ProgressPage /></ProtectedRoute>} />
         <Route path="/rewards"       element={<ProtectedRoute role="student"><RewardsPage /></ProtectedRoute>} />
         <Route path="/certificates"  element={<ProtectedRoute role="student"><CertificatesPage /></ProtectedRoute>} />
+        <Route path="/ai-tutor"      element={<ProtectedRoute role="student"><AiTutorPage /></ProtectedRoute>} />
         <Route path="/messages"      element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
         <Route path="/profile"       element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         <Route path="/account/type"  element={<ProtectedRoute><ComingSoonPage title="Loại tài khoản" subtitle="Quản lý gói đăng ký của bạn" /></ProtectedRoute>} />
