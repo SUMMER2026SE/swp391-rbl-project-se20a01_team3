@@ -29,6 +29,8 @@ import {
 } from '../../api/courseService';
 import { adaptCourseSummary } from '../../api/adapter';
 import { isApiError } from '../../api/client';
+import { reconcileOrders } from '../../api/orderService';
+import { notify } from '../../lib/toast';
 import type { Category, CourseSummary } from '../../types/api';
 
 const GRADE_OPTIONS = [
@@ -66,6 +68,10 @@ const RATING_OPTIONS = [
   { value: 3, label: 'Từ 3 sao' },
   { value: 4, label: 'Từ 4 sao' },
 ];
+
+// Chỉ đối soát đơn PENDING một lần mỗi lần load app — flag module-level
+// sống qua các lần navigate nội bộ, reset khi user refresh trang.
+let didReconcileOrders = false;
 
 function isVideoUrl(url: string): boolean {
   return /\.(mp4|webm|mov)(\?|#|$)/i.test(url);
@@ -248,18 +254,42 @@ export default function CoursesPage() {
     }
 
     let cancelled = false;
-    setEnrolledLoading(true);
-    setEnrolledError(null);
-    getEnrolledCourses()
-      .then((courses) => {
-        if (!cancelled) setEnrolledCourseSummaries(courses);
-      })
-      .catch(() => {
-        if (!cancelled) setEnrolledError('Không thể tải danh sách khóa học đã mua. Vui lòng thử lại.');
-      })
-      .finally(() => {
-        if (!cancelled) setEnrolledLoading(false);
-      });
+    const loadEnrolled = () => {
+      setEnrolledLoading(true);
+      setEnrolledError(null);
+      getEnrolledCourses()
+        .then((courses) => {
+          if (!cancelled) setEnrolledCourseSummaries(courses);
+        })
+        .catch(() => {
+          if (!cancelled) setEnrolledError('Không thể tải danh sách khóa học đã mua. Vui lòng thử lại.');
+        })
+        .finally(() => {
+          if (!cancelled) setEnrolledLoading(false);
+        });
+    };
+
+    // BUG FIX: user thanh toán xong nhưng đóng tab/reload app trước khi về
+    // trang payment-result → webhook không đến (local dev) và verifyPayment
+    // không chạy → đơn kẹt PENDING, khóa học không mở. Đối soát với PayOS
+    // một lần khi vào trang để tự hoàn tất các đơn như vậy.
+    if (!didReconcileOrders) {
+      didReconcileOrders = true;
+      reconcileOrders()
+        .then(updatedOrders => {
+          const paidOrders = updatedOrders.filter(order => order.status === 'PAID');
+          if (paidOrders.length > 0) {
+            notify.success('Đã xác nhận thanh toán — khóa học của bạn đã được mở');
+          }
+        })
+        .catch(() => {
+          // Đối soát thất bại không được chặn trang; lần load sau sẽ thử lại.
+          didReconcileOrders = false;
+        })
+        .finally(loadEnrolled);
+    } else {
+      loadEnrolled();
+    }
     return () => { cancelled = true; };
   }, [isLoggedIn, isStudent]);
 

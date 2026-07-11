@@ -107,6 +107,10 @@ public class Order {
         this.status = OrderStatus.CANCELLED;
     }
 
+    public void markExpired() {
+        this.status = OrderStatus.EXPIRED;
+    }
+
     public boolean isExpired() {
         return Instant.now().isAfter(this.expiresAt) && this.status == OrderStatus.PENDING;
     }
