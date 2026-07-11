@@ -19,6 +19,8 @@ public record CreateQuestionRequest(
         @NotNull(message = "Vui long chon lop")
         Integer grade,
 
+        UUID questionBankId,
+
         UUID chapterId,
 
         @NotBlank(message = "Noi dung cau hoi khong duoc trong")
@@ -34,7 +36,7 @@ public record CreateQuestionRequest(
 
         @NotNull
         @Pattern(
-                regexp = "multiple_choice|true_false|fill_in_blank|essay|image_question|audio_question",
+                regexp = "multiple_choice|true_false|fill_in_blank|matching|essay|essay_short|essay_long|image_question|formula_question|audio_question|file_upload",
                 message = "Loai cau hoi khong hop le")
         String type,
 

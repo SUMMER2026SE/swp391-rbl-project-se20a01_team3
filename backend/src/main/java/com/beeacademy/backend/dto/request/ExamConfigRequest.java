@@ -25,6 +25,10 @@ public record ExamConfigRequest(
         @NotNull
         UUID placementChapterId,
 
+        @NotNull
+        @Pattern(regexp = "quiz|chapter_test|final_exam")
+        String examType,
+
         @Size(max = 2000)
         String description,
 
@@ -40,6 +44,9 @@ public record ExamConfigRequest(
         boolean shuffleQuestions,
         boolean shuffleOptions,
         boolean showAnswerAfterSubmit,
+        boolean requireFullscreen,
+        boolean blockCopyPaste,
+        boolean confirmUnderTenQuestions,
 
         @NotNull @Size(min = 1, max = 200)
         @Valid
@@ -54,7 +61,7 @@ public record ExamConfigRequest(
 
             @NotNull
             @Pattern(
-                    regexp = "multiple_choice|true_false|fill_in_blank|essay|image_question|audio_question")
+                    regexp = "multiple_choice|true_false|fill_in_blank|matching|essay|essay_short|essay_long|image_question|formula_question|audio_question|file_upload")
             String type,
 
             @Size(max = 6)

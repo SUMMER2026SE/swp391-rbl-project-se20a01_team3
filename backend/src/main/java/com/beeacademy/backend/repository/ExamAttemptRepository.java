@@ -26,6 +26,9 @@ public interface ExamAttemptRepository extends JpaRepository<ExamAttempt, UUID> 
     Optional<ExamAttempt> findFirstByStudentIdAndExamConfigIdAndSubmittedAtIsNotNullOrderBySubmittedAtDesc(
             UUID studentId, UUID examConfigId);
 
+    Optional<ExamAttempt> findFirstByStudentIdAndExamConfigIdAndSubmittedAtIsNotNullOrderBySubmittedAtAsc(
+            UUID studentId, UUID examConfigId);
+
     @Query("""
             SELECT attempt
             FROM ExamAttempt attempt

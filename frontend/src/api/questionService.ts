@@ -42,6 +42,13 @@ export interface QuestionMetadata {
   sharedPromptTitle?: string;
   sharedPrompt?: string;
   questionOrderInSet?: number | null;
+  aiPromptId?: string;
+  aiStatus?: 'draft' | 'approved' | 'rejected';
+  sourceRefs?: string[];
+  rejectionReason?: string;
+  optionIndexMap?: number[];
+  sourceType?: 'direct_exam' | 'question_bank' | 'ai';
+  createdInExam?: boolean;
 }
 
 export interface ChoiceResponse {
@@ -60,6 +67,8 @@ export interface QuestionResponse {
   type: QuestionType;
   status: QuestionStatus;
   usageCount: number;
+  questionBankId: string | null;
+  questionBankTitle: string | null;
   categoryId: string | null;
   categoryName: string | null;
   grade: number | null;
@@ -74,11 +83,25 @@ export interface QuestionStatsResponse {
   mediumCount: number;
   hardCount: number;
   totalActive: number;
+  multipleChoiceCount?: number;
+  trueFalseCount?: number;
+  fillInBlankCount?: number;
+  essayCount?: number;
+  totalExamSupported?: number;
+}
+
+export interface ExamSupportedQuestionStats {
+  totalActive: number;
+  multipleChoiceCount: number;
+  trueFalseCount: number;
+  fillInBlankCount: number;
+  essayCount: number;
 }
 
 export interface CreateQuestionRequest {
   categoryId: string;
   grade: number;
+  questionBankId?: string;
   chapterId?: string;
   content: string;
   explanation?: string;
@@ -99,6 +122,7 @@ export async function createQuestion(req: CreateQuestionRequest): Promise<Questi
 export interface ListQuestionsParams {
   categoryId?: string;
   grade?: number;
+  questionBankId?: string;
   chapterId?: string;
   difficulty?: Difficulty;
   status?: QuestionStatus;
@@ -136,6 +160,59 @@ export async function getQuestionStats(chapterId: string): Promise<QuestionStats
   const res = await apiClient.get<ApiResponse<QuestionStatsResponse>>(
     `/api/teacher/questions/stats/${chapterId}`);
   return unwrap(res.data);
+}
+
+export async function getExamSupportedQuestionStats(
+  chapterId: string,
+): Promise<ExamSupportedQuestionStats> {
+  const items: QuestionResponse[] = [];
+  let page = 0;
+
+  while (true) {
+    const response = await listQuestions({
+      chapterId,
+      status: 'active',
+      page,
+      size: 200,
+    });
+    items.push(...response.items);
+    if (!response.hasNext) break;
+    page += 1;
+  }
+
+  let multipleChoiceCount = 0;
+  let trueFalseCount = 0;
+  let fillInBlankCount = 0;
+  let essayCount = 0;
+
+  items.forEach(question => {
+    switch (question.type) {
+      case 'multiple_choice':
+        multipleChoiceCount += 1;
+        break;
+      case 'true_false':
+        trueFalseCount += 1;
+        break;
+      case 'fill_in_blank':
+        fillInBlankCount += 1;
+        break;
+      case 'essay':
+      case 'essay_short':
+      case 'essay_long':
+        essayCount += 1;
+        break;
+      default:
+        break;
+    }
+  });
+
+  return {
+    totalActive: multipleChoiceCount + trueFalseCount + fillInBlankCount + essayCount,
+    multipleChoiceCount,
+    trueFalseCount,
+    fillInBlankCount,
+    essayCount,
+  };
 }
 
 export async function countActiveQuestionsByChapter(chapterId: string): Promise<number> {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
@@ -18,6 +18,7 @@ import { isApiError } from '../../api/client';
 import { notify } from '../../lib/toast';
 import {
   getStudentExam,
+  saveStudentExamDraft,
   submitStudentExam,
   type StudentExam,
   type StudentExamAnswerImageUpload,
@@ -74,10 +75,7 @@ function acceptedUploadTypes(question: StudentExamQuestion) {
 }
 
 function orderQuestionsObjectiveFirst(questions: StudentExamQuestion[]) {
-  return [
-    ...questions.filter(question => !isManualQuestion(question.type)),
-    ...questions.filter(question => isManualQuestion(question.type)),
-  ];
+  return questions;
 }
 
 interface QuestionRenderGroup {
@@ -142,12 +140,41 @@ function formatRemainingTime(totalSeconds: number) {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+interface PersistedExamDraft {
+  examId: string;
+  updatedAt: string;
+  selectedAnswers: Record<string, number[]>;
+  essayAnswers: Record<string, string>;
+  essayImages: Record<string, StudentExamAnswerImageUpload[]>;
+  answerData: Record<string, Record<string, unknown>>;
+  remainingSeconds: number | null;
+  savedAt: string;
+}
+
+function readPersistedDraft(key: string, exam: StudentExam): PersistedExamDraft | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedExamDraft;
+    if (parsed.examId !== exam.id || parsed.updatedAt !== exam.updatedAt) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export default function StudentExamPage() {
   const { courseId, slotIndex } = useParams<{ courseId: string; slotIndex: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const returnTo = searchParams.get('returnTo') || (courseId ? `/courses/${courseId}?learn=1` : '/courses');
   const parsedSlotIndex = Number(slotIndex);
+  const draftKey = courseId && Number.isInteger(parsedSlotIndex)
+    ? `student-exam-draft:${courseId}:${parsedSlotIndex}`
+    : '';
 
   const [exam, setExam] = useState<StudentExam | null>(null);
   const [loading, setLoading] = useState(true);
@@ -161,6 +188,8 @@ export default function StudentExamPage() {
   const [submitError, setSubmitError] = useState('');
   const [submission, setSubmission] = useState<StudentExamSubmissionResponse | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const [integrityViolations, setIntegrityViolations] = useState(0);
+  const autoSubmittingRef = useRef(false);
   const orderedQuestions = useMemo(
     () => orderQuestionsObjectiveFirst(exam?.questions ?? []),
     [exam],
@@ -184,14 +213,19 @@ export default function StudentExamPage() {
       .then(data => {
         if (cancelled) return;
         setExam(data);
-        setSelectedAnswers({});
-        setEssayAnswers({});
-        setEssayImages({});
-        setAnswerData({});
+        const persisted = draftKey ? readPersistedDraft(draftKey, data) : null;
+        setSelectedAnswers(persisted?.selectedAnswers ?? {});
+        setEssayAnswers(persisted?.essayAnswers ?? {});
+        setEssayImages(persisted?.essayImages ?? {});
+        setAnswerData(persisted?.answerData ?? {});
         setUploadingImages({});
         setSubmitError('');
         setSubmission(null);
-        setRemainingSeconds(Math.max(0, data.durationMinutes * 60));
+        setIntegrityViolations(0);
+        setRemainingSeconds(persisted?.remainingSeconds ?? Math.max(0, data.durationMinutes * 60));
+        if (persisted) {
+          notify.success('Đã khôi phục bài làm nháp trên thiết bị này.');
+        }
       })
       .catch(err => {
         if (cancelled) return;
@@ -204,7 +238,7 @@ export default function StudentExamPage() {
     return () => {
       cancelled = true;
     };
-  }, [courseId, parsedSlotIndex]);
+  }, [courseId, draftKey, parsedSlotIndex]);
 
   const answeredCount = useMemo(() => {
     if (!exam) return 0;
@@ -232,6 +266,13 @@ export default function StudentExamPage() {
     if (!exam || loading || submission) return;
     setRemainingSeconds(prev => prev ?? Math.max(0, exam.durationMinutes * 60));
   }, [exam, loading, submission]);
+
+  useEffect(() => {
+    if (!exam?.requireFullscreen || submission || document.fullscreenElement) return;
+    document.documentElement.requestFullscreen?.().catch(() => {
+      notify.error('Trinh duyet khong cho tu dong bat fullscreen. Vui long bat fullscreen truoc khi lam bai.');
+    });
+  }, [exam?.requireFullscreen, submission]);
 
   function toggleChoice(questionId: string, optionIndex: number, multiple: boolean) {
     if (submission) return;
@@ -300,18 +341,8 @@ export default function StudentExamPage() {
     }));
   }
 
-  async function handleSubmitExam(forceSubmit = false) {
-    if (!courseId || !exam || submitting || submission) return;
-    if (hasUploadingImages) {
-      setSubmitError('Vui long doi tai anh dap an xong roi nop bai.');
-      return;
-    }
-    if (!forceSubmit && answeredCount < exam.questionCount) {
-      setSubmitError('Vui long tra loi day du cac cau truoc khi nop bai.');
-      return;
-    }
-
-    const answers = orderedQuestions.reduce<Record<string, SubmitExamAnswer>>((acc, question) => {
+  function buildAnswersPayload() {
+    return orderedQuestions.reduce<Record<string, SubmitExamAnswer>>((acc, question) => {
       if (isManualQuestion(question.type)) {
         acc[question.id] = {
           selectedIndices: [],
@@ -338,11 +369,27 @@ export default function StudentExamPage() {
           selectedIndices: selectedAnswers[question.id] ?? [],
           textAnswer: '',
           imageUrls: [],
-          answerData: null,
+          answerData: question.metadata?.optionIndexMap
+            ? { optionIndexMap: question.metadata.optionIndexMap }
+            : null,
         };
       }
       return acc;
     }, {});
+  }
+
+  async function handleSubmitExam(forceSubmit = false) {
+    if (!courseId || !exam || submitting || submission) return;
+    if (hasUploadingImages) {
+      setSubmitError('Vui long doi tai anh dap an xong roi nop bai.');
+      return;
+    }
+    if (!forceSubmit && answeredCount < exam.questionCount) {
+      setSubmitError('Vui long tra loi day du cac cau truoc khi nop bai.');
+      return;
+    }
+
+    const answers = buildAnswersPayload();
 
     setSubmitting(true);
     setSubmitError('');
@@ -350,12 +397,104 @@ export default function StudentExamPage() {
       const result = await submitStudentExam(courseId, parsedSlotIndex, answers);
       setSubmission(result);
       setRemainingSeconds(0);
+      if (draftKey) {
+        window.localStorage.removeItem(draftKey);
+      }
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Khong the nop bai kiem tra.');
     } finally {
       setSubmitting(false);
     }
   }
+
+  useEffect(() => {
+    if (!draftKey || !exam || loading || submission) return;
+    const draft: PersistedExamDraft = {
+      examId: exam.id,
+      updatedAt: exam.updatedAt,
+      selectedAnswers,
+      essayAnswers,
+      essayImages,
+      answerData,
+      remainingSeconds,
+      savedAt: new Date().toISOString(),
+    };
+    try {
+      window.localStorage.setItem(draftKey, JSON.stringify(draft));
+    } catch {
+      // Local draft is best-effort; server autosave still runs when online.
+    }
+  }, [
+    answerData,
+    draftKey,
+    essayAnswers,
+    essayImages,
+    exam,
+    loading,
+    remainingSeconds,
+    selectedAnswers,
+    submission,
+  ]);
+
+  useEffect(() => {
+    if (!courseId || !exam || loading || submission) return;
+    const intervalId = window.setInterval(() => {
+      if (!navigator.onLine || submitting || hasUploadingImages) return;
+      saveStudentExamDraft(courseId, parsedSlotIndex, buildAnswersPayload())
+        .catch(() => {
+          // Keep the local draft silently; showing a toast every 15s is too noisy.
+        });
+    }, 15000);
+    return () => window.clearInterval(intervalId);
+  }, [
+    answerData,
+    courseId,
+    essayAnswers,
+    essayImages,
+    exam,
+    hasUploadingImages,
+    loading,
+    parsedSlotIndex,
+    selectedAnswers,
+    submission,
+    submitting,
+  ]);
+
+  useEffect(() => {
+    if (!exam?.requireFullscreen || submission) return;
+
+    const recordViolation = () => {
+      if (autoSubmittingRef.current || submission) return;
+      setIntegrityViolations(current => {
+        const next = current + 1;
+        if (next >= 3) {
+          autoSubmittingRef.current = true;
+          notify.error('Bạn đã rời tab/fullscreen quá 3 lần. Hệ thống sẽ tự nộp bài.');
+          window.setTimeout(() => handleSubmitExam(true), 0);
+        } else {
+          notify.error(`Cảnh báo chống gian lận ${next}/3: không rời tab hoặc fullscreen.`);
+        }
+        return next;
+      });
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) recordViolation();
+    };
+    const handleFullscreen = () => {
+      if (!document.fullscreenElement) recordViolation();
+    };
+    const handleBlur = () => recordViolation();
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    document.addEventListener('fullscreenchange', handleFullscreen);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      document.removeEventListener('fullscreenchange', handleFullscreen);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [exam?.requireFullscreen, submission, submitting]);
 
   useEffect(() => {
     if (!exam || loading || submitting || submission || remainingSeconds == null) return;
@@ -446,7 +585,13 @@ export default function StudentExamPage() {
         )}
 
         {!loading && exam && (
-          <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+          <div
+            className="grid gap-6 lg:grid-cols-[1fr_280px]"
+            onCopy={e => { if (exam.blockCopyPaste) e.preventDefault(); }}
+            onCut={e => { if (exam.blockCopyPaste) e.preventDefault(); }}
+            onPaste={e => { if (exam.blockCopyPaste) e.preventDefault(); }}
+            onContextMenu={e => { if (exam.blockCopyPaste) e.preventDefault(); }}
+          >
             <section className="min-w-0 space-y-5">
               <div>
                 <p className="text-sm font-bold uppercase text-primary">
@@ -757,6 +902,11 @@ export default function StudentExamPage() {
                   <p className={isTimeUrgent ? 'font-bold text-red-500' : ''}>
                     Con lai: {displayTime}
                   </p>
+                  {exam.requireFullscreen && (
+                    <p className={integrityViolations > 0 ? 'font-bold text-red-500' : ''}>
+                      Cảnh báo rời tab/fullscreen: {integrityViolations}/3
+                    </p>
+                  )}
                   {hasUploadingImages && (
                     <p className="font-bold text-amber-600">Dang tai anh dap an, vui long doi mot chut.</p>
                   )}

@@ -1,0 +1,1388 @@
+TÀI LI?U Ð?C T? YÊU C?U PH?N M?M
+Software Requirements Specification (SRS)
+
+H? TH?NG H?C T?P TR?C TUY?N
+(BEE ACADEMY – Online Learning Platform)
+Phiên b?n	4.10
+Ngày ban hành	08/07/2026
+Tr?ng thái	Fixed / Ðã s?a l?i b? sung sau review SRS
+D? án	Bee Academy – Online Learning Platform
+Tiêu chu?n áp d?ng	IEEE 830-1998 / ISO/IEC 25010
+T?o b?i	Nhóm Phân tích H? th?ng – Bee Academy
+
+
+
+L?ch s? phiên b?n
+Phiên b?n	Ngày	N?i dung thay d?i	Ngu?i th?c hi?n
+4.0	01/06/2026	Initial SRS document for Bee Academy, including 8 modules, 44 use cases, 5 primary actors, and 2 external systems.	System Analysis Team
+4.1	08/07/2026	S?a l?i review SRS: chu?n hóa actor/BR traceability, RBAC, state machine, payment/refund/payout, teacher onboarding, assignment/deadline, AI privacy, NFR, external interface contract và ID test case.	System Analysis Team
+4.2	08/07/2026	S?a các l?i review còn t?n d?ng: chu?n hóa tr?ng thái User/Teacher và Payment/Reconciliation, b? sung validation webhook, làm rõ watch_time, content versioning, di?u ki?n s? chuong, ch?m t? lu?n, RBAC/traceability và external interface.	System Analysis Team
+4.3	08/07/2026	S?a các l?i review còn t?n d?ng: chu?n hóa tr?ng thái Parent Link, Payment Review, lesson completion rule, certificate/final exam, payout item status, khóa t?m dang nh?p, reset m?t kh?u an toàn, NFR backup/security và traceability NFR.	System Analysis Team
+4.4	08/07/2026	S?a l?i b? sung: payment retry/payment_attempt, partial refund/access state, review TK ngân hàng GV, privacy consent PH-HS, module GV và payout precondition.	System Analysis Team
+4.5	08/07/2026	S?a l?i b? sung: d?ng b? webhook payment_attempt, chu?n hóa payment_status/refund_status, tr?ng thái TK ngân hàng GV và ngu?ng load test.	System Analysis Team
+4.6	08/07/2026	S?a l?i b? sung: thu h?p b?ng ph? l?c 6.3-6.5 tránh c?t l?, audit s?a di?m, tách account_status/teacher_profile_state và ranh gi?i Q&A.	System Analysis Team
+4.7	08/07/2026	S?a l?i b? sung: rule d?i vai trò Admin an toàn, TOC t? c?p nh?t và repeat header row cho các b?ng dài.	System Analysis Team
+4.8	08/07/2026	S?a l?i b? sung: lu?ng phê duy?t m? thêm lu?t retake, course version cho h?c sinh hi?n hành và layout b?ng Actors tránh ng?t ch? External.	System Analysis Team
+4.9	08/07/2026	S?a l?i b? sung: state machine ExamEnrollment/RetakeApproval, tiêu chí pass/fail NFR-SCAL-001 và d?n paragraph r?ng cu?i tài li?u.	System Analysis Team
+4.10	08/07/2026	S?a layout ph? l?c: t?t Allow row to break across pages cho b?ng 6.3 và 6.5 d? tránh dòng Order/payment_status ho?c AI Engine b? tách qua trang.	System Analysis Team
+
+
+M?c l?c
+L?ch s? phiên b?n	2
+1 INTRODUCTION	4
+1.1. Purpose	4
+1.2. System Scope	4
+1.3. Ð?nh nghia và t? vi?t t?t	4
+1.4. Tài li?u tham chi?u	5
+1.5. T?ng quan c?u trúc tài li?u	5
+2 Mô T? T?ng Quát H? Th?ng	7
+2.1. B?i c?nh s?n ph?m	7
+2.2. Ch?c nang chính	7
+2.3. Phân lo?i ngu?i dùng (Actors)	7
+2.4. Môi tru?ng ho?t d?ng	8
+2.5. Giao di?n ngoài (External Interfaces)	8
+2.6. Ràng bu?c và gi? d?nh	9
+3 Yêu C?u Ch?c Nang	10
+3.1. Module Xác Th?c & Tài Kho?n (Authentication & Account)	10
+3.2. Module Tìm Ki?m & Khóa H?c (Search & Course)	15
+3.3. Module Mua Hàng & Thanh Toán (Purchase & Payment)	18
+3.4. Module H?c T?p (Learning)	22
+3.5. Module Tuong Tác & H? Tr? (Interaction & Support)	28
+3.6. Module Ph? Huynh (Parent)	31
+3.7. Module Giáo Viên (Teacher)	36
+3.8. Module Qu?n Tr? Viên (Admin)	42
+4 Yêu C?u Phi Ch?c Nang	49
+5 Ma Tr?n Truy Xu?t Ki?m Th? BR – UC – REQ – Test Case	51
+5.1. Hu?ng d?n xây d?ng Test Cases t? SRS	53
+5.1.1. Unit Test (Ki?m th? don v?)	53
+5.1.2. Integration Test (Ki?m th? tích h?p)	53
+5.1.3. System Test (Ki?m th? h? th?ng)	54
+5.2. Công c? ki?m th? d? xu?t	54
+6 PH? L?C KI?M SOÁT B? SUNG SAU REVIEW	55
+6.1. Quy u?c Business Requirement (BR)	55
+6.2. Ma tr?n phân quy?n RBAC t?ng h?p	55
+6.3. Vòng d?i tr?ng thái d? li?u chu?n	55
+6.4. Business rules b? sung	57
+6.5. External Interface Contracts tóm t?t	57
+
+1 INTRODUCTION
+1.1. Purpose
+This document describes the functional and non-functional requirements for the Bee Academy online learning platform. It serves as a common basis for the development team, supports the testing team in building test cases (Unit, Integration, System), and acts as a reference for scope confirmation with stakeholders throughout the SDLC.
+1.2. System Scope
+Bee Academy operates on a collaboration and revenue-sharing model between the platform and Teachers. The system includes:
+Student Portal: Search, purchase, pay, and study at an individual pace; take exams and download certificates.
+Parent Portal: Monitor child's progress, handle payments, and contact Teachers through linked accounts.
+Teacher Portal: Create courses, exams, and materials; update question banks; grade assignments; and view payout history.
+Admin Panel: Approve courses, handle complaints, perform manual payout cycles, and manage user accounts.
+Technology: RESTful API backend, VNPay/MoMo integration, and an AI Engine for chat support and roadmap suggestions.
+Out of Scope: Livestreaming, fixed schedules, and automatic transfers to Teachers (payouts are manual).
+1.3. Ð?nh nghia và t? vi?t t?t
+Thu?t ng?	Gi?i thích
+SRS	Software Requirements Specification 
+UC	Use Case 
+REQ	Requirement 
+UT	Unit Test 
+IT	Integration Test
+ST	System Test 
+HS	H?c sinh – Actor A02
+PH	Ph? huynh – Actor A03
+GV	Giáo viên – Actor A04
+Admin	Qu?n tr? viên – Actor A05
+AI Engine	Integrated AI for chatbots and personalized roadmaps – Actor A06 
+Payment Gateway	C?ng thanh toán bên th? ba – Actor A07 (VNPay, MoMo)
+Revenue Split	Records dividing revenue into platform fees and teacher amounts at the time of transaction
+UNC	?y nhi?m chi – Ch?ng t? chuy?n kho?n do Admin dính kèm khi xác nh?n chi tr?
+GMV	Gross Merchandise Value – T?ng giá tr? giao d?ch c?a n?n t?ng trong tháng
+JWT	JSON Web Token – Co ch? xác th?c stateless
+CSDL	Co s? d? li?u
+SLA	Service Level Agreement – Cam k?t m?c d?ch v?
+OWASP	Open Web Application Security Project
+BR	Business Requirement – Yêu c?u nghi?p v? c?p cao, dùng d? truy xu?t BR ? UC ? REQ ? Test Case
+reconciliation_status	Tr?ng thái d?i soát c?a giao d?ch thanh toán, tách bi?t v?i payment_status d? tránh nh?m l?n PAID và RECONCILED.
+Teacher Profile State	Tr?ng thái h? so Giáo viên dùng cho phê duy?t onboarding và quy?n truy c?p REQ-TCH-*.
+1.4. Tài li?u tham chi?u
+IEEE Std 830-1998: Recommended Practice for Software Requirements Specifications.
+ISO/IEC 25010:2011: Systems and software Quality Requirements and Evaluation (SQuaRE).
+OWASP Testing Guide v4.2.
+ISTQB Foundation Level Syllabus 2018.
+Tài li?u n?i b?: "Bee Academy – Use Case Specification, phiên b?n 6.5".
+1.5. T?ng quan c?u trúc tài li?u
+Tài li?u du?c t? ch?c nhu sau: 
+Ph?n 2 mô t? t?ng quan h? th?ng, môi tru?ng ho?t d?ng, giao di?n ngoài, ràng bu?c và gi? d?nh;
+Ph?n 3 d?c t? chi ti?t yêu c?u ch?c nang theo 8 module v?i t?ng c?ng 44 use case; 
+Ph?n 4 d?c t? yêu c?u phi ch?c nang; 
+Ph?n 5 trình bày Ma tr?n truy xu?t ki?m th? theo chu?i BR ? UC ? REQ ? Test Case và hu?ng d?n xây d?ng test case t? SRS.
+Ph?n 6 trình bày các ph? l?c ki?m soát b? sung sau review, bao g?m quy u?c BR, RBAC, state machine, business rules và external interface contracts.
+
+
+
+
+2 Mô T? T?ng Quát H? Th?ng
+1.2.1. B?i c?nh s?n ph?m
+Bee Academy là s?n ph?m thu?c nhóm EdTech B2C, du?c phát tri?n nh?m s? hóa ho?t d?ng gi?ng d?y c?a giáo viên d?c l?p t?i Vi?t Nam và cung c?p cho ngu?i h?c m?t môi tru?ng h?c t?p t? do theo ti?n d? cá nhân. H? th?ng du?c xây d?ng theo ki?n trúc microservices, frontend React và backend Spring Boot Java. Co s? d? li?u s? d?ng SQL. Luu tr? media (video, tài li?u) s? d?ng d?i tu?ng luu tr? S3-compatible. Tích h?p các d?ch v? bên ngoài: VNPay/MoMo cho thanh toán, AI Engine n?i b? cho chatbot và d? xu?t l? trình.
+2.2. Ch?c nang chính
+?Qu?n lý tài kho?n da vai trò: dang ký, dang nh?p, dang xu?t, d?t l?i m?t kh?u, c?p nh?t h? so, liên k?t ph? huynh – h?c sinh.
+?Tìm ki?m – khám phá khóa h?c: l?c theo linh v?c, c?p l?p, giá; xem chi ti?t và h?c th? mi?n phí.
+?Mua – thanh toán khóa h?c qua c?ng VNPay/MoMo; xem l?ch s? mua hàng; g?i khi?u n?i.
+?H?c t?p t? do: xem bài gi?ng, t?i tài li?u, n?p bài t?p, làm bài ki?m tra t?ng h?p; theo dõi di?m và ti?n d?; xem và t?i ch?ng ch? hoàn thành.
+?Tuong tác & h? tr?: g?i câu h?i cho giáo viên, chat AI h? tr?, nh?n d? xu?t l? trình t? AI.
+?Ph? huynh: g?i/ch?p nh?n/t? ch?i/h?y liên k?t; theo dõi ti?n d?, liên h? giáo viên, xem l?ch s? thanh toán.
+?Giáo viên: t?o khóa h?c, question bank, bài ki?m tra; c?p nh?t bài gi?ng; ch?m bài; tr? l?i câu h?i; xem l?ch s? doanh thu.
+?Qu?n tr?: dashboard t?ng quan, xem danh sách và qu?n lý tài kho?n ngu?i dùng, duy?t khóa h?c, xem và tr? l?i khi?u n?i, xu?t danh sách chi tr? GV và xác nh?n chuy?n kho?n, g?i thông báo.
+?Ch?ng ch?: H?c sinh t? xem và t?i ch?ng ch? hoàn thành khóa h?c du?i d?ng PDF có mã QR xác minh sau khi hoàn thành 100% n?i dung và pass bài ki?m tra cu?i.
+2.3. Phân lo?i ngu?i dùng (Actors)
+ID	Actor	Lo?i	Mô t?
+A01	Guest (Khách)	Primary	Ngu?i dùng chua dang nh?p, có quy?n truy c?p các trang công khai nhu tìm ki?m khóa h?c, xem chi ti?t và h?c th? mi?n phí.
+A02	H?c sinh	Primary	K? th?a Guest. Mua khóa h?c, h?c theo ti?n d? cá nhân, làm bài ki?m tra, dánh giá khóa h?c, xem và t?i ch?ng ch?.
+A03	Ph? huynh	Primary	K? th?a Guest. Liên k?t v?i tài kho?n h?c sinh d? theo dõi ti?n d?, liên h? giáo viên, xem l?ch s? thanh toán và mua khóa h?c cho con.
+A04	Giáo viên	Primary	C?ng tác viên n?i dung. T?o và qu?n lý khóa h?c, bài ki?m tra; c?p nh?t question bank; ch?m bài; xem l?ch s? nh?n ti?n t? Admin.
+A05	Admin	Primary	Qu?n tr? viên n?n t?ng. Duy?t khóa h?c, x? lý khi?u n?i, v?n hành chu k? chi tr? th? công cho GV, xem báo cáo t?ng, g?i thông báo, qu?n lý ngu?i dùng.
+A06	AI Engine	External	H? th?ng trí tu? nhân t?o tích h?p. Cung c?p d?ch v? chat h? tr?, sinh câu h?i t? d?ng và g?i ý l? trình h?c cá nhân hóa.
+A07	Payment Gateway	External	VNPay và MoMo. Ti?p nh?n giao d?ch thanh toán và g?i webhook xác nh?n v? backend c?a Bee Academy.
+2.4. Môi tru?ng ho?t d?ng
+Ghi chú: Các công ngh? và h? t?ng nêu trong m?c này là ràng bu?c k? thu?t dã du?c stakeholder phê duy?t; chi ti?t thi?t k? tri?n khai n?m ngoài ph?m vi SRS.
+Trình duy?t h? tr?: Chrome 110+, Firefox 110+, Safari 16+, Edge 110+.
+Ð? phân gi?i t?i thi?u: 360px (mobile), 768px (tablet), 1280px (desktop).
+K?t n?i Internet t?i thi?u: 5 Mbps (10 Mbps d? xem video ch?t lu?ng cao).
+Server: Linux Ubuntu 22.04 LTS, container hóa v?i Docker, orchestration b?ng Kubernetes.
+CSDL: PostgreSQL 14+, Redis 7+; Object Storage S3-compatible cho media; CDN cho phân ph?i video.
+Backend: Java Spring Boot. Frontend: React. AI Engine: d?ch v? n?i b? ch?y LLM (REST API).
+2.5. Giao di?n ngoài (External Interfaces)
+UI Web: H? th?ng cung c?p giao di?n web trên Chrome 110+, Firefox 110+, Safari 16+, Edge 110+ và h? tr? responsive ? các m?c 360px, 768px, 1280px dã nêu trong môi tru?ng ho?t d?ng.
+Payment Gateway: Bee Academy tích h?p VNPay/MoMo (A07) d? sinh URL thanh toán, nh?n webhook xác nh?n giao d?ch, xác minh ch? ký webhook và x? lý idempotent theo transaction_id.
+AI Engine: AI Engine (A06) du?c g?i qua REST API d? h? tr? chat, sinh/g?i ý n?i dung h?c t?p và d? xu?t l? trình; khi AI timeout theo REQ-INT-002, h? th?ng hi?n th? fallback phù h?p.
+Notification/Email: Ðây là internal service c?a Bee Academy, không ph?i external actor riêng; h? th?ng g?i email kích ho?t, email d?t l?i m?t kh?u, email/thông báo thanh toán, ticket, Q&A, chi tr? và thông báo Admin theo các yêu c?u ch?c nang tuong ?ng.
+Media/Storage/CDN: Media bài gi?ng và tài li?u du?c luu trên Object Storage S3-compatible và phân ph?i video qua CDN nhu ph?n môi tru?ng ho?t d?ng dã mô t?.
+2.6. Ràng bu?c và gi? d?nh
+Ràng bu?c: Ti?n thu h? thanh toán ph?i chuy?n tr?c ti?p v? tài kho?n công ty qua VNPay/MoMo, không qua tài kho?n cá nhân GV.
+Ràng bu?c: M?i giao d?ch chuy?n ti?n cho GV ph?i do Admin th?c hi?n th? công, không có co ch? t? d?ng hóa.
+Ràng bu?c: H? th?ng tuân th? Lu?t An ninh m?ng Vi?t Nam và Ngh? d?nh b?o v? d? li?u cá nhân (NÐ 13/2023).
+Ràng bu?c: Không luu thông tin th? thanh toán trên server (PCI-DSS); d? li?u nh?y c?m mã hóa AES-256.
+Gi? d?nh: M?i ngu?i dùng có d?a ch? email h?p l? và s? di?n tho?i Vi?t Nam.
+Gi? d?nh: VNPay và MoMo cung c?p SLA = 99.9% và h? tr? co ch? webhook idempotent.
+Gi? d?nh: Ph? huynh có kh? nang d?c – hi?u ti?ng Vi?t và s? d?ng Internet ? m?c co b?n.
+
+
+3 Yêu C?u Ch?c Nang
+M?i yêu c?u du?c d?c t? theo m?u chu?n bao g?m: Mô t?, Actor, Ti?n di?u ki?n, Lu?ng chính, Ngo?i l? / Lu?ng thay th?, Tiêu chí ch?p nh?n và ánh x? Test Cases ? c? 3 c?p d? (Unit – Integration – System). Mã yêu c?u (REQ) tuong ?ng 1-1 v?i mã Use Case (UC) trong tài li?u Use Case Specification phiên b?n 6.5.
+2.3.1. Module Xác Th?c & Tài Kho?n (Authentication & Account)
+Mô t? module: Qu?n lý toàn b? vòng d?i tài kho?n da vai trò: dang ký, dang nh?p, dang xu?t, d?t l?i m?t kh?u và c?p nh?t h? so cá nhân. Mô-dun này là n?n t?ng c?a toàn b? h? th?ng và ph?i d?m b?o các tiêu chu?n b?o m?t cao.
+REQ-AUTH-001	Ðang ký tài kho?n
+Mô t?	Khách (Guest) dang ký tài kho?n m?i trên h? th?ng Bee Academy v?i vai trò H?c sinh, Ph? huynh ho?c g?i h? so yêu c?u tr? thành Giáo viên.
+Actor	Guest (A01) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Khách chua có tài kho?n. Trình duy?t web dang ho?t d?ng và có k?t n?i Internet.
+Lu?ng chính	1. Khách truy c?p trang Ðang ký.
+2. Khách ch?n vai trò: H?c sinh / Ph? huynh / Giáo viên.
+3. Khách nh?p H? tên, Email, S? di?n tho?i, M?t kh?u, Xác nh?n m?t kh?u.
+4. Khách tích ch?n d?ng ý Ði?u kho?n s? d?ng và Chính sách b?o m?t.
+5. N?u ch?n Giáo viên, ngu?i dùng nh?p thêm gi?i thi?u chuyên môn, kinh nghi?m, thông tin tài kho?n ngân hàng và tài li?u xác minh b?t bu?c.
+6. Khách nh?n nút "Ðang ký".
+7. H? th?ng xác th?c d? li?u (email h?p l?, m?t kh?u = 8 ký t? g?m ch? và s?, hai m?t kh?u trùng kh?p, SÐT dúng d?nh d?ng Vi?t Nam).
+8. H? th?ng g?i email kích ho?t ch?a link xác th?c (h?t h?n sau 24 gi?).
+9. Khách nh?n link trong email d? kích ho?t.
+10. H? th?ng chuy?n account_status c?a H?c sinh/Ph? huynh t? PENDING_EMAIL_VERIFICATION ? ACTIVE. V?i Giáo viên, sau xác th?c email account_status = ACTIVE; teacher_profile_state = PENDING_TEACHER_APPROVAL n?u h? so d? thông tin, ho?c PENDING_PROFILE_COMPLETION n?u thi?u thông tin/tài li?u b?t bu?c.
+Ngo?i l? / Lu?ng thay th?	E1: Email dã t?n t?i trong h? th?ng ? hi?n th? l?i "Email dã du?c s? d?ng".
+E2: M?t kh?u y?u (< 8 ký t? ho?c không có ch?/s?) ? hi?n th? l?i tuong ?ng.
+E3: Hai m?t kh?u không trùng kh?p ? hi?n th? l?i "M?t kh?u xác nh?n không dúng".
+E4: S? di?n tho?i sai d?nh d?ng Vi?t Nam ? hi?n th? l?i "S? di?n tho?i không h?p l?".
+E5: Link kích ho?t h?t h?n ? cho phép yêu c?u g?i l?i email kích ho?t.
+E6: H? so Giáo viên thi?u tài li?u b?t bu?c ho?c sai d?nh d?ng ? account_status v?n ACTIVE sau xác th?c email nhung teacher_profile_state = PENDING_PROFILE_COMPLETION; chua cho truy c?p portal Giáo viên.
+Tiêu chí ch?p nh?n	AC1: Tài kho?n du?c t?o thành công v?i d? li?u h?p l? và dúng vai trò dã ch?n.
+AC2: Email kích ho?t du?c g?i trong vòng 60 giây.
+AC3: M?t kh?u du?c hash b?ng bcrypt (cost = 10) tru?c khi luu vào CSDL.
+AC4: Tài kho?n chua kích ho?t không th? dang nh?p.
+AC5: Ngu?i dang ký vai trò Giáo viên ch? du?c truy c?p ch?c nang REQ-TCH-* khi teacher_profile_state = TEACHER_APPROVED.
+Unit Test	UT-AUTH-001, UT-AUTH-002, UT-AUTH-003
+Integration Test	IT-AUTH-001
+System Test	ST-AUTH-001, ST-AUTH-002
+
+REQ-AUTH-002	Ðang nh?p h? th?ng
+Mô t?	Ngu?i dùng dã có tài kho?n có th? dang nh?p vào Bee Academy b?ng email và m?t kh?u d? truy c?p các ch?c nang theo phân quy?n.
+Actor	H?c sinh (A02), Ph? huynh (A03), Giáo viên (A04), Admin (A05) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Tài kho?n dã du?c t?o và dang ? tr?ng thái ACTIVE.
+Lu?ng chính	1. Ngu?i dùng truy c?p trang Ðang nh?p.
+2. Ngu?i dùng nh?p Email và M?t kh?u.
+3. Ngu?i dùng nh?n nút "Ðang nh?p".
+4. H? th?ng xác th?c thông tin v?i CSDL.
+5. H? th?ng t?o JWT token (th?i h?n 24 gi?) và refresh token (th?i h?n 7 ngày).
+6. H? th?ng di?u hu?ng d?n Dashboard tuong ?ng vai trò (HS / PH / GV / Admin).
+Ngo?i l? / Lu?ng thay th?	E1: Email ho?c m?t kh?u sai ? "Email ho?c m?t kh?u không dúng" (không ti?t l? tru?ng nào sai).
+E2: Tài kho?n chua kích ho?t ? "Vui lòng xác th?c email tru?c khi dang nh?p".
+E3: Nh?p sai = 5 l?n liên ti?p trong 15 phút ? khóa t?m th?i 15 phút b?ng tru?ng failed_login_lock_until; không d?i account_status sang LOCKED.
+E4: Tài kho?n b? Admin khóa v?i account_status = LOCKED ? "Tài kho?n dang b? t?m khóa, vui lòng liên h? Admin".
+Tiêu chí ch?p nh?n	AC1: Ðang nh?p thành công v?i thông tin dúng và di?u hu?ng dúng vai trò.
+AC2: JWT token h?p l? và bao g?m role claim.
+AC3: T? d?ng khóa t?m sau 5 l?n th? sai liên ti?p b?ng failed_login_lock_until và t? m? khi h?t th?i h?n.
+AC4: Không l? thông tin n?i b? trong thông báo l?i.
+AC5: Khóa t?m do dang nh?p sai du?c tách bi?t v?i account_status = LOCKED do Admin khóa.
+Unit Test	UT-AUTH-004, UT-AUTH-005
+Integration Test	IT-AUTH-002
+System Test	ST-AUTH-003
+
+REQ-AUTH-003	Ðang xu?t h? th?ng
+Mô t?	Ngu?i dùng dang xu?t kh?i Bee Academy và h?y phiên làm vi?c hi?n t?i.
+Actor	H?c sinh (A02), Ph? huynh (A03), Giáo viên (A04), Admin (A05) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	Ngu?i dùng dang dang nh?p.
+Lu?ng chính	1. Ngu?i dùng m? menu cá nhân ? góc ph?i.
+2. Ngu?i dùng nh?n "Ðang xu?t".
+3. H? th?ng thu h?i JWT token và refresh token trên server.
+4. H? th?ng xóa token ? client (localStorage / cookie).
+5. H? th?ng di?u hu?ng ngu?i dùng v? trang ch?.
+Ngo?i l? / Lu?ng thay th?	E1: M?t k?t n?i m?ng khi dang xu?t ? client v?n xóa token c?c b?; server s? revoke/blacklist refresh token khi nh?n du?c yêu c?u logout ho?c khi client d?ng b? l?i. Token cu v?n b? gi?i h?n b?i TTL.
+Tiêu chí ch?p nh?n	AC1: N?u server nh?n du?c yêu c?u dang xu?t h?p l?, JWT/refresh token b? thu h?i ngay l?p t?c trên server.
+AC2: Truy c?p trang yêu c?u xác th?c sau dang xu?t ph?i tr? v? 401.
+AC3: Ngu?i dùng quay l?i trang ch? sau khi dang xu?t thành công.
+Unit Test	UT-AUTH-006
+Integration Test	IT-AUTH-003
+System Test	ST-AUTH-004
+
+REQ-AUTH-004	Quên m?t kh?u
+Mô t?	Ngu?i dùng quên m?t kh?u có th? yêu c?u d?t l?i thông qua email dã dang ký.
+Actor	Guest (A01) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	Email dã du?c dang ký và tài kho?n dang ? tr?ng thái ACTIVE.
+Lu?ng chính	1. Ngu?i dùng nh?n "Quên m?t kh?u?" trên trang dang nh?p.
+2. Ngu?i dùng nh?p email dã dang ký.
+3. H? th?ng g?i email ch?a link d?t l?i m?t kh?u (token h?t h?n sau 60 phút).
+4. Ngu?i dùng nh?n link, du?c di?u hu?ng d?n trang d?t m?t kh?u m?i.
+5. Ngu?i dùng nh?p M?t kh?u m?i và Xác nh?n m?t kh?u, nh?n "Luu".
+6. H? th?ng hash m?t kh?u m?i và c?p nh?t vào CSDL; vô hi?u hóa toàn b? session cu.
+Ngo?i l? / Lu?ng thay th?	E1: Email không t?n t?i ? thông báo trung l?p "N?u email t?n t?i, chúng tôi dã g?i hu?ng d?n" (ch?ng enumeration).
+E2: Link h?t h?n ? "Liên k?t dã h?t h?n, vui lòng yêu c?u l?i".
+E3: M?t kh?u m?i trùng v?i 3 m?t kh?u g?n nh?t ? t? ch?i v?i thông báo.
+Tiêu chí ch?p nh?n	AC1: Email d?t l?i du?c g?i trong = 60 giây.
+AC2: Link ch? s? d?ng du?c 1 l?n và h?t h?n sau 60 phút.
+AC3: M?i session/token cu b? vô hi?u hóa sau khi d?t l?i thành công.
+Unit Test	UT-AUTH-007, UT-AUTH-008
+Integration Test	IT-AUTH-004
+System Test	ST-AUTH-005
+
+REQ-AUTH-005	C?p nh?t h? so cá nhân
+Mô t?	Ngu?i dùng dã dang nh?p có th? c?p nh?t thông tin cá nhân, ?nh d?i di?n và m?t kh?u.
+Actor	H?c sinh (A02), Ph? huynh (A03), Giáo viên (A04) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	Ngu?i dùng dã dang nh?p.
+Lu?ng chính	1. Ngu?i dùng vào H? so cá nhân.
+2. Ngu?i dùng ch?nh s?a: H? tên, Ngày sinh, SÐT, Ð?a ch?, ?nh d?i di?n, Gi?i thi?u (bio).
+3. N?u ngu?i dùng là Giáo viên và thay d?i thông tin tài kho?n ngân hàng, h? th?ng luu b?n nháp bank_info_change ? tr?ng thái BANK_INFO_PENDING_REVIEW, yêu c?u xác th?c l?i/OTP và chua dùng thông tin m?i cho chi tr?.
+4. N?u ngu?i dùng là H?c sinh, h? th?ng cho phép c?u hình riêng tu báo cáo h?c t?p cho PH: b?t/t?t privacy, c?p/thu h?i consent xem bài làm chi ti?t theo t?ng Ph? huynh ACTIVE.
+5. Ngu?i dùng có th? d?i m?t kh?u b?ng cách nh?p m?t kh?u hi?n t?i và m?t kh?u m?i.
+6. Ngu?i dùng nh?n "Luu thay d?i".
+7. H? th?ng xác th?c d? li?u; c?p nh?t ngay các tru?ng h? so thông thu?ng, ghi privacy consent/audit log n?u có thay d?i riêng tu, và g?i thông báo c?nh báo khi GV thay d?i TK ngân hàng.
+8. H? th?ng hi?n th? k?t qu?: c?p nh?t thành công cho tru?ng thu?ng; thông tin ngân hàng m?i dang ch? Admin duy?t n?u có.
+Ngo?i l? / Lu?ng thay th?	E1: M?t kh?u hi?n t?i sai khi d?i m?t kh?u ? l?i "M?t kh?u hi?n t?i không dúng".
+E2: ?nh > 5MB ho?c sai d?nh d?ng (ch? JPG/PNG) ? l?i "?nh không h?p l?".
+E3: SÐT trùng tài kho?n khác ? l?i "S? di?n tho?i dã du?c s? d?ng".
+E4: Thông tin tài kho?n ngân hàng c?a Giáo viên thi?u tru?ng b?t bu?c ho?c sai d?nh d?ng ? t? ch?i luu b?n nháp ngân hàng và hi?n th? l?i tuong ?ng.
+E5: H?c sinh thi?u ngày sinh ? h? th?ng áp d?ng m?c d?nh b?o v? cao nh?t: PH không xem du?c n?i dung bài làm chi ti?t cho d?n khi HS c?p nh?t ngày sinh h?p l? ho?c c?p consent rõ ràng.
+Tiêu chí ch?p nh?n	AC1: T?t c? thay d?i h? so thông thu?ng du?c luu chính xác trong CSDL.
+AC2: Email là tru?ng read-only, không th? ch?nh s?a.
+AC3: Ð?i m?t kh?u thành công s? vô hi?u hóa các phiên dang nh?p khác.
+AC4: Thông tin tài kho?n ngân hàng hi?n hành c?a Giáo viên du?c mã hóa khi luu tr?; m?i thay d?i t?o bank_info_change, tr?ng thái BANK_INFO_PENDING_REVIEW và audit log.
+AC5: Payout c?a GV b? hold n?u có bank_info_change chua du?c Admin duy?t; ch? bank_info dã duy?t m?i du?c dùng khi xu?t/xác nh?n chi tr?.
+AC6: H?c sinh có th? b?t/t?t riêng tu và c?p/thu h?i consent xem bài làm chi ti?t theo t?ng PH ACTIVE; m?i thay d?i consent ghi audit log actor_id, target_parent_id, action, timestamp.
+Unit Test	UT-AUTH-009, UT-AUTH-010
+Integration Test	IT-AUTH-005
+System Test	ST-AUTH-006
+
+3.2. Module Tìm Ki?m & Khóa H?c (Search & Course)
+Mô t? module: Cho phép Khách (Guest) và ngu?i dùng dã dang nh?p khám phá, tìm ki?m và dánh giá thông tin khóa h?c tru?c khi mua. Mô-dun này t?i uu tr?i nghi?m khám phá và h? tr? chuy?n d?i mua hàng.
+REQ-CRS-001	Tìm ki?m khóa h?c
+Mô t?	Guest và ngu?i dùng dã dang nh?p có th? tìm ki?m khóa h?c theo t? khóa, linh v?c, c?p l?p ho?c giáo viên.
+Actor	Guest (A01), H?c sinh (A02), Ph? huynh (A03), Giáo viên (A04), Admin (A05) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	H? th?ng có d? li?u khóa h?c dã du?c Admin phê duy?t.
+Lu?ng chính	1. Ngu?i dùng truy c?p trang ch? Bee Academy.
+2. Ngu?i dùng nh?p t? khóa vào thanh tìm ki?m ho?c ch?n b? l?c (linh v?c, c?p l?p, giá, dánh giá).
+3. Ngu?i dùng nh?n Enter ho?c icon tìm ki?m.
+4. H? th?ng truy v?n co s? d? li?u, l?c các khóa h?c có tr?ng thái PUBLISHED.
+5. H? th?ng hi?n th? danh sách k?t qu?: ?nh bìa, tên khóa, giáo viên, giá, dánh giá trung bình, s? h?c viên.
+6. H? tr? phân trang (20 khóa/trang) và s?p x?p (m?i nh?t, bán ch?y, giá tang/gi?m, dánh giá cao).
+Ngo?i l? / Lu?ng thay th?	E1: Không có khóa h?c kh?p v?i di?u ki?n ? hi?n th? "Không tìm th?y khóa h?c phù h?p" và g?i ý khóa h?c liên quan.
+E2: T? khóa tr?ng và không có b? l?c ? hi?n th? toàn b? khóa h?c dang xu?t b?n.
+Tiêu chí ch?p nh?n	AC1: K?t qu? tìm ki?m tr? v? trong = 1 giây v?i CSDL ch?a = 100.000 khóa h?c.
+AC2: Tìm ki?m không phân bi?t hoa/thu?ng và h? tr? ti?ng Vi?t có d?u/không d?u.
+AC3: K?t qu? phù h?p nh?t (full-text relevance) du?c x?p d?u tiên.
+Unit Test	UT-CRS-001, UT-CRS-002
+Integration Test	IT-CRS-001
+System Test	ST-CRS-001, ST-CRS-002
+
+REQ-CRS-002	Xem chi ti?t khóa h?c
+Mô t?	Guest ho?c ngu?i dùng dã dang nh?p có th? xem trang chi ti?t khóa h?c d? dánh giá tru?c khi mua.
+Actor	Guest (A01), H?c sinh (A02), Ph? huynh (A03), Giáo viên (A04), Admin (A05) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Khóa h?c t?n t?i và dã du?c phê duy?t.
+Lu?ng chính	1. Ngu?i dùng nh?n vào m?t khóa h?c trong danh sách k?t qu?.
+2. H? th?ng hi?n th? trang chi ti?t: tên khóa, ?nh bìa, video gi?i thi?u, giáo viên, mô t?, m?c tiêu, d?i tu?ng h?c, danh sách chuong, s? lu?ng bài h?c, th?i lu?ng.
+3. Hi?n th? giá, các tùy ch?n uu dãi và dánh giá t? h?c sinh dã h?c.
+4. Hi?n th? nút "Mua khóa h?c" và "H?c th? mi?n phí" (n?u có bài h?c mi?n phí).
+Ngo?i l? / Lu?ng thay th?	E1: Khóa h?c không t?n t?i ho?c dã b? Admin g? ? trang 404 và g?i ý các khóa khác.
+E2: Khóa h?c ? tr?ng thái DRAFT/PENDING_REVIEW/NEEDS_REVISION ? ch? Giáo viên ch? và Admin xem du?c, ngu?i khác th?y 404.
+Tiêu chí ch?p nh?n	AC1: Hi?n th? d?y d? thông tin khóa h?c và danh sách chuong.
+AC2: Hi?n th? t?i thi?u 4 khóa liên quan ? cu?i trang.
+AC3: Nút "Mua khóa h?c" b? vô hi?u khi Guest chua dang nh?p và yêu c?u dang nh?p tru?c khi thanh toán.
+Unit Test	UT-CRS-003
+Integration Test	IT-CRS-002
+System Test	ST-CRS-003
+
+REQ-CRS-003	Xem bài h?c th?
+Mô t?	Guest có th? xem các bài h?c mi?n phí du?c dánh d?u isFree = true d? tr?i nghi?m tru?c khi mua. Là use case m? r?ng (<<extend>>) c?a UC07.
+Actor	Guest (A01) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	Khóa h?c có ít nh?t 1 bài h?c có isFree = true.
+Lu?ng chính	1. Trên trang chi ti?t khóa h?c, Guest nh?n "H?c th? mi?n phí" t?i m?t bài h?c có bi?u tu?ng "Mi?n phí".
+2. H? th?ng ki?m tra tru?ng isFree c?a bài h?c.
+3. H? th?ng hi?n th? video và tài li?u c?a bài h?c (ch? ph?n mi?n phí).
+4. Sau khi xem th?, h? th?ng g?i ý "Mua khóa h?c d? xem toàn b?".
+Ngo?i l? / Lu?ng thay th?	E1: Bài h?c không có isFree = true ? ?n nút h?c th?.
+E2: Video không t?i du?c ? hi?n th? "Không th? phát video, vui lòng th? l?i".
+Tiêu chí ch?p nh?n	AC1: Ch? các bài h?c có isFree = true m?i du?c phát mà không c?n dang nh?p.
+AC2: Không cho phép t?i tài li?u c?a bài h?c th? mi?n phí (ch? xem tr?c tuy?n).
+AC3: Theo dõi s? lu?t h?c th? d? h? tr? Marketing.
+Unit Test	UT-CRS-004
+Integration Test	IT-CRS-003
+System Test	ST-CRS-004
+
+3.3. Module Mua Hàng & Thanh Toán (Purchase & Payment)
+Mô t? module: X? lý quy trình thanh toán khóa h?c qua c?ng VNPay/MoMo. Ti?n v? th?ng tài kho?n công ty. H? th?ng t? d?ng ghi nh?n ph?n Giáo viên và ph?n n?n t?ng vào revenue_splits. Admin chuy?n kho?n th? công cu?i k?.
+REQ-PAY-001	Mua khóa h?c
+Mô t?	H?c sinh ch?n khóa h?c cho b?n thân, ho?c Ph? huynh ch?n khóa h?c cho H?c sinh dã liên k?t ACTIVE, xác nh?n thông tin don hàng và áp d?ng mã gi?m giá (n?u có) tru?c khi ti?n hành thanh toán.
+Actor	H?c sinh (A02), Ph? huynh (A03) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Ngu?i dùng dã dang nh?p. Khóa h?c dang du?c xu?t b?n. Ngu?i h?c du?c ch? d?nh chua s? h?u khóa h?c. N?u ngu?i mua là Ph? huynh, liên k?t PH–HS ph?i ? tr?ng thái ACTIVE.
+Lu?ng chính	1. Ngu?i dùng nh?n "Mua khóa h?c" trên trang chi ti?t.
+2. N?u ngu?i dùng là Ph? huynh, h? th?ng yêu c?u ch?n H?c sinh dã liên k?t ACTIVE d? nh?n quy?n h?c.
+3. H? th?ng hi?n th? màn hình xác nh?n: tên khóa, giáo viên, ngu?i h?c du?c c?p quy?n, giá g?c, mã gi?m giá (n?u có), giá sau gi?m.
+4. H? th?ng ki?m tra mã gi?m giá ? server: th?i h?n, s? lu?t còn l?i, ph?m vi áp d?ng, ngu?i dùng d? di?u ki?n và di?u ki?n không c?ng d?n.
+5. Ngu?i dùng nh?n "Ti?n hành thanh toán" ? h? th?ng t?o Order (PENDING) v?i payment_expire_at = created_at + 30 phút và chuy?n sang REQ-PAY-002 (Thanh toán khóa h?c).
+Ngo?i l? / Lu?ng thay th?	E1: Ngu?i dùng r?i màn xác nh?n tru?c khi nh?n "Ti?n hành thanh toán" ? không t?o Order và không c?p quy?n.
+E2: Ngu?i h?c du?c ch? d?nh dã s? h?u khóa h?c ? ch?n t? bu?c xác nh?n, hi?n th? nút "Vào h?c ngay" n?u ngu?i h?c là chính ngu?i dùng ho?c thông báo dã s? h?u n?u Ph? huynh mua cho con.
+E3: Ph? huynh ch?n H?c sinh chua có liên k?t ACTIVE ? t? ch?i t?o Order và yêu c?u hoàn t?t liên k?t tru?c.
+E4: Mã gi?m giá không h?p l?/h?t h?n/h?t lu?t/không áp d?ng cho khóa h?c ? hi?n th? lý do, không cho áp d?ng mã.
+Tiêu chí ch?p nh?n	AC1: Màn hình xác nh?n hi?n th? d?y d?: tên khóa, tên giáo viên, ngu?i h?c du?c c?p quy?n, giá g?c, giá sau gi?m (n?u có).
+AC2: Mã gi?m giá du?c xác th?c server-side tru?c khi t?o Order; snapshot gi?m giá du?c luu cùng Order.
+AC3: Ngu?i h?c dã s? h?u khóa không th? t?o thêm don hàng m?i cho khóa dó.
+AC4: Order du?c t?o thành công ? tr?ng thái PENDING v?i mã don duy nh?t theo d?nh d?ng ORD-YYYYMMDD-XXXXX và payment_expire_at = created_at + 30 phút.
+Unit Test	UT-PAY-001, UT-PAY-002
+Integration Test	IT-PAY-001
+System Test	ST-PAY-001
+REQ-PAY-002	Thanh toán khóa h?c
+Mô t?	H?c sinh ho?c Ph? huynh ch?n phuong th?c thanh toán và hoàn t?t giao d?ch qua c?ng VNPay/MoMo. Ti?n v? th?ng tài kho?n công ty.
+Actor	H?c sinh (A02), Ph? huynh (A03) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Ngu?i dùng dã hoàn thành bu?c xác nh?n don hàng (REQ-PAY-001).
+Order dang ? tr?ng thái PENDING và chua quá payment_expire_at.
+Lu?ng chính	1. Ngu?i dùng ch?n phuong th?c thanh toán: VNPay ho?c MoMo.
+2. Ngu?i dùng nh?n "Thanh toán ngay".
+3. H? th?ng t?o payment_attempt m?i cho Order hi?n t?i v?i attempt_no tang d?n, tr?ng thái PENDING, order_id, amount, currency, gateway và idempotency_key.
+4. H? th?ng t?o payment request t?i c?ng dã ch?n v?i order_id, payment_attempt_id, amount, currency, return_url, notify_url, gateway và signature.
+5. C?ng thanh toán tr? v? payment_url, gateway_order_id, expired_at ho?c error_code.
+6. N?u nh?n payment_url h?p l?, h? th?ng c?p nh?t payment_attempt = PROCESSING, luu gateway_order_id và d?t payment_expire_at = min(Order.payment_expire_at dã t?o ? REQ-PAY-001, gateway expired_at); sau dó di?u hu?ng ngu?i dùng sang c?ng thanh toán (A07).
+7. Ngu?i dùng hoàn t?t thao tác trên c?ng thanh toán.
+8. C?ng g?i webhook v? backend xác nh?n giao d?ch.
+9. H? th?ng xác minh ch? ký webhook và d?i chi?u transaction_id, order_id, payment_attempt_id; n?u gateway không tr? payment_attempt_id thì d?i chi?u gateway_order_id qua b?ng mapping n?i b? payment_attempt, cùng amount, currency, gateway và tr?ng thái giao d?ch v?i Order/payment_attempt g?c.
+10. N?u d? li?u kh?p, h? th?ng c?p nh?t payment_attempt = SUCCEEDED, payment_status = PAID và reconciliation_status = UNRECONCILED.
+11. H? th?ng ghi nh?n revenue_splits g?c: platform_fee và teacher_amount theo t? l? h?p d?ng.
+12. H? th?ng c?p quy?n truy c?p khóa h?c cho ngu?i h?c du?c ch? d?nh trong Order; g?i thông báo và email xác nh?n.
+Ngo?i l? / Lu?ng thay th?	E1: Ngu?i dùng h?y giao d?ch trên c?ng ? payment_attempt = CANCELLED; n?u Order còn tru?c payment_expire_at thì Order gi? PENDING d? cho retry, n?u ngu?i dùng h?y don thì Order chuy?n CANCELLED.
+E2: C?ng thanh toán tr? v? th?t b?i ? payment_attempt = FAILED và luu gateway_error_code; n?u còn tru?c payment_expire_at thì t?o payment_attempt m?i khi ngu?i dùng retry, Order v?n PENDING; n?u dã h?t h?n thì Order chuy?n EXPIRED và yêu c?u t?o Order m?i.
+E3: Webhook d?n tr? ho?c trùng ? h? th?ng x? lý idempotent theo transaction_id/payment_attempt_id ho?c transaction_id/gateway_order_id, không ghi nh?n trùng.
+E4: Order quá payment_expire_at mà chua có payment_attempt SUCCEEDED/webhook h?p l? ? chuy?n EXPIRED, không c?p quy?n.
+E5: Giao d?ch c?n hoàn ti?n sau khi dã PAID ? theo quy?t d?nh x? lý khi?u n?i trong REQ-ADM-005, h? th?ng t?o refund_request và c?p nh?t refund_status = REFUND_PENDING; ch? chuy?n refund_status = REFUNDED/PARTIALLY_REFUNDED khi có xác nh?n hoàn ti?n t? gateway ho?c ch?ng t? th? công h?p l?.
+E6: Webhook h?p l? ch? ký nhung l?ch order_id/payment_attempt_id/gateway_order_id/amount/currency/gateway/status so v?i Order/payment_attempt g?c ? luôn chuy?n payment_status = PAYMENT_REVIEW, không c?p quy?n h?c, ghi audit log và c?nh báo Admin d? d?i soát.
+E7: T?o payment URL th?t b?i/timeout ? payment_attempt = FAILED ho?c EXPIRED theo k?t qu? timeout, hi?n th? thông báo, cho phép th? l?i n?u Order chua quá payment_expire_at; m?i retry dùng cùng order_id nhung t?o payment_attempt m?i d? tránh nh?m giao d?ch.
+Tiêu chí ch?p nh?n	AC1: Ti?n chuy?n tr?c ti?p vào tài kho?n công ty qua VNPay/MoMo, không qua tài kho?n GV.
+AC2: revenue_splits g?c du?c ghi dúng t? l? t?i th?i di?m giao d?ch và immutable; m?i hoàn ti?n/di?u ch?nh t?o adjustment record riêng, liên k?t ticket_id, order_id, revenue_split_id và payout_cycle_id n?u có.
+AC3: Quy?n truy c?p khóa h?c du?c c?p cho dúng ngu?i h?c du?c ch? d?nh trong = 5 giây sau khi webhook h?p l? và dã d?i chi?u dúng d? li?u thanh toán.
+AC4: Toàn b? giao d?ch du?c ghi audit log v?i transaction_id, order_id, payment_attempt_id, gateway_order_id, amount, currency, gateway, timestamp.
+AC5: Vòng d?i payment_status t?i thi?u g?m PENDING, PAID, CANCELLED, FAILED, EXPIRED, PAYMENT_REVIEW; vòng d?i payment_attempt_status g?m PENDING, PROCESSING, SUCCEEDED, FAILED, CANCELLED, EXPIRED; refund_status qu?n lý riêng g?m NONE, REFUND_PENDING, PARTIALLY_REFUNDED, REFUNDED.
+AC6: Order PENDING ph?i có payment_expire_at rõ ràng; h? th?ng không cho retry ho?c c?p quy?n sau payment_expire_at n?u chua có webhook/payment_attempt SUCCEEDED h?p l?.
+Unit Test	UT-PAY-003, UT-PAY-004
+Integration Test	IT-PAY-002
+System Test	ST-PAY-002, ST-PAY-003
+
+REQ-PAY-003	Xem l?ch s? mua khóa h?c
+Mô t?	H?c sinh ho?c Ph? huynh có th? xem l?i các giao d?ch mua khóa h?c dã th?c hi?n.
+Actor	H?c sinh (A02), Ph? huynh (A03) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	Ngu?i dùng dã dang nh?p.
+Lu?ng chính	1. Ngu?i dùng vào Tài kho?n ? L?ch s? mua hàng.
+2. H? th?ng hi?n th? danh sách giao d?ch: mã don, tên khóa, ngày mua, s? ti?n, tr?ng thái, phuong th?c thanh toán.
+3. H? tr? l?c theo tr?ng thái và kho?ng th?i gian.
+4. Ngu?i dùng có th? nh?n vào t?ng giao d?ch d? xem chi ti?t và t?i hóa don di?n t? (PDF).
+Ngo?i l? / Lu?ng thay th?	E1: Chua có giao d?ch nào ? hi?n th? "B?n chua th?c hi?n giao d?ch nào".
+E2: Hóa don không t?i du?c ? hi?n th? thông báo và cho phép th? l?i.
+Tiêu chí ch?p nh?n	AC1: Giao d?ch s?p x?p m?i nh?t ? trên cùng.
+AC2: T?ng s? ti?n hi?n th? kh?p v?i CSDL.
+AC3: Hóa don xu?t ra d?ng PDF có ch? ký s? (digital signature).
+Unit Test	UT-PAY-005
+Integration Test	IT-PAY-003
+System Test	ST-PAY-004
+
+REQ-PAY-004	G?i khi?u n?i d?n Admin
+Mô t?	Ngu?i dùng có th? g?i khi?u n?i liên quan d?n giao d?ch, khóa h?c ho?c chi tr?/doanh thu (sai mô t?, không truy c?p du?c, sai n?i dung, sai l?ch s? ti?n nh?n,…). Liên quan d?n UC42 khi Admin x? lý ticket.
+Actor	H?c sinh (A02), Ph? huynh (A03), Giáo viên (A04) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	Ngu?i dùng dã dang nh?p và có giao d?ch, khóa h?c ho?c k? chi tr?/doanh thu liên quan.
+Lu?ng chính	1. Ngu?i dùng vào Tài kho?n ? Khi?u n?i / H? tr?.
+2. Ngu?i dùng ch?n lo?i khi?u n?i (Thanh toán, N?i dung, K? thu?t, Chi tr?/doanh thu, Khác) và m?c d? ?nh hu?ng (Th?p / Trung bình / Cao / Kh?n c?p).
+3. Ngu?i dùng ch?n giao d?ch, khóa h?c ho?c k? chi tr? liên quan.
+4. Ngu?i dùng nh?p tiêu d?, mô t? chi ti?t, yêu c?u mong mu?n (h? tr? k? thu?t, ch?nh s?a n?i dung, hoàn ti?n/hoàn ti?n m?t ph?n, di?u ch?nh doanh thu) và dính kèm t?i da 5 file (m?i file = 10MB; PDF/JPG/PNG).
+5. Ngu?i dùng nh?n "G?i khi?u n?i".
+6. H? th?ng t?o ticket tr?ng thái OPEN, gán priority theo m?c d?, gán cho Admin.
+7. H? th?ng g?i email xác nh?n dã ti?p nh?n t?i ngu?i khi?u n?i.
+Ngo?i l? / Lu?ng thay th?	E1: Ðính kèm vu?t quá 10MB ho?c sai d?nh d?ng ? t? ch?i v?i thông báo l?i.
+E2: Khi?u n?i trùng (cùng n?i dung trong 24h) ? c?nh báo và g?i ý c?p nh?t ticket cu.
+E3: Khi?u n?i yêu c?u hoàn ti?n nhung không có giao d?ch PAID liên quan ? t? ch?i và yêu c?u ch?n giao d?ch h?p l?.
+Tiêu chí ch?p nh?n	AC1: Mã ticket duy nh?t theo d?nh d?ng TICKET-YYYYMMDD-XXXXX.
+AC2: Admin nh?n thông báo real-time khi có ticket m?i.
+AC3: Ngu?i dùng theo dõi du?c tr?ng thái ticket (OPEN / IN_PROGRESS / WAITING_USER / RESOLVED / CLOSED).
+AC4: Ticket có tru?ng lo?i, m?c d?, d?i tu?ng liên quan và yêu c?u x? lý d? Admin l?c và tính SLA.
+Unit Test	UT-PAY-006
+Integration Test	IT-PAY-004
+System Test	ST-PAY-005
+
+3.4. Module H?c T?p (Learning)
+Mô t? module: H? tr? H?c sinh h?c t? do theo ti?n d? cá nhân. Không có l?ch h?c c? d?nh. Bài ki?m tra t? m? sau khi h?c sinh hoàn thành t?t c? các chuong c?a khóa h?c.
+REQ-LRN-001	Xem danh sách khóa h?c dã mua
+Mô t?	H?c sinh xem danh sách các khóa h?c dã s? h?u và ti?n d? h?c c?a m?i khóa.
+Actor	H?c sinh (A02) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	H?c sinh dã dang nh?p.
+Lu?ng chính	1. H?c sinh vào "Khóa h?c c?a tôi".
+2. H? th?ng hi?n th? các khóa dã mua: ?nh bìa, tên, giáo viên, ti?n d? %, ngày mua, ngày h?c g?n nh?t.
+3. H? tr? l?c: Ðang h?c / Ðã hoàn thành / Chua b?t d?u.
+4. H?c sinh nh?n vào khóa h?c d? chuy?n t?i UC14.
+Ngo?i l? / Lu?ng thay th?	E1: Chua mua khóa h?c nào ? hi?n th? "B?n chua s? h?u khóa h?c, khám phá ngay" kèm g?i ý.
+Tiêu chí ch?p nh?n	AC1: Ti?n d? % du?c tính = s? bài hoàn thành / t?ng s? bài.
+AC2: Tr?ng thái Ðã hoàn thành khi ti?n d? = 100% và dã pass bài ki?m tra cu?i.
+AC3: Khóa h?c s?p x?p theo th?i gian truy c?p g?n nh?t.
+Unit Test	UT-LRN-001
+Integration Test	IT-LRN-001
+System Test	ST-LRN-001
+
+REQ-LRN-002	Xem bài gi?ng & tài li?u
+Mô t?	H?c sinh xem video bài gi?ng, slide, ghi chú và các tài li?u liên quan c?a khóa h?c.
+Actor	H?c sinh (A02) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	H?c sinh s? h?u khóa h?c sau khi thanh toán thành công (REQ-PAY-002 / UC10).
+Lu?ng chính	1. H?c sinh ch?n khóa h?c ? ch?n chuong ? ch?n bài h?c.
+2. V?i bài h?c có video, h? th?ng stream video qua CDN, hi?n th? slide d?ng b? và transcript.
+3. H?c sinh có th? tua, di?u ch?nh t?c d?, b?t ph? d?.
+4. V?i bài h?c có video, h? th?ng ghi nh?n watch_time theo các do?n video dã xem th?c t? và duy nh?t (unique watched segments); th?i lu?ng b? tua qua không du?c tính là dã xem.
+5. Khi unique watched duration d?t = 90% th?i lu?ng video, bài h?c video chuy?n tr?ng thái COMPLETED và m? khóa bài ti?p theo.
+6. V?i bài h?c không có video, tr?ng thái COMPLETED du?c xác d?nh theo completion_rule do giáo viên c?u hình: DOCUMENT_OPENED, MARK_AS_COMPLETE, ASSIGNMENT_SUBMITTED ho?c ASSIGNMENT_PASSED.
+Ngo?i l? / Lu?ng thay th?	E1: Video l?i ? fallback sang ch?t lu?ng th?p hon ho?c thông báo.
+E2: H?c sinh không s? h?u khóa ? t? ch?i truy c?p (403).
+E3: M?t k?t n?i ? t? luu v? trí phát và các do?n dã xem; phát ti?p khi online.
+E4: H?c sinh tua vu?t qua m?t do?n chua xem ? h? th?ng ch? c?p nh?t v? trí phát, không c?ng do?n b? tua vào watch_time.
+E5: Bài h?c không có video nhung chua c?u hình completion_rule ? không cho chuy?n COMPLETED và hi?n th? thông báo c?u hình thi?u cho giáo viên/Admin.
+Tiêu chí ch?p nh?n	AC1: Streaming kh?i d?ng trong = 3 giây.
+AC2: Tr?ng thái COMPLETED c?a bài h?c video ch? ghi nh?n khi unique watched duration = 90% th?i lu?ng video.
+AC3: V? trí phát g?n nh?t và danh sách do?n dã xem du?c luu cho t?ng c?p (h?c sinh, bài h?c).
+AC4: Tua video ho?c tang t?c d? phát không du?c làm sai l?ch di?u ki?n hoàn thành bài h?c.
+AC5: Bài h?c không có video ch? du?c tính COMPLETED theo completion_rule dã c?u hình và luu du?c b?ng ch?ng hoàn thành tuong ?ng.
+Unit Test	UT-LRN-002, UT-LRN-003
+Integration Test	IT-LRN-002
+System Test	ST-LRN-002
+
+REQ-LRN-003	T?i tài li?u h?c t?p
+Mô t?	H?c sinh t?i xu?ng tài li?u dính kèm (PDF, slide, file th?c hành) c?a khóa h?c dã mua.
+Actor	H?c sinh (A02) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	H?c sinh s? h?u khóa h?c và bài h?c có tài li?u dính kèm.
+Lu?ng chính	1. H?c sinh m? bài h?c và xem m?c "Tài li?u".
+2. H?c sinh nh?n nút t?i xu?ng tài li?u mong mu?n.
+3. H? th?ng sinh signed URL có th?i h?n 5 phút và tr? v? file.
+4. H? th?ng ghi log m?i lu?t t?i d? ch?ng chia s? trái phép.
+Ngo?i l? / Lu?ng thay th?	E1: H?c sinh chua s? h?u khóa ? tr? v? 403.
+E2: T?p không t?n t?i ? "T?p t?m th?i không kh? d?ng".
+E3: T?i vu?t quá 10 lu?t/gi?/file ? gi?i h?n t?c d?.
+Tiêu chí ch?p nh?n	AC1: Tài li?u ch? t?i du?c khi h?c sinh s? h?u khóa.
+AC2: Signed URL h?t h?n sau 5 phút; m?i link ch? dùng du?c 1 l?n.
+AC3: Có watermark tên và email h?c sinh trên các t?p PDF t?i xu?ng.
+Unit Test	UT-LRN-004
+Integration Test	IT-LRN-003
+System Test	ST-LRN-003
+
+REQ-LRN-004	N?p bài t?p
+Mô t?	H?c sinh n?p bài t?p tr?c nghi?m ho?c bài th?c hành (upload file / nh?p text) cho giáo viên ch?m.
+Actor	H?c sinh (A02) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Bài h?c có bài t?p du?c giáo viên t?o/gán theo REQ-TCH-002; h?c sinh s? h?u khóa.
+Lu?ng chính	1. H?c sinh m? bài h?c có bài t?p.
+2. H?c sinh d?c d? và làm bài (nh?p text ho?c t?i file = 25MB).
+3. H?c sinh nh?n "N?p bài".
+4. H? th?ng xác th?c d? li?u, luu bài n?p v?i tr?ng thái SUBMITTED, g?i thông báo cho giáo viên.
+5. H?c sinh nh?n thông báo xác nh?n dã n?p và th?i h?n ch?m d? ki?n (= 7 ngày).
+Ngo?i l? / Lu?ng thay th?	E1: T?p > 25MB ho?c sai d?nh d?ng ? t? ch?i kèm thông báo.
+E2: Ðã n?p tru?c dó ? cho phép n?p l?i n?u trong th?i h?n và chua vu?t s? l?n c?u hình (m?c d?nh 3).
+E3: Quá h?n n?p ? ch? cho n?p v?i c? LATE n?u giáo viên cho phép; di?m b? tr? theo late policy c?a bài t?p.
+E4: Bài t?p dã dóng ho?c giáo viên khóa nh?n bài ? không cho n?p m?i.
+Tiêu chí ch?p nh?n	AC1: H? th?ng luu nguyên t?p g?c và t?o b?n preview cho giáo viên.
+AC2: S? l?n n?p l?i du?c gi?i h?n theo c?u hình giáo viên (m?c d?nh 3).
+AC3: Thông báo d?n giáo viên du?c g?i trong = 10 giây.
+AC4: Deadline, s? l?n n?p, file type và late penalty du?c luu cùng c?u hình bài t?p d? test du?c.
+Unit Test	UT-LRN-005, UT-LRN-006
+Integration Test	IT-LRN-004
+System Test	ST-LRN-004
+
+REQ-LRN-005	Làm bài ki?m tra
+Mô t?	H?c sinh làm quiz/chapter test ho?c final exam sau khi dáp ?ng di?u ki?n m? khóa tuong ?ng; m?i vi?c m? thêm lu?t làm l?i sau khi b? khóa ph?i tuân th? BRULE-RETAKE-001.
+Actor	H?c sinh (A02) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	H?c sinh dã hoàn thành 100% n?i dung các chuong thu?c ph?m vi c?a bài ki?m tra. V?i final exam, h?c sinh ph?i hoàn thành 100% toàn b? n?i dung khóa h?c.
+Lu?ng chính	1. H? th?ng ki?m tra di?u ki?n và m? khóa bài ki?m tra.
+2. H?c sinh nh?n "Làm bài ki?m tra" và xác nh?n.
+3. H? th?ng m? fullscreen, ngan copy/paste và tab switching (c?nh báo sau 3 l?n r?i tab).
+4. H?c sinh tr? l?i các câu h?i (tr?c nghi?m + t? lu?n).
+5. H? th?ng ch?m ph?n tr?c nghi?m t? d?ng; ph?n t? lu?n ch? giáo viên ch?m (UC35).
+6. K?t qu? t?ng h?p du?c hi?n th? khi giáo viên hoàn t?t ch?m.
+7. N?u dây là final exam và k?t qu? PASSED, h? th?ng c?p nh?t di?u ki?n c?p ch?ng ch? cho REQ-LRN-008.
+Ngo?i l? / Lu?ng thay th?	E1: Chua hoàn thành các chuong thu?c ph?m vi ki?m tra ? bài ki?m tra b? khóa, hi?n th? s? chuong còn l?i.
+E2: R?i tab/fullscreen quá 3 l?n ? bài b? t? n?p v?i c?nh báo gian l?n.
+E3: M?t k?t n?i ? t? luu m?i 15s; khôi ph?c khi online l?i.
+E4: H?c sinh fail h?t s? lu?t làm l?i ho?c quá 14 ngày ? tr?ng thái RETAKE_LOCKED; h?c sinh có th? g?i yêu c?u m? thêm lu?t kèm lý do. Ch? Giáo viên s? h?u khóa h?c ho?c Admin du?c phê duy?t theo BRULE-RETAKE-001. N?u phê duy?t, h? th?ng t?o retake_approval, c?ng s? lu?t du?c duy?t, c?p nh?t retake_expire_at n?u có và g?i thông báo cho H?c sinh; n?u t? ch?i, h? th?ng luu lý do t? ch?i và thông báo cho H?c sinh.
+Tiêu chí ch?p nh?n	AC1: Bài ki?m tra t? d?ng m? dúng khi h?c sinh hoàn thành 100% n?i dung thu?c ph?m vi ki?m tra.
+AC2: Co ch? ch?ng gian l?n ho?t d?ng (fullscreen + tab tracking).
+AC3: H?c sinh có t?i da 2 l?n làm l?i trong 14 ngày k? t? l?n d?u, tr? khi du?c phê duy?t m? thêm lu?t theo BRULE-RETAKE-001.
+AC4: Ch?ng ch? ch? dùng k?t qu? final exam PASSED, không dùng quiz/chapter test.
+AC5: Yêu c?u m? thêm lu?t t? RETAKE_LOCKED ph?i du?c Giáo viên s? h?u khóa ho?c Admin duy?t/t? ch?i trên danh sách RETAKE_LOCKED; b?t bu?c nh?p lý do, s? lu?t m? thêm t? 1-2 m?i l?n, t?i da 2 l?n phê duy?t cho cùng exam/enrollment, ghi audit log approval_id/enrollment_id/exam_id/actor_id/approver_id/extra_attempts/reason/timestamp và g?i thông báo cho H?c sinh trong = 5 phút.
+Unit Test	UT-LRN-007, UT-LRN-008
+Integration Test	IT-LRN-005
+System Test	ST-LRN-005
+
+REQ-LRN-006	Xem di?m & ti?n d? h?c t?p
+Mô t?	H?c sinh xem chi ti?t di?m quiz, bài ki?m tra, bài t?p và % hoàn thành t?ng chuong. D? li?u ti?n d? này du?c dùng làm d?u vào cho d? xu?t l? trình ? UC23.
+Actor	H?c sinh (A02) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	H?c sinh s? h?u khóa h?c.
+Lu?ng chính	1. H?c sinh vào "Ti?n d? h?c t?p" trong khóa h?c.
+2. H? th?ng hi?n th? b?ng t?ng quan: ti?n d? %, di?m trung bình, các quiz dã làm, k?t qu? bài ki?m tra.
+3. H?c sinh có th? xem chi ti?t t?ng chuong: bài dã h?c, quiz dã pass, th?i gian h?c.
+4. H? th?ng d? xu?t bu?c ti?p theo d?a trên d? li?u (g?n v?i UC23 — AI roadmap suggestion).
+Ngo?i l? / Lu?ng thay th?	E1: Chua có d? li?u h?c t?p ? hi?n th? "B?t d?u h?c d? xem ti?n d?".
+Tiêu chí ch?p nh?n	AC1: S? li?u kh?p v?i CSDL (sai s? t?i da 1%).
+AC2: Bi?u d? ti?n d? render trong = 1 giây.
+AC3: H?c sinh có th? xu?t báo cáo ti?n d? ra PDF.
+Unit Test	UT-LRN-009
+Integration Test	IT-LRN-006
+System Test	ST-LRN-006
+
+REQ-LRN-007	Ðánh giá khóa h?c
+Mô t?	Sau khi dã h?c = 30% n?i dung khóa, h?c sinh có th? dánh giá khóa h?c (sao + nh?n xét).
+Actor	H?c sinh (A02) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	H?c sinh s? h?u khóa và dã d?t ti?n d? = 30%.
+Lu?ng chính	1. H?c sinh vào trang khóa h?c ? tab Ðánh giá.
+2. H?c sinh ch?n s? sao (1–5) và vi?t nh?n xét (t?i thi?u 20 ký t?, t?i da 1000 ký t?).
+3. H?c sinh nh?n "G?i dánh giá".
+4. H? th?ng ki?m tra di?u ki?n, luu dánh giá, c?p nh?t di?m trung bình c?a khóa.
+5. H? th?ng g?i thông báo d?n giáo viên.
+Ngo?i l? / Lu?ng thay th?	E1: Ti?n d? < 30% ? t? ch?i, g?i ý h?c thêm.
+E2: H?c sinh dã dánh giá ? cho phép ch?nh s?a, không t?o b?n m?i.
+E3: N?i dung ch?a t? ng? vi ph?m ? dánh d?u ch? duy?t, ?n kh?i public cho d?n khi Admin xét.
+Tiêu chí ch?p nh?n	AC1: Ði?m trung bình khóa c?p nh?t ngay sau khi có dánh giá h?p l?.
+AC2: M?i h?c sinh ch? có 1 dánh giá/khóa (c?p nh?t du?c).
+AC3: B? l?c t? ng? áp d?ng cho m?i dánh giá tru?c khi public.
+Unit Test	UT-LRN-010
+Integration Test	IT-LRN-007
+System Test	ST-LRN-007
+REQ-LRN-008	Xem và t?i ch?ng ch?
+Mô t?	H?c sinh xem và t?i ch?ng ch? hoàn thành khóa h?c du?i d?ng PDF có mã QR xác minh sau khi d?t d? di?u ki?n.
+Actor	H?c sinh (A02) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	H?c sinh dã dang nh?p.
+H?c sinh dã hoàn thành 100% n?i dung khóa h?c và pass final exam c?a khóa h?c.
+Lu?ng chính	1. H?c sinh vào "Khóa h?c c?a tôi" ? ch?n khóa có tr?ng thái Ðã hoàn thành.
+2. H? th?ng hi?n th? nút "Xem ch?ng ch?".
+3. H?c sinh nh?n "Xem ch?ng ch?" ? h? th?ng hi?n th? PDF: tên h?c sinh, tên khóa, giáo viên, ngày hoàn thành, mã ch?ng ch?, mã QR xác minh.
+4. H?c sinh nh?n "T?i v?" ? h? th?ng sinh signed URL (h?n 10 phút) và tr? v? file PDF.
+5. H?c sinh có th? chia s? du?ng d?n trang xác minh ch?ng ch? công khai.
+Ngo?i l? / Lu?ng thay th?	E1: Khóa chua hoàn thành ho?c chua pass bài ki?m tra ? ?n nút "Xem ch?ng ch?", hi?n th? di?u ki?n còn thi?u.
+E2: L?i khi t?o PDF ? hi?n th? thông báo l?i, cho phép th? l?i sau 30 giây.
+Tiêu chí ch?p nh?n	AC1: Ch?ng ch? ch? hi?n th? khi progress = 100% VÀ final exam = PASSED.
+AC2: Mã QR d?n d?n trang xác minh công khai (không c?n dang nh?p d? xem).
+AC3: PDF có watermark tên h?c sinh và ngày phát hành; tên file: CERT-[mã khóa]-[tên HS].pdf.
+AC4: N?u di?m final exam ho?c di?m t? lu?n liên quan b? s?a làm thay d?i di?u ki?n c?p ch?ng ch?, h? th?ng chuy?n ch?ng ch? hi?n có sang NEEDS_REVIEW; n?u v?n d? di?u ki?n thì REISSUED, n?u không d? di?u ki?n thì REVOKED và trang xác minh công khai hi?n th? tr?ng thái không còn hi?u l?c.
+Unit Test	UT-LRN-011
+Integration Test	IT-LRN-008
+System Test	ST-LRN-008
+
+3.5. Module Tuong Tác & H? Tr? (Interaction & Support)
+Mô t? module: Cung c?p các kênh tuong tác gi?a H?c sinh v?i Giáo viên và v?i AI Engine: g?i câu h?i, chat h? tr?, nh?n d? xu?t l? trình cá nhân hóa.
+REQ-INT-001	G?i câu h?i cho giáo viên
+Mô t?	H?c sinh g?i câu h?i liên quan d?n bài h?c cho giáo viên. Tuong ?ng UC21 và liên quan tr?c ti?p t?i UC36 khi Giáo viên tr? l?i.
+Actor	H?c sinh (A02) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	H?c sinh s? h?u khóa và dang xem bài h?c/chuong c? th?.
+Lu?ng chính	1. H?c sinh m? trang bài h?c và nh?n "H?i giáo viên".
+2. H?c sinh nh?p tiêu d?, n?i dung câu h?i, dính kèm file ?nh n?u có.
+3. H?c sinh ch?n ph?m vi hi?n th? Public/Private; m?c d?nh là Public.
+4. H? th?ng luu visibility và ki?m tra quy?n xem theo l?a ch?n c?a h?c sinh.
+5. H? th?ng t?o câu h?i ? tr?ng thái PENDING và g?i thông báo t?i Giáo viên ph? trách khóa h?c.
+6. Câu h?i PENDING du?c x? lý ti?p theo trong REQ-TCH-007 (Tr? l?i câu h?i h?c sinh); REQ-INT-001 không bao g?m thao tác Giáo viên tr? l?i.
+Ngo?i l? / Lu?ng thay th?	E1: Câu h?i r?ng ho?c < 10 ký t? ? t? ch?i.
+E2: Ðính kèm ?nh > 5MB ho?c sai d?nh d?ng ? t? ch?i.
+E3: Câu h?i tuong t? dã t?n t?i ? g?i ý câu Q&A có s?n tru?c khi g?i.
+Tiêu chí ch?p nh?n	AC1: Câu h?i du?c t?o thành công ? tr?ng thái PENDING và GV nh?n thông báo trong = 5 phút.
+AC2: H? tr? dính kèm ?nh = 5MB.
+AC3: Câu h?i public m?c d?nh hi?n th? cho h?c sinh khác cùng khóa; câu h?i private ch? hi?n th? cho ngu?i h?i, giáo viên ph? trách và Admin h? tr?.
+AC4: H? th?ng luu visibility và áp d?ng dúng quy?n xem trong danh sách Q&A, chi ti?t câu h?i và thông báo.
+AC5: Lu?ng tr? l?i, chuy?n tr?ng thái ANSWERED và thông báo câu tr? l?i thu?c ph?m vi REQ-TCH-007.
+Unit Test	UT-INT-001
+Integration Test	IT-INT-001
+System Test	ST-INT-001
+
+REQ-INT-002	Chat AI h? tr?
+Mô t?	H?c sinh trò chuy?n v?i AI Engine (A06) d? du?c gi?i dáp nhanh các câu h?i h?c thu?t.
+Actor	H?c sinh (A02) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	H?c sinh dã dang nh?p.
+Lu?ng chính	1. H?c sinh m? chat AI t? widget góc ph?i.
+2. H?c sinh nh?p câu h?i.
+3. H? th?ng ki?m tra ngu?i dùng dã d?ng ý s? d?ng AI và chính sách x? lý d? li?u.
+4. H? th?ng g?i prompt d?n AI Engine (A06) kèm context khóa h?c c?n thi?t t?i thi?u, dã lo?i b? d? li?u nh?y c?m không c?n thi?t.
+5. AI Engine tr? v? câu tr? l?i; h? th?ng hi?n th? trong khung chat.
+6. H?c sinh có th? dánh giá h?u ích/không h?u ích cho m?i câu tr? l?i.
+Ngo?i l? / Lu?ng thay th?	E1: AI Engine timeout (> 15 giây) ? hi?n th? thông báo và g?i ý g?i câu h?i cho giáo viên (UC21).
+E2: Câu h?i vi ph?m chính sách ? AI t? ch?i tr? l?i và ghi log.
+E3: Quota vu?t gi?i h?n (100 tin/ngày) ? t?m khóa d?n 24h sau.
+Tiêu chí ch?p nh?n	AC1: Ph?n h?i trung bình = 5 giây cho 95% lu?t h?i.
+AC2: L?ch s? chat luu t?i da 90 ngày; h?c sinh có th? xóa l?ch s? chat cá nhân sau bu?c xác nh?n xóa.
+AC3: Câu tr? l?i có g?n ngu?n n?i b? (bài gi?ng tuong ?ng) khi d? c?p.
+AC4: H? th?ng cho phép b?t/t?t tính nang AI và không g?i context h?c t?p khi ngu?i dùng dã t?t tính nang.
+AC5: Màn hình Cài d?t AI cho phép ngu?i dùng xem/c?p nh?t consent, b?t/t?t AI theo tính nang, xóa l?ch s? chat/l? trình AI và ghi privacy audit log cho các thao tác này.
+Unit Test	UT-INT-002
+Integration Test	IT-INT-002
+System Test	ST-INT-002
+
+REQ-INT-003	Nh?n d? xu?t l? trình t? AI
+Mô t?	AI Engine d? xu?t l? trình h?c cá nhân hóa d?a trên k?t qu? quiz, ti?n d? và m?c tiêu c?a h?c sinh. M? r?ng (<<extend>>) UC18.
+Actor	H?c sinh (A02) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	H?c sinh có d? li?u h?c t?p = 1 tu?n.
+Lu?ng chính	1. H?c sinh vào "L? trình c?a tôi".
+2. H? th?ng ki?m tra consent s? d?ng AI và g?i context t?i thi?u (ti?n d?, di?m s?, m?c tiêu h?c t?p) d?n AI Engine.
+3. AI Engine tr? l? trình g?i ý: bài h?c c?n ôn, khóa h?c b? tr?, m?c tiêu tu?n.
+4. H?c sinh ch?p nh?n, ch?nh s?a ho?c b? qua t?ng g?i ý.
+5. H? th?ng luu l? trình cá nhân và l?p l?ch nh?c.
+Ngo?i l? / Lu?ng thay th?	E1: AI Engine không kh? d?ng ? hi?n th? l? trình m?c d?nh theo course.
+E2: D? li?u chua d? ? "Hãy h?c thêm d? nh?n g?i ý chính xác hon".
+E3: H?c sinh t?t d? xu?t AI ho?c rút consent ? không g?i d? li?u sang AI Engine và hi?n th? tr?ng thái "Ð? xu?t AI dang t?t".
+E4: H?c sinh yêu c?u xóa l?ch s? l? trình AI ? h? th?ng yêu c?u xác nh?n, xóa d? li?u g?i ý dã luu và ghi privacy audit log.
+Tiêu chí ch?p nh?n	AC1: L? trình c?p nh?t m?i tu?n d?a trên d? li?u m?i.
+AC2: H?c sinh có th? b?t/t?t tính nang d? xu?t.
+AC3: H? th?ng ghi nh?n click vào t?ng g?i ý và xu?t du?c báo cáo CTR qua telemetry; CTR = 30% là KPI v?n hành, không dùng làm di?u ki?n pass/fail c?a test ch?c nang.
+AC4: Không g?i d? li?u h?c t?p sang AI Engine khi h?c sinh dã t?t tính nang d? xu?t ho?c rút consent.
+AC5: Ngu?i dùng có th? xóa l?ch s? l? trình AI; sau khi xóa, d? li?u cu không du?c dùng cho l?n d? xu?t ti?p theo.
+Unit Test	UT-INT-003
+Integration Test	IT-INT-003
+System Test	ST-INT-003
+
+3.6. Module Ph? Huynh (Parent)
+Mô t? module: H? tr? Ph? huynh d?ng hành cùng vi?c h?c c?a con. Các UC theo dõi/thao tác c?a Ph? huynh (UC24, UC25, UC26) ch? kh? d?ng khi liên k?t PH–HS ? tr?ng thái ACTIVE. Co ch? liên k?t g?m: g?i l?i m?i (UC27) ? ch?p nh?n/t? ch?i (UC28) ? h?y liên k?t (UC29).
+REQ-PRN-001	Theo dõi ti?n d? h?c t?p c?a con
+Mô t?	Ph? huynh theo dõi ti?n d? h?c, di?m quiz và bài ki?m tra c?a con. Ch? kh? d?ng khi liên k?t ? tr?ng thái ACTIVE.
+Actor	Ph? huynh (A03) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Ph? huynh dã liên k?t thành công v?i h?c sinh (link status = ACTIVE).
+Lu?ng chính	1. PH m? Dashboard c?a con dã liên k?t ACTIVE.
+2. H? th?ng ki?m tra quy?n xem theo Parent Link, ngày sinh HS, c?u hình riêng tu và consent c?a HS cho PH hi?n t?i.
+3. H? th?ng hi?n th? ti?n d? khóa h?c, bài dã h?c, di?m quiz/chapter test/final exam, tr?ng thái n?p bài và ch?ng ch? n?u có.
+4. N?u HS = 16 tu?i và privacy b?t nhung chua c?p consent cho PH hi?n t?i, h? th?ng ?n n?i dung bài làm chi ti?t và ch? hi?n th? t?ng quan du?c phép.
+5. PH l?c theo khóa h?c/th?i gian và t?i báo cáo tu?n n?u du?c phép.
+6. H? th?ng ghi audit log khi PH xem d? li?u nh?y c?m ho?c khi quy?n xem b? t? ch?i do privacy/consent.
+Ngo?i l? / Lu?ng thay th?	E1: Liên k?t PENDING/REJECTED/EXPIRED/REVOKED ? t? ch?i truy c?p, hi?n th? hu?ng d?n liên k?t.
+E2: Con không có d? li?u h?c t?p ? "Chua có d? li?u d? hi?n th?".
+Tiêu chí ch?p nh?n	AC1: Ch? xem du?c d? li?u c?a con dã liên k?t ACTIVE.
+AC2: Ti?n d? c?p nh?t trong vòng = 5 phút sau khi con h?c xong bài.
+AC3: Báo cáo tu?n có bi?u d? và nh?n xét t? d?ng d?ng rule-based, không dùng AI: ti?n d? tang/gi?m so v?i tu?n tru?c, di?m trung bình, bài chua hoàn thành, s? ngày không h?c và g?i ý hành d?ng theo ngu?ng c?u hình.
+AC4: PH không xem du?c n?i dung bài làm chi ti?t n?u HS = 16 tu?i và c?u hình riêng tu b?t, tr? khi HS dã c?p consent cho chính PH dó.
+AC5: Tu?i HS l?y t? ngày sinh trong h? so; n?u thi?u ngày sinh thì áp d?ng m?c d?nh b?o v? cao nh?t nhu HS = 16 tu?i cho d?n khi có ngày sinh h?p l? ho?c consent rõ ràng.
+Unit Test	UT-PRN-001
+Integration Test	IT-PRN-001
+System Test	ST-PRN-001
+
+REQ-PRN-002	Liên h? & nh?n thông báo t? GV
+Mô t?	Ph? huynh liên h? giáo viên qua tin nh?n và nh?n thông báo v? tình hình h?c c?a con. Ch? kh? d?ng khi link ACTIVE.
+Actor	Ph? huynh (A03) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	Liên k?t PH-HS = ACTIVE và con dã mua khóa c?a giáo viên dó.
+Lu?ng chính	1. Ph? huynh vào Tin nh?n ? ch?n giáo viên mu?n liên h?.
+2. Ph? huynh so?n tin nh?n (t?i da 2000 ký t?) và g?i.
+3. H? th?ng g?i thông báo cho giáo viên và luu l?ch s? chat.
+4. Khi giáo viên g?i nh?n xét/thông báo v? h?c sinh, ph? huynh nh?n push notification và email.
+Ngo?i l? / Lu?ng thay th?	E1: Link không ACTIVE ? t? ch?i tính nang.
+E2: Tin nh?n vi ph?m b? l?c ? dánh d?u ch? duy?t.
+Tiêu chí ch?p nh?n	AC1: Tin nh?n du?c phân ph?i trong = 10 giây.
+AC2: Thông báo email g?i d?n ph? huynh trong = 2 phút sau khi giáo viên g?i.
+AC3: Luu l?ch s? chat t?i thi?u 12 tháng.
+Unit Test	UT-PRN-002
+Integration Test	IT-PRN-002
+System Test	ST-PRN-002
+
+REQ-PRN-003	Xem l?ch s? thanh toán khóa h?c
+Mô t?	Ph? huynh xem các giao d?ch dã th?c hi?n và ti?n d? h?c tuong ?ng c?a con. Ch? kh? d?ng khi link ACTIVE.
+Actor	Ph? huynh (A03) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	Liên k?t PH-HS = ACTIVE.
+Lu?ng chính	1. Ph? huynh vào "L?ch s? thanh toán" trong dashboard.
+2. H? th?ng hi?n th? các giao d?ch (do PH ho?c HS th?c hi?n cho khóa h?c c?a HS).
+3. M?i dòng hi?n th?: ngày, khóa, s? ti?n, tr?ng thái, ti?n d? h?c hi?n t?i c?a khóa.
+4. Ph? huynh có th? t?i hóa don di?n t? cho t?ng giao d?ch.
+Ngo?i l? / Lu?ng thay th?	E1: Link không ACTIVE ? ch?n truy c?p.
+E2: Không có giao d?ch ? hi?n th? thông báo phù h?p.
+Tiêu chí ch?p nh?n	AC1: Ch? giao d?ch liên quan d?n HS dã liên k?t du?c hi?n th?.
+AC2: Hóa don hi?n th? d?y d? thông tin pháp lý.
+AC3: Có th? l?c theo kho?ng th?i gian và khóa h?c.
+Unit Test	UT-PRN-003
+Integration Test	IT-PRN-003
+System Test	ST-PRN-003
+
+REQ-PRN-004	G?i l?i m?i liên k?t con
+Mô t?	Ph? huynh nh?p email h?c sinh d? g?i yêu c?u liên k?t tài kho?n; h?c sinh s? xác nh?n trong UC28.
+Actor	Ph? huynh (A03) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Ph? huynh dã dang nh?p và chua liên k?t v?i h?c sinh m?c tiêu.
+Lu?ng chính	1. Ph? huynh vào "Liên k?t tài kho?n" ? "Thêm con".
+2. Ph? huynh nh?p email h?c sinh, m?i quan h? (cha/m?/giám h?), ghi chú.
+3. H? th?ng ki?m tra di?u ki?n liên k?t ? server nhung không ti?t l? vi?c email có t?n t?i hay vai trò tài kho?n cho ngu?i g?i.
+4. N?u h?p l?, h? th?ng t?o b?n ghi liên k?t PENDING.
+5. H? th?ng g?i thông báo trong app và email t?i h?c sinh d? xác nh?n (UC28).
+Ngo?i l? / Lu?ng thay th?	E1: Email không t?n t?i ho?c không ph?i HS ? hi?n th? thông báo trung l?p "N?u tài kho?n h?p l?, h? th?ng dã g?i yêu c?u liên k?t"; không t?o b?n ghi liên k?t.
+E2: Ðã có liên k?t PENDING/ACTIVE thu?c chính PH hi?n t?i và email HS dã du?c xác th?c trong phiên nghi?p v? này ? t? ch?i v?i thông báo tr?ng thái hi?n t?i c?a liên k?t dó; n?u liên k?t thu?c PH khác ho?c không xác d?nh du?c quy?n xem, v?n dùng thông báo trung l?p d? ch?ng dò email.
+E3: Vu?t gi?i h?n 5 con/PH ? c?nh báo và yêu c?u h?y liên k?t cu.
+E4: Vu?t gi?i h?n s? l?i m?i/ngày ? t?m ch?n g?i thêm l?i m?i và ghi log ch?ng dò email.
+Tiêu chí ch?p nh?n	AC1: H?c sinh nh?n thông báo trong = 30 giây khi l?i m?i h?p l?.
+AC2: Yêu c?u liên k?t h?t h?n sau 7 ngày n?u không xác nh?n.
+AC3: Ph? huynh có th? h?y yêu c?u khi còn PENDING.
+AC4: H? th?ng không ti?t l? cho ngu?i g?i vi?c email có t?n t?i ho?c có ph?i tài kho?n H?c sinh hay không.
+Unit Test	UT-PRN-004
+Integration Test	IT-PRN-004
+System Test	ST-PRN-004
+
+REQ-PRN-005	Ch?p nh?n / t? ch?i liên k?t
+Mô t?	H?c sinh quy?t d?nh ch?p nh?n ho?c t? ch?i yêu c?u liên k?t t? Ph? huynh. Tr?ng thái liên k?t: PENDING ? ACTIVE n?u ch?p nh?n, PENDING ? REJECTED n?u t? ch?i, PENDING ? EXPIRED n?u quá h?n. Parent Link không s? d?ng tr?ng thái PENDING_EMAIL_VERIFICATION.
+Actor	H?c sinh (A02) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Có yêu c?u liên k?t PENDING g?i t?i tài kho?n h?c sinh.
+Lu?ng chính	1. H?c sinh xem thông báo "Yêu c?u liên k?t t? <tên PH>".
+2. H?c sinh xem chi ti?t: tên PH, email, m?i quan h?, th?i di?m g?i.
+3. H?c sinh ch?n "Ch?p nh?n" ho?c "T? ch?i".
+4. H? th?ng c?p nh?t tr?ng thái sang ACTIVE ho?c REJECTED tuong ?ng.
+5. H? th?ng thông báo k?t qu? cho Ph? huynh.
+Ngo?i l? / Lu?ng thay th?	E1: Yêu c?u dã h?t h?n (> 7 ngày) ? chuy?n tr?ng thái EXPIRED và hi?n th? "Yêu c?u dã h?t h?n".
+E2: H?c sinh dã có liên k?t ACTIVE v?i PH khác ? v?n cho phép, h? th?ng cho phép nhi?u PH liên k?t v?i 1 HS.
+Tiêu chí ch?p nh?n	AC1: Quy?t d?nh c?a HS du?c áp d?ng ngay l?p t?c.
+AC2: PH nh?n thông báo k?t qu? trong = 30 giây.
+AC3: Ghi audit log cho m?i thay d?i tr?ng thái liên k?t.
+Unit Test	UT-PRN-005
+Integration Test	IT-PRN-005
+System Test	ST-PRN-005
+
+REQ-PRN-006	H?y liên k?t tài kho?n
+Mô t?	C? Ph? huynh và H?c sinh d?u có quy?n ch? d?ng h?y m?t liên k?t dang ACTIVE.
+Actor	H?c sinh (A02), Ph? huynh (A03) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	T?n t?i liên k?t v?i tr?ng thái ACTIVE gi?a HS và PH.
+Lu?ng chính	1. Ngu?i dùng (HS ho?c PH) vào "Liên k?t tài kho?n".
+2. Ngu?i dùng ch?n liên k?t c?n h?y và nh?n "H?y liên k?t".
+3. H? th?ng yêu c?u xác nh?n và nh?p lý do (tùy ch?n).
+4. H? th?ng chuy?n tr?ng thái ACTIVE ? REVOKED, ghi audit log.
+5. H? th?ng g?i thông báo cho bên còn l?i.
+Ngo?i l? / Lu?ng thay th?	E1: Liên k?t không t?n t?i ho?c dã REVOKED/REJECTED/EXPIRED ? thông báo l?i tuong ?ng.
+E2: M?t k?t n?i ? thao tác s? du?c retry t? d?ng.
+Tiêu chí ch?p nh?n	AC1: Sau khi REVOKED, các UC24/25/26 tr? nên b?t kh? d?ng cho PH v?i HS dó.
+AC2: Bên d?i tác nh?n thông báo trong = 30 giây.
+AC3: Có th? t?o liên k?t m?i sau khi REVOKED ho?c REJECTED (l?p l?i UC27).
+Unit Test	UT-PRN-006
+Integration Test	IT-PRN-006
+System Test	ST-PRN-006
+
+3.7. Module Giáo Viên (Teacher)
+Mô t? module: T?p h?p các nghi?p v? dành cho Giáo viên – d?i tác c?ng tác c?a n?n t?ng. GV qu?n lý n?i dung khóa h?c c?a mình, tr? l?i Q&A, ch?m bài, c?p nh?t question bank và xem l?ch s? các k? nh?n ti?n dã du?c Admin xác nh?n; không có màn hình doanh thu realtime/t?m tính trong ph?m vi hi?n t?i.
+REQ-TCH-001	T?o khóa h?c m?i
+Mô t?	Giáo viên t?o và g?i khóa h?c cho Admin duy?t (UC41) tru?c khi xu?t b?n.
+Actor	Giáo viên (A04) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Ngu?i dùng dã dang ký vai trò Giáo viên, xác th?c email và du?c Admin phê duy?t vai trò GV trong REQ-ADM-003.
+Lu?ng chính	1. Giáo viên vào "Khóa h?c c?a tôi" ? "T?o khóa h?c m?i".
+2. Giáo viên nh?p thông tin: tên, mô t?, linh v?c, c?p l?p, giá, ?nh bìa, video gi?i thi?u, m?c tiêu, d?i tu?ng.
+3. Giáo viên c?u trúc chuong và bài h?c (kéo-th? th? t?).
+4. Giáo viên dánh d?u các bài h?c mi?n phí (isFree).
+5. Giáo viên t?o ho?c g?n final exam h?p l? cho khóa h?c d? ph?c v? di?u ki?n hoàn thành/ch?ng ch?.
+6. Giáo viên nh?n "Luu nháp" ho?c "G?i duy?t".
+7. Khi g?i duy?t, h? th?ng ki?m tra khóa h?c có t?i thi?u 3 chuong, m?i chuong có ít nh?t 1 bài h?c và có final exam h?p l?.
+8. N?u h?p l?, h? th?ng chuy?n tr?ng thái DRAFT ? PENDING_REVIEW và thông báo cho Admin (UC41).
+Ngo?i l? / Lu?ng thay th?	E1: Thi?u tru?ng b?t bu?c ? highlight và l?i tuong ?ng.
+E2: ?nh bìa > 5MB ? t? ch?i.
+E3: Khóa dã PUBLISHED không th? ch?nh s?a c?u trúc l?n ? ph?i t?o phiên b?n m?i.
+E4: Khi g?i duy?t nhung khóa h?c có < 3 chuong, có chuong chua có bài h?c ho?c chua có final exam h?p l? ? t? ch?i g?i duy?t và hi?n th? l?i c? th?.
+Tiêu chí ch?p nh?n	AC1: Cho phép luu nháp nhi?u l?n tru?c khi g?i duy?t.
+AC2: Sau khi g?i duy?t, GV không th? ch?nh s?a cho d?n khi có ph?n h?i.
+AC3: M?i khóa h?c có version riêng d? truy v?t l?ch s?; m?i enrollment sau khi mua ph?i g?n course_version_id c?a phiên b?n t?i th?i di?m mua.
+AC4: Khóa h?c ch? du?c g?i duy?t khi có t?i thi?u 3 chuong, m?i chuong có ít nh?t 1 bài h?c và có final exam h?p l? d? c?p ch?ng ch?.
+AC5: Version m?i không t? thay d?i progress/final exam/ch?ng ch?/giá c?a h?c sinh dã mua; migration sang version m?i ch? du?c th?c hi?n theo BRULE-COURSE-001 và ph?i thông báo cho HS/PH liên quan.
+Unit Test	UT-TCH-001, UT-TCH-002
+Integration Test	IT-TCH-001
+System Test	ST-TCH-001
+
+REQ-TCH-002	C?p nh?t bài gi?ng & tài li?u
+Mô t?	Giáo viên upload, c?p nh?t ho?c xóa video bài gi?ng, slide, PDF, tài li?u và c?u hình bài t?p g?n v?i bài h?c.
+Actor	Giáo viên (A04) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Giáo viên s? h?u khóa h?c và khóa ? tr?ng thái DRAFT, NEEDS_REVISION ho?c PUBLISHED. V?i PUBLISHED, thay d?i n?i dung l?n ph?i t?o phiên b?n m?i ho?c g?i duy?t l?i theo chính sách khóa h?c. Thay d?i l?n g?m: thêm/xóa/s?p x?p l?i chuong, thay video bài h?c, thay final exam, thay di?u ki?n hoàn thành/ch?ng ch?, thay giá ho?c thay d?i tài li?u b?t bu?c ?nh hu?ng quy?n l?i h?c sinh. M?i enrollment hi?n h?u gi? course_version_id dang h?c theo BRULE-COURSE-001, tr? khi có migration du?c duy?t, ghi audit log và thông báo cho HS/PH.
+Lu?ng chính	1. Giáo viên m? khóa h?c ? ch?n chuong ? bài h?c.
+2. Giáo viên upload video (= 2GB, d?nh d?ng MP4) ho?c tài li?u (PDF, slide = 100MB).
+3. H? th?ng encode video (HLS) và sinh các bitrate khác nhau.
+4. Giáo viên có th? s?p x?p l?i th? t? tài li?u, xóa n?i dung cu và c?u hình bài t?p: d? bài, deadline, s? l?n n?p, d?nh d?ng file, thang di?m, late penalty.
+5. N?u bài h?c không có video, giáo viên ph?i ch?n completion_rule: DOCUMENT_OPENED, MARK_AS_COMPLETE, ASSIGNMENT_SUBMITTED ho?c ASSIGNMENT_PASSED.
+6. Giáo viên nh?n "Luu" d? áp d?ng thay d?i.
+Ngo?i l? / Lu?ng thay th?	E1: File vu?t dung lu?ng ? t? ch?i.
+E2: Encode video th?t b?i ? thông báo và cho phép upload l?i.
+E3: Khóa dã PUBLISHED ? c?nh báo thay d?i s? ?nh hu?ng h?c sinh hi?n hành; thay d?i l?n ph?i t?o version m?i ho?c g?i duy?t l?i, không t? migrate h?c sinh dã mua; thay d?i nh? (s?a chính t?, mô t? ng?n, b? sung tài li?u tham kh?o không b?t bu?c) có th? luu tr?c ti?p nhung ph?i ghi audit log.
+E4: Bài t?p thi?u deadline/thang di?m ho?c late policy không h?p l? ? t? ch?i luu c?u hình bài t?p.
+E5: Bài h?c không có video và không có completion_rule ? t? ch?i luu bài h?c.
+E6: Yêu c?u migrate h?c sinh hi?n hành sang version m?i nhung thi?u mapping progress/final exam/ch?ng ch?, thi?u lý do ho?c chua thông báo HS/PH ? t? ch?i migration.
+Tiêu chí ch?p nh?n	AC1: Encode video hoàn t?t trong = 30 phút cho video = 1GB.
+AC2: M?i thay d?i d?u ghi audit log: ai s?a, lúc nào, n?i dung gì.
+AC3: Video g?c du?c luu tr? ít nh?t 12 tháng d? khôi ph?c khi c?n.
+AC4: H? th?ng phân lo?i thay d?i l?n/nh? theo danh sách quy d?nh và ghi rõ change_type trong audit log.
+AC5: M?i bài h?c không có video d?u có completion_rule h?p l? d? REQ-LRN-002 tính ti?n d?.
+AC6: Khi t?o version m?i cho khóa PUBLISHED, enrollment dã mua m?c d?nh ti?p t?c h?c theo course_version_id t?i th?i di?m mua; progress, final exam và ch?ng ch? tính theo version enrollment; giá m?i ch? áp d?ng cho don hàng m?i; m?i migration ph?i ghi audit log migration_id/course_id/from_version/to_version/actor_id/reason/timestamp và g?i thông báo cho HS/PH.
+Unit Test	UT-TCH-003, UT-TCH-004
+Integration Test	IT-TCH-002
+System Test	ST-TCH-002
+
+REQ-TCH-003	T?o bài ki?m tra
+Mô t?	Giáo viên t?o quiz/chapter test g?n sau m?t chuong ho?c final exam cho toàn khóa; bài ki?m tra có th? k?t h?p tr?c nghi?m và t? lu?n.
+Actor	Giáo viên (A04) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Khóa h?c dã có t?i thi?u 3 chuong theo quy d?nh g?i duy?t trong REQ-TCH-001; m?i chuong trong ph?m vi ki?m tra dã có ít nh?t 1 bài h?c.
+Lu?ng chính	1. Giáo viên vào "Bài ki?m tra" ? ch?n lo?i: Quiz / Chapter Test / Final Exam và ph?m vi chuong áp d?ng.
+2. Giáo viên d?nh nghia câu h?i (tr?c nghi?m + t? lu?n), th?i gian, di?m pass.
+3. Giáo viên có th? nh?p t? ngân hàng câu h?i ho?c dùng AI: nh?p prompt/material/ph?m vi chuong, s? lu?ng câu h?i, lo?i câu h?i và m?c d? khó; AI tr? v? danh sách câu h?i ? tr?ng thái DRAFT theo schema question_type, stem, options, correct_answer, explanation, difficulty, source_refs.
+4. Giáo viên review, ch?nh s?a và approve t?ng câu h?i AI tru?c khi dua vào bài ki?m tra; câu h?i AI không du?c t? d?ng publish.
+5. Giáo viên c?u hình chính sách ch?ng gian l?n: fullscreen, random, copy-block.
+6. Giáo viên nh?n "Luu".
+Ngo?i l? / Lu?ng thay th?	E1: Bài ki?m tra < 10 câu ? c?nh báo và yêu c?u xác nh?n.
+E2: Câu t? lu?n không có barem ch?m ? yêu c?u b? sung.
+E3: AI Engine timeout ho?c tr? câu h?i không dúng schema ? hi?n th? l?i và không thêm câu h?i vào bài ki?m tra.
+E4: N?i dung AI vi ph?m chính sách ho?c thi?u source_refs khi yêu c?u trích ngu?n ? dánh d?u REJECTED, không cho approve.
+Tiêu chí ch?p nh?n	AC1: Quiz/chapter test t? m? khi h?c sinh hoàn thành 100% n?i dung thu?c ph?m vi chuong tuong ?ng; final exam t? m? khi hoàn thành 100% toàn khóa.
+AC2: H? tr? ngân hàng câu h?i dùng chung gi?a các khóa c?a cùng GV.
+AC3: C?u hình ch?ng gian l?n tuân th? UC17.
+AC4: Ch? final exam PASSED m?i là di?u ki?n c?p ch?ng ch?.
+AC5: M?i câu h?i do AI sinh ra ph?i du?c GV review/edit/approve tru?c khi s? d?ng; h? th?ng ghi audit log prompt_id, teacher_id, source_refs, action và timestamp.
+Unit Test	UT-TCH-008
+Integration Test	IT-TCH-005
+System Test	ST-TCH-005
+REQ-TCH-004	T?o question bank
+Mô t?	Giáo viên t?o ngân hàng câu h?i (question bank) m?i, d?t tên, ch?n linh v?c và kh?i t?o c?u trúc tru?c khi b? sung câu h?i.
+Actor	Giáo viên (A04) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	Giáo viên dã dang nh?p và dã du?c phê duy?t vai trò GV.
+Lu?ng chính	1. Giáo viên vào “Ngân hàng câu h?i” ? “T?o ngân hàng m?i”. 2. Giáo viên nh?p tên ngân hàng, ch?n linh v?c và mô t?. 3. H? th?ng t?o b?n ghi ngân hàng m?i v?i 0 câu h?i. 4. Giáo viên nh?n “Luu” ? h? th?ng xác nh?n t?o thành công. 5. Giáo viên ti?p t?c b? sung câu h?i qua UC33 (C?p nh?t question bank).
+Ngo?i l? / Lu?ng thay th?	E1: Tên ngân hàng trùng v?i ngân hàng hi?n có c?a GV ? hi?n th? l?i “Tên ngân hàng dã t?n t?i”. E2: Giáo viên chua du?c phê duy?t vai trò GV ? t? ch?i truy c?p.
+Tiêu chí ch?p nh?n	AC1: Ngân hàng câu h?i m?i du?c t?o thành công và xu?t hi?n trong danh sách ngân hàng c?a GV. AC2: Ngân hàng m?i có tr?ng thái ACTIVE, ch?a 0 câu h?i, s?n sàng nh?n câu h?i qua UC33. AC3: Tên ngân hàng ph?i duy nh?t trong ph?m vi tài kho?n GV.
+Unit Test	UT-TCH-005
+Integration Test	IT-TCH-003
+System Test	ST-TCH-003
+
+REQ-TCH-005	C?p nh?t question bank
+Mô t?	Giáo viên thêm, s?a, xóa câu h?i trong ngân hàng câu h?i dùng chung cho các bài ki?m tra c?a mình.
+Actor	Giáo viên (A04) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	Giáo viên dã dang nh?p và dã du?c phê duy?t vai trò GV.
+Lu?ng chính	1. Giáo viên vào "Ngân hàng câu h?i".
+2. Giáo viên thêm câu h?i m?i: ch?n lo?i (tr?c nghi?m / t? lu?n), nh?p d? bài, dáp án, di?m, gán tag chuong/linh v?c.
+3. Giáo viên s?a câu h?i dã có: c?p nh?t d? bài, dáp án, di?m ho?c tag.
+4. Giáo viên xóa câu h?i (ch? khi chua có k?t qu? h?c sinh liên quan).
+5. Giáo viên nh?n "Luu" d? áp d?ng thay d?i.
+Ngo?i l? / Lu?ng thay th?	E1: Câu h?i trùng n?i dung trong cùng ngân hàng ? c?nh báo và cho phép GV xác nh?n n?u v?n mu?n luu.
+E2: Câu h?i dã du?c dùng trong attempt c?a h?c sinh ? không du?c s?a tr?c ti?p n?i dung, dáp án, di?m ho?c tag; m?i thay d?i ph?i t?o question_version m?i.
+E3: Xóa câu h?i dã có d? li?u di?m h?c sinh ? không cho xóa v?t lý, ch? du?c ARCHIVED d? không ?nh hu?ng l?ch s?.
+Tiêu chí ch?p nh?n	AC1: Câu h?i c?p nh?t hi?n th? dúng trong ngân hàng câu h?i và các bài ki?m tra dùng phiên b?n m?i.
+AC2: Attempt/k?t qu? h?c sinh luôn g?n v?i question_version snapshot t?i th?i di?m làm bài.
+AC3: Các phiên b?n cu v?n truy xu?t du?c cho audit/ch?m phúc kh?o.
+AC4: M?i thay d?i câu h?i ghi audit log teacher_id, question_id, old_version, new_version, action và timestamp.
+Unit Test	UT-TCH-006, UT-TCH-007
+Integration Test	IT-TCH-004
+System Test	ST-TCH-004
+
+REQ-TCH-006	Ch?m di?m bài t?p và câu t? lu?n
+Mô t?	Giáo viên ch?m di?m bài t?p t? lu?n, bài n?p th?c hành và câu t? lu?n trong bài ki?m tra; nh?p nh?n xét ph?n h?i cho h?c sinh; d?ng th?i x? lý yêu c?u m? thêm lu?t làm l?i bài ki?m tra ? tr?ng thái RETAKE_LOCKED theo BRULE-RETAKE-001.
+Actor	Giáo viên (A04), Admin (A05 ch? duy?t/m? thêm lu?t retake) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Có bài n?p/bài ki?m tra t? lu?n ? tr?ng thái SUBMITTED ho?c ESSAY_PENDING_GRADING.
+Lu?ng chính	1. Giáo viên vào "Bài ch? ch?m".
+2. Giáo viên l?c theo lo?i: bài t?p, bài th?c hành ho?c câu t? lu?n trong bài ki?m tra.
+3. Giáo viên m? t?ng bài, xem n?i dung, d?i chi?u barem/rubric.
+4. Giáo viên nh?p di?m và nh?n xét.
+5. Giáo viên nh?n "Hoàn t?t ch?m" ? tr?ng thái chuy?n GRADED.
+6. H? th?ng c?p nh?t di?m vào ti?n d? h?c/k?t qu? bài ki?m tra và g?i thông báo cho h?c sinh.
+7. V?i tab "Retake locked", Giáo viên l?c danh sách RETAKE_LOCKED theo khóa/bài ki?m tra, m? yêu c?u, nh?p quy?t d?nh Approve/Reject, lý do và s? lu?t m? thêm; Admin có th? th?c hi?n cùng thao tác t? console qu?n tr? khi c?n h? tr? v?n hành.
+8. N?u du?c phê duy?t, h? th?ng c?p nh?t retake_approval, tang remaining_attempts theo s? lu?t du?c duy?t, ghi audit log và g?i thông báo cho H?c sinh.
+Ngo?i l? / Lu?ng thay th?	E1: Ði?m ngoài thang di?m h?p l? ? t? ch?i.
+E2: T? luu nháp khi ch?m d? không m?t khi m?t k?t n?i.
+E3: Câu t? lu?n thi?u rubric/barem ? không cho hoàn t?t ch?m và yêu c?u b? sung barem.
+E4: Giáo viên s?a di?m trong 24 gi? k? t? khi ch?m ? b?t bu?c nh?p lý do s?a; h? th?ng luu score_change_log g?m old_score, new_score, grader_id, reason, timestamp, g?i thông báo l?i cho H?c sinh và tính l?i di?m t?ng h?p/progress/k?t qu? bài ki?m tra liên quan.
+E5: Yêu c?u m? thêm lu?t không thu?c khóa c?a Giáo viên, thi?u lý do, s? lu?t ngoài kho?ng 1-2 ho?c vu?t t?i da 2 l?n phê duy?t cho cùng exam/enrollment ? t? ch?i và ghi audit log.
+Tiêu chí ch?p nh?n	AC1: H?c sinh nh?n thông báo di?m trong = 30 giây sau khi giáo viên hoàn t?t.
+AC2: Ði?m c?p nh?t vào ti?n d?, b?ng k?t qu? t?ng h?p và k?t qu? bài ki?m tra n?u là câu t? lu?n exam.
+AC3: Cho phép giáo viên ch?nh s?a di?m trong 24 gi? k? t? khi ch?m; m?i l?n s?a ph?i có lý do, audit log old_score/new_score/grader_id/timestamp và thông báo l?i cho H?c sinh.
+AC4: N?u s?a di?m làm thay d?i PASS/FAIL c?a final exam ho?c di?u ki?n ch?ng ch? ? REQ-LRN-008, h? th?ng ph?i tính l?i eligibility và chuy?n ch?ng ch? sang NEEDS_REVIEW d? reissue ho?c revoke theo k?t qu? m?i.
+AC5: UC35 bao ph? c? bài t?p t? lu?n và ph?n t? lu?n c?a quiz/chapter test/final exam.
+AC6: Danh sách RETAKE_LOCKED hi?n th? enrollment_id, exam_id, attempt_count, locked_reason, requested_reason và th?i di?m khóa; m?i quy?t d?nh m? thêm lu?t ph?i luu approval_id, approver_id, approver_role, extra_attempts, reason, timestamp, retake_expire_at và g?i notification/email cho H?c sinh trong = 5 phút.
+Unit Test	UT-TCH-009
+Integration Test	IT-TCH-006
+System Test	ST-TCH-006
+
+REQ-TCH-007	Tr? l?i câu h?i h?c sinh
+Mô t?	Giáo viên tr? l?i các câu h?i h?c sinh dã g?i qua UC21. Tuong ?ng UC36 và liên quan tr?c ti?p t?i UC21.
+Actor	Giáo viên (A04) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	Có câu h?i PENDING t? h?c sinh.
+Lu?ng chính	1. Giáo viên vào "Q&A" ? l?c theo khóa h?c.
+2. Giáo viên m? câu h?i, tr? l?i (có th? dính kèm tài li?u).
+3. Giáo viên nh?n "G?i câu tr? l?i".
+4. H? th?ng dánh d?u câu h?i ANSWERED, g?i thông báo cho h?c sinh.
+5. Câu tr? l?i hi?n th? public tr? khi h?c sinh dã d?t riêng tu.
+Ngo?i l? / Lu?ng thay th?	E1: Câu h?i dã du?c tr? l?i ? cho phép ch?nh s?a.
+E2: Trùng câu h?i ? giáo viên có th? "Ðánh d?u trùng" và gán link t?i câu Q&A có s?n.
+Tiêu chí ch?p nh?n	AC1: Th?i gian tr? l?i trung bình = 48 gi? (SLA n?i b?).
+AC2: H?c sinh nh?n thông báo ngay sau khi có câu tr? l?i.
+AC3: H? th?ng ghi nh?n th?i gian t?o/tr? l?i câu h?i và xu?t báo cáo t? l? Q&A du?c gi?i dáp trong 7 ngày; m?c tiêu = 90% là KPI v?n hành, không dùng làm di?u ki?n pass/fail c?a test ch?c nang.
+Unit Test	UT-TCH-010
+Integration Test	IT-TCH-007
+System Test	ST-TCH-007
+
+REQ-TCH-008	Xem l?ch s? doanh thu
+Mô t?	Giáo viên xem l?ch s? các k? nh?n ti?n dã du?c Admin xác nh?n: k? nào, bao nhiêu ti?n, Admin nào xác nh?n, ngày chuy?n kho?n và ch?ng t? liên quan.
+Actor	Giáo viên (A04) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	Giáo viên dã dang nh?p và dã du?c phê duy?t vai trò GV.
+Lu?ng chính	1. Giáo viên vào "L?ch s? nh?n ti?n".
+2. H? th?ng hi?n th? b?ng k? chi tr? dã CONFIRMED: tháng/k?, s? ti?n, Admin xác nh?n, ngày CK, n?i dung CK, file dính kèm (UNC).
+3. Giáo viên có th? xem chi ti?t các giao d?ch h?p thành t?ng k? dã xác nh?n.
+4. Giáo viên có th? xu?t Excel theo kho?ng th?i gian.
+Ngo?i l? / Lu?ng thay th?	E1: Chua có k? nào du?c xác nh?n ? "B?n chua nh?n ti?n l?n nào".
+E2: Sai l?ch gi?a s? li?u hi?n th? và s? ti?n nh?n th?c t? ? cho phép g?i khi?u n?i (REQ-PAY-004 / UC12).
+Tiêu chí ch?p nh?n	AC1: M?i k? chi tr? dã CONFIRMED ph?i liên k?t du?c v?i các giao d?ch ngu?n (truy ngu?c).
+AC2: Luu l?ch s? = 5 nam.
+AC3: Export Excel có d?y d? thông tin pháp lý.
+AC4: REQ-TCH-008 không yêu c?u màn hình doanh thu realtime/t?m tính t? revenue_splits chua d?i soát.
+Unit Test	UT-TCH-011
+Integration Test	IT-TCH-008
+System Test	ST-TCH-008
+
+3.8. Module Qu?n Tr? Viên (Admin)
+Mô t? module: Cung c?p công c? cho Admin v?n hành toàn b? h? th?ng. Admin là ngu?i duy nh?t th?c hi?n chuy?n kho?n cho GV — h? th?ng t?ng h?p s? li?u, Admin ki?m tra r?i chuy?n tay và xác nh?n trong h? th?ng.
+REQ-ADM-001	Xem dashboard qu?n tr?
+Mô t?	Admin xem dashboard t?ng quan: t?ng ti?n dang gi?, t?ng c?n chuy?n k? này, c?nh báo tr? h?n.
+Actor	Admin (A05) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Admin dã dang nh?p.
+Lu?ng chính	1. Admin vào Dashboard Qu?n tr?.
+2. H? th?ng hi?n th? các th? KPI: t?ng ti?n dang gi?, t?ng ph?i chuy?n k? hi?n t?i, s? GV dang ch? nh?n ti?n, s? ticket khi?u n?i.
+3. H? th?ng hi?n th? danh sách c?nh báo: k? chuy?n kho?n s?p d?n h?n, ticket quá SLA, khóa h?c ch? duy?t.
+4. Admin có th? click vào t?ng c?nh báo d? chuy?n sang màn x? lý tuong ?ng.
+Ngo?i l? / Lu?ng thay th?	E1: S? li?u l?ch gi?a các ngu?n (audit detection) ? hi?n th? banner d? và disable thao tác chuy?n kho?n cho d?n khi reconciled.
+Tiêu chí ch?p nh?n	AC1: KPI c?p nh?t real-time, d? tr? = 60 giây.
+AC2: M?i click c?nh báo di?u hu?ng dúng module.
+AC3: Có nút "T?i báo cáo t?ng" xu?t Excel/PDF.
+Unit Test	UT-ADM-001
+Integration Test	IT-ADM-001
+System Test	ST-ADM-001
+REQ-ADM-002	Xem danh sách tài kho?n ngu?i dùng
+Mô t?	Admin xem danh sách t?t c? tài kho?n ngu?i dùng trên h? th?ng v?i kh? nang tìm ki?m và l?c theo nhi?u tiêu chí.
+Actor	Admin (A05) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Admin dã dang nh?p v?i quy?n qu?n tr?.
+Lu?ng chính	1. Admin vào "Qu?n lý ngu?i dùng".
+2. H? th?ng hi?n th? danh sách: h? tên, email, vai trò, account_status, teacher_profile_state, ngày dang ký, l?n dang nh?p cu?i.
+3. Admin l?c theo: vai trò (H?c sinh / Ph? huynh / Giáo viên / Admin), account_status, teacher_profile_state, kho?ng th?i gian dang ký.
+4. Admin tìm ki?m theo email, h? tên ho?c s? di?n tho?i.
+5. Admin nh?n vào tài kho?n d? xem chi ti?t ho?c th?c hi?n hành d?ng qu?n lý (? REQ-ADM-003).
+6. Admin xu?t danh sách ra file Excel.
+Ngo?i l? / Lu?ng thay th?	E1: Không có k?t qu? phù h?p ? hi?n th? "Không tìm th?y tài kho?n phù h?p".
+E2: Xu?t Excel th?t b?i ? hi?n th? thông báo l?i, cho phép th? l?i.
+Tiêu chí ch?p nh?n	AC1: Danh sách phân trang, m?c d?nh 50 tài kho?n/trang; h? tr? s?p x?p theo các c?t.
+AC2: K?t qu? tìm ki?m tr? v? trong = 1 giây v?i CSDL d?n 100.000 tài kho?n.
+AC3: File Excel xu?t ra d?y d? thông tin, encoding UTF-8.
+AC4: account_status và teacher_profile_state hi?n th? dúng theo state machine chu?n t?i Ph? l?c 6.3.
+Unit Test	UT-ADM-002
+Integration Test	IT-ADM-002
+System Test	ST-ADM-002
+
+REQ-ADM-003	C?p nh?t tài kho?n ngu?i dùng
+Mô t?	Admin qu?n lý tài kho?n: tìm ki?m, xem h? so, khóa/m? khóa, d?i vai trò, g?i link d?t l?i m?t kh?u an toàn. Các thao tác d?i vai trò/quy?n cao ph?i tuân th? BRULE-ROLE-001 d? ch?ng leo thang quy?n và m?t tài kho?n Admin cu?i cùng.
+Actor	Admin (A05) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Admin dã dang nh?p v?i quy?n qu?n tr?.
+Lu?ng chính	1. Admin vào "Qu?n lý ngu?i dùng".
+2. Admin tìm ki?m theo email/tên/SÐT/vai trò/tr?ng thái h? so Giáo viên.
+3. Admin m? h? so chi ti?t: thông tin, l?ch s? giao d?ch, ho?t d?ng h?c ho?c h? so dang ký Giáo viên.
+4. Admin ch?n hành d?ng qu?n lý: khóa/m? khóa, g?i link d?t l?i m?t kh?u, d?i vai trò, phê duy?t/t? ch?i/thu h?i vai trò Giáo viên, xóa m?m.
+5. N?u hành d?ng là khóa/xóa m?m/d?i vai trò, h? th?ng ki?m tra rule an toàn quy?n: không t? khóa/xóa/h? quy?n tài kho?n Admin dang dang nh?p, không khóa/xóa/h? quy?n Admin ACTIVE cu?i cùng, và m?i thay d?i sang/t? role Admin ph?i qua 2FA + dual approval b?i m?t Admin ACTIVE khác.
+6. V?i h? so Giáo viên, Admin ki?m tra tài li?u xác minh, thông tin ngân hàng và di?u kho?n c?ng tác tru?c khi phê duy?t.
+7. N?u Admin ch?n g?i link d?t l?i m?t kh?u, h? th?ng t?o reset token dùng 1 l?n, h?t h?n sau 60 phút, g?i qua email ngu?i dùng; Admin không du?c xem ho?c d?t m?t kh?u plaintext.
+8. H? th?ng ghi audit log d?y d? và g?i email thông báo cho ngu?i dùng.
+Ngo?i l? / Lu?ng thay th?	E1: Admin c? t? khóa, t? xóa m?m ho?c t? h? quy?n tài kho?n dang dang nh?p ? t? ch?i và ghi security audit log.
+E2: Hành d?ng khóa/xóa m?m/h? quy?n làm h? th?ng không còn Admin ACTIVE nào ? t? ch?i và c?nh báo "Không du?c vô hi?u hóa Admin cu?i cùng".
+E3: Thay d?i sang ho?c t? role Admin nhung thi?u 2FA, thi?u lý do, ho?c thi?u dual approval t? Admin ACTIVE khác ? chuy?n tr?ng thái PENDING_APPROVAL ho?c t? ch?i theo chính sách.
+E4: Role transition không h?p l? ? t? ch?i. Transition h?p l? g?m: H?c sinh ? Ph? huynh khi không xung d?t d? li?u liên k?t/khóa h?c; c?p/thu h?i quy?n Giáo viên qua teacher_profile_state; c?p/thu h?i role Admin ch? qua dual approval.
+E5: Khóa tài kho?n dang dang nh?p khác ? thu h?i token ngay l?p t?c sau khi hành d?ng h?p l? du?c xác nh?n.
+E6: H? so Giáo viên thi?u thông tin/tài li?u ? chuy?n teacher_profile_state = NEEDS_PROFILE_UPDATE, g?i lý do cho ngu?i dang ký.
+E7: T? ch?i h? so Giáo viên ? chuy?n teacher_profile_state = TEACHER_REJECTED và không c?p quy?n REQ-TCH-*.
+Tiêu chí ch?p nh?n	AC1: M?i thao tác d?u ghi audit log.
+AC2: Email thông báo g?i cho ngu?i b? tác d?ng trong = 5 phút.
+AC3: Admin không th? xóa h? so ch?a giao d?ch tài chính chua quy?t toán.
+AC4: Tr?ng thái phê duy?t vai trò Giáo viên du?c ki?m tra tru?c khi cho phép truy c?p các ch?c nang REQ-TCH-*.
+AC5: Giáo viên ch? du?c truy c?p portal khi account_status = ACTIVE và teacher_profile_state = TEACHER_APPROVED.
+AC6: Reset m?t kh?u qua Admin ch? g?i reset link/token dùng 1 l?n, không cho Admin d?t ho?c xem m?t kh?u; sau khi ngu?i dùng d?i m?t kh?u, toàn b? session/token cu b? vô hi?u hóa.
+AC7: Không cho t? khóa/xóa m?m/h? quy?n chính Admin dang dang nh?p và không cho khóa/xóa m?m/h? quy?n Admin ACTIVE cu?i cùng.
+AC8: M?i thay d?i sang/t? role Admin b?t bu?c có 2FA, dual approval b?i Admin ACTIVE khác và audit log g?m actor_id, approver_id, target_user_id, role_before, role_after, reason, timestamp.
+Unit Test	UT-ADM-003, UT-ADM-004
+Integration Test	IT-ADM-003
+System Test	ST-ADM-003
+
+REQ-ADM-004	Duy?t khóa h?c
+Mô t?	Admin duy?t khóa h?c do GV g?i: Approve / Reject / Needs Revision.
+Actor	Admin (A05) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Có khóa h?c ? tr?ng thái PENDING_REVIEW.
+Lu?ng chính	1. Admin vào "Khóa h?c ch? duy?t".
+2. Admin m? khóa h?c, xem n?i dung t?ng chuong, video, tài li?u, quiz/final exam.
+3. Admin ch?n 1 trong 3 hành d?ng: Approve / Reject / Needs Revision.
+4. V?i Reject ho?c Needs Revision: Admin nh?p lý do chi ti?t.
+5. H? th?ng c?p nh?t tr?ng thái khóa: PENDING_REVIEW ? PUBLISHED / REJECTED / NEEDS_REVISION và g?i thông báo cho GV.
+6. N?u Approve: khóa chuy?n PUBLISHED và xu?t hi?n công khai.
+Ngo?i l? / Lu?ng thay th?	E1: Khóa thi?u tài li?u b?t bu?c ? b?t bu?c Reject ho?c Needs Revision.
+E2: N?i dung vi ph?m chính sách ? Reject kèm trích d?n chính sách.
+E3: Khóa không d?t t?i thi?u 3 chuong, có chuong chua có bài h?c ho?c chua có final exam h?p l? ? b?t bu?c Needs Revision, không du?c Approve.
+Tiêu chí ch?p nh?n	AC1: SLA duy?t: = 3 ngày làm vi?c.
+AC2: M?i quy?t d?nh ghi audit log v?i admin_id, decision, reason, timestamp.
+AC3: GV nh?n thông báo trong = 5 phút sau quy?t d?nh.
+AC4: Vòng d?i khóa h?c chu?n: DRAFT ? PENDING_REVIEW ? PUBLISHED ho?c NEEDS_REVISION ho?c REJECTED; PUBLISHED có th? ARCHIVED khi b? g?.
+AC5: Admin ch? Approve khóa h?c khi dáp ?ng di?u ki?n t?i thi?u 3 chuong, m?i chuong có ít nh?t 1 bài h?c và có final exam h?p l? d? c?p ch?ng ch?.
+Unit Test	UT-ADM-005
+Integration Test	IT-ADM-004
+System Test	ST-ADM-004
+
+REQ-ADM-005	X? lý khi?u n?i t? ngu?i dùng
+Mô t?	Admin ti?p nh?n và x? lý các ticket khi?u n?i t? UC12.
+Actor	Admin (A05) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Có ticket tr?ng thái OPEN.
+Lu?ng chính	1. Admin vào "Khi?u n?i".
+2. Admin l?c theo lo?i / m?c d? / tr?ng thái / SLA.
+3. Admin m? ticket, xem thông tin và dính kèm.
+4. Admin liên h? ngu?i g?i (qua tin nh?n n?i b?), ti?n hành di?u tra (có th? yêu c?u GV tr? l?i ho?c ki?m tra giao d?ch).
+5. Admin nh?p k?t qu? x? lý: h? tr? k? thu?t, s?a n?i dung, t? ch?i, hoàn ti?n, hoàn ti?n m?t ph?n, thu h?i quy?n h?c ho?c di?u ch?nh doanh thu/chi tr?, kèm lý do.
+6. N?u Admin phê duy?t hoàn ti?n, h? th?ng t?o refund_request v?i refund_type = FULL/PARTIAL, amount, method = GATEWAY/MANUAL, ticket_id, order_id, course_access_scope và lý do; Order.refund_status chuy?n REFUND_PENDING.
+7. Khi có xác nh?n hoàn ti?n t? gateway ho?c Admin nh?p mã giao d?ch/UNC h?p l? cho hoàn ti?n th? công, h? th?ng gi? payment_status = PAID cho giao d?ch dã thu ti?n và c?p nh?t refund_status = REFUNDED n?u FULL ho?c PARTIALLY_REFUNDED n?u PARTIAL.
+8. H? th?ng không s?a revenue_splits g?c; m?i hoàn ti?n/di?u ch?nh doanh thu ho?c payout t?o adjustment record riêng, liên k?t t?i ticket, Order, revenue_split và payout cycle liên quan.
+9. N?u quy?t d?nh x? lý c?n thu h?i quy?n h?c, h? th?ng c?p nh?t Enrollment/CourseAccess theo ph?m vi refund: FULL ? REVOKED, PARTIAL ? PARTIALLY_REVOKED, tru?ng h?p t?m khóa ? SUSPENDED; m?i thay d?i ghi audit log.
+10. H? th?ng c?p nh?t ticket sang RESOLVED sau khi Admin luu k?t qu? x? lý và g?i thông báo cho ngu?i g?i.
+11. Admin chuy?n tr?ng thái RESOLVED ? CLOSED khi ngu?i dùng xác nh?n ho?c theo timeout ? E1.
+Ngo?i l? / Lu?ng thay th?	E1: Ngu?i dùng không ph?n h?i trong 7 ngày ? t? CLOSED v?i ghi chú.
+E2: Yêu c?u hoàn ti?n dã n?m trong k? chi tr? CONFIRMED ? không s?a b?n ghi cu, ph?i t?o adjustment ? k? ti?p theo.
+E3: Ticket m?c Kh?n c?p quá SLA ? h? th?ng g?i c?nh báo escalation cho Admin ph? trách.
+Tiêu chí ch?p nh?n	AC1: SLA x? lý ticket: 1 ngày làm vi?c cho Kh?n c?p, 3 ngày cho Cao, 7 ngày cho Trung bình/Th?p.
+AC2: M?i tuong tác ghi audit log.
+AC3: H? th?ng ghi nh?n tr?ng thái, th?i gian x? lý và xu?t báo cáo t? l? ticket RESOLVED trong 30 ngày; m?c tiêu = 95% là KPI v?n hành, không dùng làm di?u ki?n pass/fail c?a test ch?c nang.
+AC4: M?i hoàn ti?n/di?u ch?nh tài chính có liên k?t t?i ticket, Order, refund_request, revenue_split g?c, adjustment record và payout cycle liên quan.
+AC5: REFUNDED/PARTIALLY_REFUNDED ch? du?c ghi khi có xác nh?n t? gateway ho?c ch?ng t?/mã giao d?ch th? công h?p l?; partial refund ph?i luu amount, course_access_scope và tr?ng thái Enrollment/CourseAccess b? thu h?i/gi? l?i.
+Unit Test	UT-ADM-006, UT-ADM-007
+Integration Test	IT-ADM-005
+System Test	ST-ADM-005
+
+
+REQ-ADM-006	Xu?t danh sách chi tr? và xác nh?n dã chuy?n kho?n GV
+Mô t?	Admin xu?t danh sách chi tr? GV d? d?i soát, sau dó xác nh?n dã th?c hi?n chuy?n kho?n cho GV — ghi nh?n ngày CK, n?i dung CK, admin xác nh?n. GV nh?n thông báo.
+Actor	Admin (A05) | Lo?i: Functional | Uu tiên: Cao
+Ti?n di?u ki?n	Có k? chi tr? ? tr?ng thái DRAFT/READY_FOR_RECONCILIATION du?c h? th?ng t?ng h?p t? revenue_splits; Admin dã dang nh?p v?i quy?n qu?n tr? chi tr?.
+Lu?ng chính	1. Admin vào "Chu k? chi tr?" ? ch?n k?.
+2. H? th?ng hi?n th? danh sách GV, s? ti?n c?n chuy?n, tr?ng thái d?i soát, tr?ng thái TK ngân hàng và cho phép xu?t Excel/PDF d? chuy?n kho?n.
+3. Admin th?c hi?n d?i soát: ch? giao d?ch có payment_status = PAID và reconciliation_status = RECONCILED trong k? du?c tính; refund_status = REFUND_PENDING phát sinh tru?c khi payout CONFIRMED thì gi?/ch?n payout cho giao d?ch liên quan; refund_status = REFUNDED/PARTIALLY_REFUNDED tru?c khi payout CONFIRMED thì lo?i ho?c di?u ch?nh ph?n tuong ?ng kh?i k? hi?n t?i; refund sau payout CONFIRMED thì t?o adjustment ? k? ti?p theo.
+4. H? th?ng gi?/ch?n payout_item c?a GV n?u bank_info_change dang BANK_INFO_PENDING_REVIEW ho?c bank_info hi?n hành không còn h?p l?; Admin ph?i duy?t TK ngân hàng tru?c khi chuy?n kho?n.
+5. Sau khi chuy?n ti?n th?c t?, Admin tích ch?n các GV dã chuy?n kho?n và nh?p: ngày CK, n?i dung CK, dính kèm UNC (?nh/PDF).
+6. Admin xác nh?n hành d?ng (ch? d? xác nh?n 2 bu?c).
+7. H? th?ng c?p nh?t payout_item_status = CONFIRMED cho t?ng GV trong k? và ghi audit log.
+8. H? th?ng g?i thông báo + email t?i GV v?i chi ti?t k? chi tr?.
+Ngo?i l? / Lu?ng thay th?	E1: S? ti?n nh?p khác s? ti?n h? th?ng tính ? b?t bu?c nh?p lý do và t?o adjustment.
+E2: Ðính kèm UNC không ph?i PDF/JPG/PNG ? t? ch?i.
+E3: Có ticket/refund chua x? lý trong k? ? hi?n th? c?nh báo và không cho CONFIRMED cho d?n khi du?c dánh d?u dã d?i soát.
+Tiêu chí ch?p nh?n	AC1: M?i xác nh?n t?o b?n ghi payment_confirmation v?i d?y d? tru?ng b?t bu?c.
+AC2: GV nh?n thông báo trong = 5 phút.
+AC3: Sau khi payout_item_status = CONFIRMED, không th? ch?nh s?a dòng chi tr? dó — ph?i t?o b?n di?u ch?nh m?i.
+AC4: Vòng d?i payout_cycle_status g?m DRAFT, READY_FOR_RECONCILIATION, RECONCILED, APPROVED, CONFIRMED, ADJUSTED; tr?ng thái này tách bi?t v?i payment_status c?a Order.
+AC5: Vòng d?i payout_item_status cho t?ng GV g?m PENDING, APPROVED, CONFIRMED, ADJUSTED, HOLD_BANK_INFO và du?c qu?n lý riêng v?i payout_cycle_status.
+AC6: Không cho CONFIRMED payout_item n?u TK ngân hàng GV dang BANK_INFO_PENDING_REVIEW ho?c chua du?c Admin duy?t 2 bu?c.
+Unit Test	UT-ADM-008, UT-ADM-009
+Integration Test	IT-ADM-006
+System Test	ST-ADM-006
+
+REQ-ADM-007	G?i thông báo d?n ngu?i dùng
+Mô t?	Admin g?i thông báo (push + email + in-app) d?n các nhóm ngu?i dùng: H?c sinh, Ph? huynh, Giáo viên.
+Actor	Admin (A05) | Lo?i: Functional | Uu tiên: Trung bình
+Ti?n di?u ki?n	Admin dã dang nh?p.
+Lu?ng chính	1. Admin vào "Thông báo" ? "T?o m?i".
+2. Admin ch?n d?i tu?ng (theo vai trò / theo nhóm / cá nhân).
+3. Admin nh?p tiêu d?, n?i dung (rich text, = 5000 ký t?), dính kèm ?nh/PDF.
+4. Admin ch?n kênh: in-app, email, push notification.
+5. Admin ch?n lo?i thông báo: b?t bu?c (b?o m?t/thanh toán/h? th?ng) ho?c tùy ch?n (marketing/h?c t?p/nh?c nh?).
+6. Admin có th? "G?i ngay" ho?c "L?p l?ch g?i" v?i schedule_time và timezone.
+7. H? th?ng ki?m tra notification preferences c?a ngu?i nh?n; thông báo b?t bu?c v?n g?i qua kênh yêu c?u, thông báo tùy ch?n ch? g?i qua kênh ngu?i dùng còn b?t.
+8. H? th?ng d?y thông báo qua các kênh dã ch?n.
+Ngo?i l? / Lu?ng thay th?	E1: Ð?i tu?ng > 100.000 ngu?i ? c?n xác nh?n 2 l?n.
+E2: Trùng n?i dung trong 24h ? c?nh báo tru?c khi g?i.
+E3: schedule_time ? quá kh? ho?c timezone không h?p l? ? t? ch?i luu l?ch g?i.
+E4: Admin s?a/h?y thông báo dã l?p l?ch tru?c th?i di?m g?i ? h? th?ng c?p nh?t tr?ng thái SCHEDULED_UPDATED ho?c CANCELLED và ghi audit log.
+E5: Ngu?i dùng dã t?t kênh tùy ch?n ? không g?i qua kênh dó, nhung v?n luu in-app n?u lo?i thông báo b?t bu?c.
+Tiêu chí ch?p nh?n	AC1: Thông báo d?n d?i tu?ng trong = 5 phút (95% delivery) d?i v?i g?i ngay.
+AC2: Luu l?ch s? thông báo, tr?ng thái g?i và t? l? open/click.
+AC3: Ngu?i dùng có th? t?t thông báo tùy ch?n theo t?ng kênh trong h? so cá nhân; không du?c t?t thông báo b?t bu?c v? b?o m?t, thanh toán và tr?ng thái h? th?ng quan tr?ng.
+AC4: L?ch g?i ph?i luu schedule_time, timezone, created_by, updated_by và tr?ng thái SCHEDULED/SENT/CANCELLED/FAILED.
+AC5: M?i s?a/h?y l?ch g?i du?c ghi audit log.
+Unit Test	UT-ADM-010, UT-ADM-011
+Integration Test	IT-ADM-007
+System Test	ST-ADM-007
+
+4 Yêu C?u Phi Ch?c Nang
+Các yêu c?u phi ch?c nang (Non-Functional Requirements – NFR) d?nh nghia các thu?c tính ch?t lu?ng và ràng bu?c k? thu?t c?n dáp ?ng. C?t "Tiêu chí do lu?ng / Test" ch? rõ cách ki?m th? và xác minh t?ng yêu c?u.
+Lo?i	Yêu c?u	Tiêu chí do lu?ng / Test
+Hi?u nang (Performance)	NFR-PERF-001: Trang ch? và danh sách khóa h?c t?i trong = 2 giây (k?t n?i 10 Mbps).	[ST-PERF-001] [ST] Ðo b?ng Lighthouse / WebPageTest v?i 100 user d?ng th?i; p95 = 2s.
+Hi?u nang (Performance)	NFR-PERF-002: Streaming video kh?i d?ng trong = 3 giây ? ch?t lu?ng 720p.	[ST-PERF-002] [ST] Ðo th?i gian t? click play ? first-frame trên Chrome desktop.
+Hi?u nang (Performance)	NFR-PERF-003: H? th?ng x? lý t?i thi?u 500 request/giây t?i gi? cao di?m.	[ST-PERF-003] [ST] Load test JMeter/k6 theo target throughput 500 RPS, ramp 60s, duy trì = 10 phút, p95 = 3s, error rate = 1%.
+B?o m?t (Security)	NFR-SEC-001: M?t kh?u hash bcrypt cost = 10; không luu plaintext.	[UT-SEC-001] [UT] Ki?m CSDL: không có c?t password rõ; cost factor dúng.
+B?o m?t (Security)	NFR-SEC-002: JWT có th?i h?n 24h, refresh token 7 ngày; rotate khi d?i m?t kh?u.	[IT-SEC-001] [IT] Verify token expiration và rotation flow.
+B?o m?t (Security)	NFR-SEC-003: Thông tin TK ngân hàng GV mã hóa AES-256 khi luu tr?.	[UT-SEC-002, IT-SEC-002] [UT/IT] Ki?m d? li?u luu tr? tài kho?n ngân hàng ph?i ? d?ng ciphertext, không luu plaintext.
+B?o m?t (Security)	NFR-SEC-004: Ch?ng OWASP Top 10: SQLi, XSS, CSRF, SSRF, IDOR.	[ST-SEC-001] Automated OWASP ZAP/SAST/SCA scan m?i sprint; manual pentest 2 l?n/nam ho?c tru?c major release.
+B?o m?t (Security)	NFR-SEC-005: HTTPS b?t bu?c toàn site; HSTS preload.	[ST-SEC-002] [ST] Test HTTP ? 301 HTTPS; ki?m header HSTS.
+Tính d? s? d?ng (Usability)	NFR-USE-001: Giao di?n responsive trên mobile (=360px), tablet, desktop; tuân th? WCAG 2.1 AA.	[ST-USE-001] [ST] Test th? công trên Chrome, Firefox, Safari, iOS, Android; audit Lighthouse Accessibility = 90.
+Tính d? s? d?ng (Usability)	NFR-USE-002: Thông báo l?i rõ ràng, ti?ng Vi?t, không l? stack trace.	[ST-USE-002] [ST] Ki?m tra m?i tru?ng h?p l?i trong tài li?u này.
+Ð? tin c?y/Kh? d?ng (Reliability/Availability)	NFR-AVL-001: Uptime = 99.5%/tháng (không tính maintenance theo l?ch).	[ST-AVL-001] [ST] Monitor 30 ngày v?i Prometheus/Grafana.
+Ð? tin c?y (Reliability)	NFR-REL-001: Không m?t d? li?u giao d?ch trong s? c? h? th?ng — transaction ACID + idempotent webhook.	[IT-REL-001] [IT] Test crash gi?a giao d?ch; ki?m tra rollback và replay webhook.
+Kh? nang b?o trì (Maintainability)	NFR-MNT-001: Unit test coverage = 70% trên business logic.	[UT-MNT-001] [UT] Jest/JUnit/pytest --coverage; báo cáo = 70%.
+Kh? nang b?o trì (Maintainability)	NFR-MNT-002: Logging t?p trung (ELK / Loki); m?i l?i c?p WARN tr? lên d?u có context.	[IT-MNT-001] [IT] Gây l?i có ch? dích; ki?m log có user_id, request_id, stack.
+Tính tuong thích (Compatibility)	NFR-COMPAT-001: H? tr? Chrome 110+, Firefox 110+, Safari 16+, Edge 110+.	[ST-COMPAT-001] [ST] Cross-browser test v?i BrowserStack m?i sprint.
+M? r?ng (Scalability)	NFR-SCAL-001: H? tr? stress test 5.000 VU b?ng horizontal scaling mà không thay d?i ki?n trúc ?ng d?ng.	[ST-SCAL-001] [ST] Stress test mô ph?ng 5.000 VU duy trì 30 phút sau ramp-up; p95 tác v? d?c/tìm ki?m = 3s, p95 tác v? giao d?ch nhu thanh toán/enrollment = 5s, throughput t?i thi?u 500 req/s ? steady state, error rate = 1%, không m?t/nhân dôi d? li?u giao d?ch, CPU trung bình = 75% và RAM = 80% trong th?i gian duy trì t?i.
+Pháp lý (Compliance)	NFR-COMPL-001: Tuân th? NÐ 13/2023 v? b?o v? d? li?u cá nhân.	[AUDIT-COMPL-001] [Audit] Ðánh giá pháp lý n?i b? m?i quý.
+Sao luu (Backup)	NFR-BACKUP-001: Snapshot CSDL hàng ngày k?t h?p continuous backup/PITR (WAL/binlog) cho d? li?u giao d?ch; snapshot luu 30 ngày; khôi ph?c = 4 gi? (RTO).	[ST-BACKUP-001] Drill khôi ph?c m?i 6 tháng, g?m khôi ph?c t? snapshot và ki?m tra PITR.
+Sao luu (Backup)	NFR-BACKUP-002: RPO cho CSDL giao d?ch = 15 phút du?c b?o d?m b?ng WAL/PITR ho?c incremental backup = 15 phút; RPO cho d? li?u h?c t?p = 24 gi?; RTO gi? nguyên = 4 gi?.	[ST-BACKUP-002] Drill PITR/khôi ph?c có do d? li?u m?t t?i da và th?i gian khôi ph?c th?c t?.
+Logging/Audit	NFR-LOG-001: Audit log tài chính, phân quy?n, dang nh?p và thay d?i h? so GV luu t?i thi?u 5 nam; application log luu t?i thi?u 180 ngày.	[IT-LOG-001, ST-LOG-001] [Audit/ST] Ki?m tra retention policy, truy xu?t log theo user_id/request_id/transaction_id.
+AI Privacy	NFR-AIPRIV-001: Ngu?i dùng ph?i có quy?n b?t/t?t AI; h? th?ng ch? g?i context t?i thi?u, có consent, có xóa l?ch s? chat/l? trình AI.	[IT-AIPRIV-001, ST-AIPRIV-001] [ST/Audit] Ki?m consent flow, opt-out, xóa l?ch s? và ki?m payload không ch?a d? li?u ngoài ph?m vi.
+Kh? nang ph?c h?i tích h?p ngoài	NFR-INTREC-001: Khi Payment Gateway/AI/Email timeout, h? th?ng ph?i có retry, fallback và thông báo l?i rõ ràng cho ngu?i dùng.	[IT-INTREC-001] [IT] Mô ph?ng timeout/5xx c?a d?ch v? ngoài; ki?m retry, idempotency và fallback.
+
+
+5 Ma Tr?n Truy Xu?t Ki?m Th? BR – UC – REQ – Test Case
+Ma tr?n du?i dây ánh x? t?ng nhóm Business Requirement (BR) t?i Use Case (UC), Requirement (REQ) và test case tuong ?ng ? c?p d? Unit Test (UT), Integration Test (IT) và System Test (ST).
+Luu ý: Ma tr?n này qu?n lý traceability ? m?c ID; n?i dung test case chi ti?t (step, input, expected output, test data) du?c qu?n lý trong Test Case Specification/Test Management Tool tuong ?ng v?i các ID UT/IT/ST.
+Quy u?c BR du?c b? sung trong Ph? l?c 6.1. M?i REQ du?c g?n v?i m?t nhóm BR d? tester truy xu?t t? m?c tiêu nghi?p v? d?n test case.
+BR / Mã YC	UC	Tên ch?c nang	Unit Test	Integration Test	System Test
+BR-AUTH
+REQ-AUTH-001	UC01	Ðang ký tài kho?n	UT-AUTH-001, UT-AUTH-002, UT-AUTH-003	IT-AUTH-001	ST-AUTH-001, ST-AUTH-002
+BR-AUTH
+REQ-AUTH-002	UC02	Ðang nh?p h? th?ng	UT-AUTH-004, UT-AUTH-005	IT-AUTH-002	ST-AUTH-003
+BR-AUTH
+REQ-AUTH-003	UC03	Ðang xu?t h? th?ng	UT-AUTH-006	IT-AUTH-003	ST-AUTH-004
+BR-AUTH
+REQ-AUTH-004	UC04	Quên m?t kh?u	UT-AUTH-007, UT-AUTH-008	IT-AUTH-004	ST-AUTH-005
+BR-AUTH
+REQ-AUTH-005	UC05	C?p nh?t h? so cá nhân	UT-AUTH-009, UT-AUTH-010	IT-AUTH-005	ST-AUTH-006
+BR-CRS
+REQ-CRS-001	UC06	Tìm ki?m khóa h?c	UT-CRS-001, UT-CRS-002	IT-CRS-001	ST-CRS-001, ST-CRS-002
+BR-CRS
+REQ-CRS-002	UC07	Xem chi ti?t khóa h?c	UT-CRS-003	IT-CRS-002	ST-CRS-003
+BR-CRS
+REQ-CRS-003	UC08	Xem bài h?c th?	UT-CRS-004	IT-CRS-003	ST-CRS-004
+BR-PAY
+REQ-PAY-001	UC09	Mua khóa h?c	UT-PAY-001, UT-PAY-002	IT-PAY-001	ST-PAY-001
+BR-PAY
+REQ-PAY-002	UC10	Thanh toán khóa h?c	UT-PAY-003, UT-PAY-004	IT-PAY-002	ST-PAY-002, ST-PAY-003
+BR-PAY
+REQ-PAY-003	UC11	Xem l?ch s? mua khóa h?c	UT-PAY-005	IT-PAY-003	ST-PAY-004
+BR-PAY
+REQ-PAY-004	UC12	G?i khi?u n?i d?n Admin	UT-PAY-006	IT-PAY-004	ST-PAY-005
+BR-LRN
+REQ-LRN-001	UC13	Xem danh sách khóa h?c dã mua	UT-LRN-001	IT-LRN-001	ST-LRN-001
+BR-LRN
+REQ-LRN-002	UC14	Xem bài gi?ng & tài li?u	UT-LRN-002, UT-LRN-003	IT-LRN-002	ST-LRN-002
+BR-LRN
+REQ-LRN-003	UC15	T?i tài li?u h?c t?p	UT-LRN-004	IT-LRN-003	ST-LRN-003
+BR-LRN
+REQ-LRN-004	UC16	N?p bài t?p	UT-LRN-005, UT-LRN-006	IT-LRN-004	ST-LRN-004
+BR-LRN
+REQ-LRN-005	UC17	Làm bài ki?m tra	UT-LRN-007, UT-LRN-008	IT-LRN-005	ST-LRN-005
+BR-LRN
+REQ-LRN-006	UC18	Xem di?m & ti?n d? h?c t?p	UT-LRN-009	IT-LRN-006	ST-LRN-006
+BR-LRN
+REQ-LRN-007	UC19	Ðánh giá khóa h?c	UT-LRN-010	IT-LRN-007	ST-LRN-007
+BR-LRN
+REQ-LRN-008	UC20	Xem và t?i ch?ng ch?	UT-LRN-011	IT-LRN-008	ST-LRN-008
+BR-INT
+REQ-INT-001	UC21	G?i câu h?i cho giáo viên	UT-INT-001	IT-INT-001	ST-INT-001
+BR-INT
+REQ-INT-002	UC22	Chat AI h? tr?	UT-INT-002	IT-INT-002	ST-INT-002
+BR-INT
+REQ-INT-003	UC23	Nh?n d? xu?t l? trình t? AI	UT-INT-003	IT-INT-003	ST-INT-003
+BR-PRN
+REQ-PRN-001	UC24	Theo dõi ti?n d? h?c t?p c?a con	UT-PRN-001	IT-PRN-001	ST-PRN-001
+BR-PRN
+REQ-PRN-002	UC25	Liên h? & nh?n thông báo t? GV	UT-PRN-002	IT-PRN-002	ST-PRN-002
+BR-PRN
+REQ-PRN-003	UC26	Xem l?ch s? thanh toán khóa h?c	UT-PRN-003	IT-PRN-003	ST-PRN-003
+BR-PRN
+REQ-PRN-004	UC27	G?i l?i m?i liên k?t con	UT-PRN-004	IT-PRN-004	ST-PRN-004
+BR-PRN
+REQ-PRN-005	UC28	Ch?p nh?n / t? ch?i liên k?t	UT-PRN-005	IT-PRN-005	ST-PRN-005
+BR-PRN
+REQ-PRN-006	UC29	H?y liên k?t tài kho?n	UT-PRN-006	IT-PRN-006	ST-PRN-006
+BR-TCH
+REQ-TCH-001	UC30	T?o khóa h?c m?i	UT-TCH-001, UT-TCH-002	IT-TCH-001	ST-TCH-001
+BR-TCH
+REQ-TCH-002	UC31	C?p nh?t bài gi?ng & tài li?u	UT-TCH-003, UT-TCH-004	IT-TCH-002	ST-TCH-002
+BR-TCH
+REQ-TCH-004	UC32	T?o question bank	UT-TCH-005	IT-TCH-003	ST-TCH-003
+BR-TCH
+REQ-TCH-005	UC33	C?p nh?t question bank	UT-TCH-006, UT-TCH-007	IT-TCH-004	ST-TCH-004
+BR-TCH
+REQ-TCH-003	UC34	T?o bài ki?m tra	UT-TCH-008	IT-TCH-005	ST-TCH-005
+BR-TCH
+REQ-TCH-006	UC35	Ch?m di?m bài t?p và câu t? lu?n	UT-TCH-009	IT-TCH-006	ST-TCH-006
+BR-TCH
+REQ-TCH-007	UC36	Tr? l?i câu h?i h?c sinh	UT-TCH-010	IT-TCH-007	ST-TCH-007
+BR-TCH
+REQ-TCH-008	UC37	Xem l?ch s? doanh thu	UT-TCH-011	IT-TCH-008	ST-TCH-008
+BR-ADM
+REQ-ADM-001	UC38	Xem dashboard qu?n tr?	UT-ADM-001	IT-ADM-001	ST-ADM-001
+BR-ADM
+REQ-ADM-002	UC39	Xem danh sách tài kho?n ngu?i dùng	UT-ADM-002	IT-ADM-002	ST-ADM-002
+BR-ADM
+REQ-ADM-003	UC40	C?p nh?t tài kho?n ngu?i dùng	UT-ADM-003, UT-ADM-004	IT-ADM-003	ST-ADM-003
+BR-ADM
+REQ-ADM-004	UC41	Duy?t khóa h?c	UT-ADM-005	IT-ADM-004	ST-ADM-004
+BR-ADM
+REQ-ADM-005	UC42	X? lý khi?u n?i t? ngu?i dùng	UT-ADM-006, UT-ADM-007	IT-ADM-005	ST-ADM-005
+BR-ADM
+REQ-ADM-006	UC43	Xu?t danh sách chi tr? và xác nh?n dã chuy?n kho?n GV	UT-ADM-008, UT-ADM-009	IT-ADM-006	ST-ADM-006
+BR-ADM
+REQ-ADM-007	UC44	G?i thông báo d?n ngu?i dùng	UT-ADM-010, UT-ADM-011	IT-ADM-007	ST-ADM-007
+Ma tr?n truy xu?t NFR – Test Case (b? sung)
+NFR ID	Nhóm ch?t lu?ng	Yêu c?u tóm t?t	Test Case
+NFR-PERF-001	Performance	Trang ch?/danh sách khóa h?c t?i = 2 giây	ST-PERF-001
+NFR-PERF-002	Performance	Streaming video kh?i d?ng = 3 giây	ST-PERF-002
+NFR-PERF-003	Performance	H? th?ng x? lý t?i thi?u 500 request/giây	ST-PERF-003
+NFR-SEC-001	Security	M?t kh?u hash bcrypt cost = 10; không luu plaintext	UT-SEC-001
+NFR-SEC-002	Security	JWT 24h, refresh token 7 ngày; rotate khi d?i m?t kh?u	IT-SEC-001
+NFR-SEC-003	Security	Thông tin TK ngân hàng GV mã hóa AES-256 khi luu tr?	UT-SEC-002, IT-SEC-002
+NFR-SEC-004	Security	Ch?ng OWASP Top 10; scan m?i sprint, pentest d?nh k?	ST-SEC-001
+NFR-SEC-005	Security	HTTPS b?t bu?c toàn site; HSTS preload	ST-SEC-002
+NFR-USE-001	Usability	Responsive và WCAG 2.1 AA	ST-USE-001
+NFR-USE-002	Usability	Thông báo l?i rõ ràng, không l? stack trace	ST-USE-002
+NFR-AVL-001	Availability	Uptime = 99.5%/tháng	ST-AVL-001
+NFR-REL-001	Reliability	Transaction ACID và webhook idempotent	IT-REL-001
+NFR-MNT-001	Maintainability	Unit test coverage = 70% business logic	UT-MNT-001
+NFR-MNT-002	Maintainability	Logging t?p trung, log WARN tr? lên có context	IT-MNT-001
+NFR-COMPAT-001	Compatibility	H? tr? Chrome/Firefox/Safari/Edge phiên b?n nêu trong SRS	ST-COMPAT-001
+NFR-SCAL-001	Scalability	Stress test 5.000 VU 30 phút; p95 d?c = 3s, p95 giao d?ch = 5s, error = 1%, không m?t d? li?u.	ST-SCAL-001
+NFR-COMPL-001	Compliance	Tuân th? NÐ 13/2023 v? b?o v? d? li?u cá nhân	AUDIT-COMPL-001
+NFR-BACKUP-001	Backup	Snapshot hàng ngày + continuous backup/PITR; RTO = 4 gi?	ST-BACKUP-001
+NFR-BACKUP-002	Backup	RPO giao d?ch = 15 phút; RPO d? li?u h?c t?p = 24 gi?	ST-BACKUP-002
+NFR-LOG-001	Logging/Audit	Audit log và application log theo retention policy	IT-LOG-001, ST-LOG-001
+NFR-AIPRIV-001	AI Privacy	Consent, opt-out, xóa l?ch s? và gi?i h?n context AI	IT-AIPRIV-001, ST-AIPRIV-001
+NFR-INTREC-001	External Resilience	Retry/fallback khi Payment Gateway/AI/Email timeout	IT-INTREC-001
+3.4.1.2.3.4.5.5.1. Hu?ng d?n xây d?ng Test Cases t? SRS
+1.2.3.4.5.5.1.5.1.1. Unit Test (Ki?m th? don v?)
+M?c tiêu: Ki?m th? t?ng function/method trong t?ng business logic m?t cách d?c l?p, s? d?ng test driver, stub và mock d? cô l?p don v? ki?m th?.
+T? m?i "Tiêu chí ch?p nh?n" ? t?o t?i thi?u 1 test case happy path.
+T? m?i m?c "Ngo?i l? / Lu?ng thay th?" ? t?o t?i thi?u 1 negative test case tuong ?ng.
+Áp d?ng k? thu?t Equivalence Partitioning và Boundary Value Analysis cho các tru?ng có gi?i h?n.
+Ví d?: UT-AUTH-001 ki?m tra hàm validateEmail() v?i input h?p l?, thi?u @, thi?u domain, ký t? d?c bi?t.
+5.1.2. Integration Test (Ki?m th? tích h?p)
+M?c tiêu: Ki?m th? s? ph?i h?p gi?a các module, API, CSDL và các d?ch v? bên ngoài. Thu?ng ch?y trên môi tru?ng staging v?i CSDL test.
+T? m?i lu?ng chính (Main Flow) ? t?o integration test end-to-end c?a lu?ng dó.
+Ki?m th? API contract: dúng HTTP status code, response body, header.
+Mock các d?ch v? ngoài (VNPay/MoMo/AI Engine) d? d?m b?o test ?n d?nh.
+Ví d?: IT-PAY-001 mô ph?ng webhook VNPay v?i ch? ký h?p l? ? ki?m tra Order chuy?n PAID, revenue_splits du?c ghi dúng.
+5.1.3. System Test (Ki?m th? h? th?ng)
+M?c tiêu: Ki?m th? toàn b? h? th?ng nhu ngu?i dùng th?c, bao g?m UI, business logic và d? li?u th?t. Thu?ng dùng Selenium/Playwright/Cypress.
+T? m?i Use Case ? t?o test scenario end-to-end t? d?u d?n cu?i.
+Bao g?m ki?m th? giao di?n, cross-browser, responsive và accessibility.
+Ví d?: ST-AUTH-001 = m? browser ? vào trang dang ký ? di?n form ? submit ? m? email và nh?n link kích ho?t ? dang nh?p thành công.
+5.2. Công c? ki?m th? d? xu?t
+C?p d?	Công c? d? xu?t	Ghi chú
+Unit Test	Jest (Node), JUnit 5 (Java), pytest (Python)	Coverage = 70% do b?ng Istanbul/JaCoCo.
+Integration Test	Supertest, RestAssured, Postman/Newman	Ch?y t? d?ng trong pipeline CI/CD; mock VNPay/MoMo.
+System Test	Playwright, Cypress, Selenium	Cross-browser: Chrome, Firefox, Safari, Edge.
+Load Test	Apache JMeter, k6, Locust	M?c tiêu NFR: 500 req/s, p95 = 3s, error rate = 1%.
+Security Test	OWASP ZAP, SonarQube, Snyk	Scan t? d?ng m?i sprint; pentest 2 l?n/nam.
+Accessibility	Axe-core, Lighthouse	Tuân th? WCAG 2.1 AA; di?m = 90.
+
+
+
+6 PH? L?C KI?M SOÁT B? SUNG SAU REVIEW
+6.1. Quy u?c Business Requirement (BR)
+Các mã BR du?i dây dùng d? truy xu?t t? m?c tiêu nghi?p v? c?p cao d?n UC, REQ và Test Case trong Ma tr?n truy xu?t ki?m th?.
+BR	Ph?m vi nghi?p v?	Nhóm REQ liên quan
+BR-AUTH	Qu?n lý vòng d?i tài kho?n, dang nh?p, dang xu?t, m?t kh?u, h? so và phê duy?t vai trò Giáo viên.	REQ-AUTH-*, REQ-ADM-003
+BR-CRS	Khám phá, tìm ki?m, xem chi ti?t và h?c th? khóa h?c công khai.	REQ-CRS-*
+BR-PAY	Mua khóa h?c, thanh toán, hóa don, khi?u n?i, hoàn ti?n và d?i soát giao d?ch.	REQ-PAY-*, REQ-ADM-005, REQ-ADM-006
+BR-LRN	H?c t?p t? do, bài gi?ng, tài li?u, bài t?p, ki?m tra, ti?n d? và ch?ng ch?.	REQ-LRN-*, REQ-TCH-002, REQ-TCH-003, REQ-TCH-006
+BR-INT	Tuong tác H?c sinh-Giáo viên và AI h? tr?/l? trình cá nhân hóa.	REQ-INT-*, REQ-TCH-007
+BR-PRN	Liên k?t Ph? huynh-H?c sinh, theo dõi h?c t?p, liên h? giáo viên và xem giao d?ch.	REQ-PRN-*
+BR-TCH	Giáo viên t?o/v?n hành n?i dung, ngân hàng câu h?i, ch?m bài, tr? l?i Q&A và xem doanh thu.	REQ-TCH-*
+BR-ADM	Admin qu?n tr? ngu?i dùng, khóa h?c, khi?u n?i, payout và thông báo.	REQ-ADM-*
+6.2. Ma tr?n phân quy?n RBAC t?ng h?p
+Ch?c nang	Guest	H?c sinh	Ph? huynh	Giáo viên	Admin
+Tìm ki?m/xem chi ti?t/h?c th?	View public	View	View	View own/published	View all
+Mua khóa h?c/thanh toán	Login required	Buy for self	Buy for linked ACTIVE child	No	View/resolve dispute
+H?c bài, n?p bài, ki?m tra, ch?ng ch?	Free preview only	Own enrolled courses	View linked child progress only	Grade/answer own courses	Audit/support
+Liên k?t PH-HS	No	Accept/reject/revoke	Invite/revoke	No	Audit/support
+T?o/c?p nh?t khóa h?c/bài t?p/bài ki?m tra	No	No	No	Ch? GV dã duy?t	Approve/audit
+Qu?n lý tài kho?n/ngu?i dùng	No	Own profile	Own profile	H? so + TK ngân hàng	Manage with audit log; d?i role nh?y c?m theo BRULE-ROLE-001; không t? khóa/xóa/h? quy?n; không vô hi?u hóa Admin cu?i cùng; role Admin c?n 2FA + dual approval.
+Khi?u n?i/ticket	No	Create own	Create own/child-related	Create payout/content-related	Handle all
+Payout/doanh thu	No	No	No	View own payout	Export/confirm/adjust
+Duy?t m? thêm lu?t retake	No	Request own retake	View child status	Approve/reject own courses per BRULE-RETAKE-001	Approve/reject with audit override per BRULE-RETAKE-001
+6.3. Vòng d?i tr?ng thái d? li?u chu?n
+Ð?i tu?ng	Tr?ng thái h?p l?	Quy t?c chuy?n tr?ng thái chính
+Course	DRAFT, PENDING_REVIEW, NEEDS_REVISION, REJECTED, PUBLISHED, ARCHIVED	GV t?o DRAFT; g?i duy?t ? PENDING_REVIEW; Admin approve ? PUBLISHED; reject ? REJECTED; yêu c?u s?a ? NEEDS_REVISION; g? công khai ? ARCHIVED.
+Order
+payment_status	PENDING, PAID, CANCELLED,
+FAILED, EXPIRED,
+PAYMENT_REVIEW	Order gi? PENDING trong payment window; th?t b?i t?ng l?n thanh toán luu ? PaymentAttempt. Webhook h?p l? + d? li?u kh?p: PENDING ? PAID. Mismatch: ? PAYMENT_REVIEW. H?t h?n ? EXPIRED. FAILED ch? dùng khi don b? dóng do l?i không th? retry; không dùng FAILED cho retry còn h?n. Hoàn ti?n không d?i payment_status kh?i PAID; dùng refund_status d? ph?n ánh hoàn ti?n.
+Ticket	OPEN, IN_PROGRESS, WAITING_USER, RESOLVED, CLOSED	Ticket t?o OPEN; Admin x? lý IN_PROGRESS; ch? ph?n h?i WAITING_USER; có k?t qu? RESOLVED; dóng khi xác nh?n/timeout CLOSED.
+Parent Link	PENDING, ACTIVE, REJECTED, EXPIRED, REVOKED	PENDING do PH g?i; HS ch?p nh?n ? ACTIVE; t? ch?i ? REJECTED; quá 7 ngày ? EXPIRED; h?y link ACTIVE ? REVOKED.
+Payout Cycle	DRAFT, READY_FOR_RECONCILIATION,
+RECONCILED, APPROVED,
+CONFIRMED, ADJUSTED	H? th?ng t?ng h?p DRAFT; d? d? li?u d? Admin d?i soát ? READY_FOR_RECONCILIATION; Admin d?i soát ? RECONCILED; xác nh?n n?i b? ? APPROVED; chuy?n kho?n ? CONFIRMED; sai l?ch/refund sau dó t?o ADJUSTED.
+Payment
+reconciliation_status	UNRECONCILED,
+RECONCILED	Sau PAID: UNRECONCILED ? RECONCILED khi d?i soát c?ng/k? toán.
+Ch? giao d?ch RECONCILED du?c dua vào payout cycle.
+User
+account_status	PENDING_EMAIL_VERIFICATION,
+ACTIVE, LOCKED,
+SOFT_DELETED	Ðang ký t?o PENDING_EMAIL_VERIFICATION; xác th?c email ? ACTIVE. Admin khóa ? LOCKED; xóa m?m ? SOFT_DELETED. Khóa t?m do dang nh?p sai không d?i account_status, luu failed_login_lock_until. LOCKED/SOFT_DELETED không du?c dang nh?p.
+Teacher
+profile_state	PENDING_PROFILE_COMPLETION,
+PENDING_TEACHER_APPROVAL,
+NEEDS_PROFILE_UPDATE,
+TEACHER_APPROVED,
+TEACHER_REJECTED,
+TEACHER_REVOKED	Ðang ký GV thi?u tài li?u/thông tin b?t bu?c ? PENDING_PROFILE_COMPLETION.
+Khi b? sung d? h? so ? PENDING_TEACHER_APPROVAL.
+Admin yêu c?u b? sung/s?a h? so ? NEEDS_PROFILE_UPDATE.
+Admin duy?t ? TEACHER_APPROVED; t? ch?i ? TEACHER_REJECTED; thu h?i ? TEACHER_REVOKED.
+Ch? TEACHER_APPROVED du?c dùng REQ-TCH-*.
+Payout Item / Teacher Payout	PENDING, APPROVED,
+HOLD_BANK_INFO,
+CONFIRMED, ADJUSTED	T?o dòng chi tr? GV ? PENDING; duy?t n?i b? ? APPROVED. N?u TK ngân hàng GV dang ch? duy?t/không h?p l? ? HOLD_BANK_INFO. Admin xác nh?n dã chuy?n kho?n ? CONFIRMED; sai l?ch/refund sau dó ? ADJUSTED.
+Payment Attempt	PENDING, PROCESSING,
+SUCCEEDED, FAILED,
+CANCELLED, EXPIRED	M?i l?n t?o URL thanh toán/retry t?o payment_attempt m?i v?i attempt_no và idempotency_key. Attempt th?t b?i không d?i Order kh?i PENDING n?u còn h?n; attempt SUCCEEDED m?i cho phép Order ? PAID sau khi webhook d?i chi?u h?p l?.
+Order
+refund_status	NONE, REFUND_PENDING,
+PARTIALLY_REFUNDED,
+REFUNDED	M?c d?nh NONE. Admin phê duy?t refund ? REFUND_PENDING. Xác nh?n hoàn ti?n m?t ph?n ? PARTIALLY_REFUNDED; hoàn ti?n toàn ph?n ? REFUNDED. refund_status tách bi?t payment_status d? không nh?m partial refund v?i hoàn toàn b?.
+Enrollment / CourseAccess	ACTIVE, PARTIALLY_REVOKED,
+REVOKED, SUSPENDED	C?p quy?n sau khi Order PAID ? ACTIVE. Hoàn ti?n m?t ph?n/thu h?i theo ph?m vi ? PARTIALLY_REVOKED. Hoàn ti?n toàn ph?n ho?c thu h?i toàn b? ? REVOKED. T?m khóa do khi?u n?i/di?u tra ? SUSPENDED.
+Teacher Bank Info	ACTIVE,
+BANK_INFO_PENDING_REVIEW,
+BANK_INFO_REJECTED	TK ngân hàng dã duy?t và dang dùng cho chi tr? ? ACTIVE. GV thay d?i TK ngân hàng ? BANK_INFO_PENDING_REVIEW, g?i c?nh báo email và hold payout. Admin duy?t 2 bu?c ? ACTIVE; t? ch?i ? BANK_INFO_REJECTED và gi? thông tin ACTIVE g?n nh?t.
+Certificate	NOT_ISSUED, ISSUED,
+NEEDS_REVIEW,
+REISSUED, REVOKED	Ð? di?u ki?n REQ-LRN-008 ? ISSUED. S?a di?m/ch?m l?i ?nh hu?ng progress ho?c final exam ? NEEDS_REVIEW. N?u v?n d? di?u ki?n ? REISSUED; n?u không d? di?u ki?n ? REVOKED; chua d? di?u ki?n ? NOT_ISSUED.
+ExamEnrollment / RetakeApproval	ELIGIBLE, IN_PROGRESS, SUBMITTED, PASSED, FAILED, RETAKE_LOCKED, RETAKE_APPROVED, RETAKE_REJECTED, RETAKE_EXPIRED	Ð? di?u ki?n m? bài ki?m tra ? ELIGIBLE; b?t d?u làm bài ? IN_PROGRESS; n?p bài ? SUBMITTED; ch?m xong ? PASSED ho?c FAILED. N?u FAILED vu?t 2 lu?t làm l?i ho?c quá 14 ngày ? RETAKE_LOCKED. Giáo viên s? h?u khóa/Admin approve yêu c?u h?p l? ? RETAKE_APPROVED, c?ng remaining_attempts và d?t retake_expire_at n?u có; h?c sinh b?t d?u lu?t m?i ? IN_PROGRESS. Reject yêu c?u ? RETAKE_REJECTED. Quá retake_expire_at ho?c h?t lu?t du?c duy?t ? RETAKE_EXPIRED r?i khóa l?i RETAKE_LOCKED n?u chua có phê duy?t m?i. M?i chuy?n tr?ng thái approve/reject/expire ghi retake_approval audit log.
+6.4. Business rules b? sung
+Mã rule	N?i dung rule	REQ áp d?ng
+BRULE-COUPON-001	Mã gi?m giá có th?i h?n, s? lu?t t?i da, ph?m vi áp d?ng theo khóa/ngu?i dùng, di?u ki?n không c?ng d?n; snapshot gi?m giá luu cùng Order.	REQ-PAY-001
+BRULE-REFUND-001	Hoàn ti?n ch? áp d?ng cho Order PAID; payment_status gi? PAID cho giao d?ch dã thu ti?n, refund_status tách bi?t và phân bi?t REFUND_PENDING, PARTIALLY_REFUNDED, REFUNDED. revenue_splits g?c immutable, m?i hoàn ti?n/di?u ch?nh t?o adjustment record riêng. Hoàn ti?n sau k? payout CONFIRMED không s?a k? cu mà t?o adjustment k? sau.	REQ-PAY-002, REQ-ADM-005, REQ-ADM-006
+BRULE-ASSIGN-001	Bài t?p ph?i có d? bài, deadline, s? l?n n?p, d?nh d?ng file, thang di?m và late policy; m?c d?nh s? l?n n?p l?i là 3.	REQ-LRN-004, REQ-TCH-002
+BRULE-LATE-001	N?u bài t?p cho phép n?p mu?n, tr?ng thái bài n?p là LATE và di?m b? tr? theo c?u hình giáo viên; n?u không c?u hình thì không cho n?p sau deadline.	REQ-LRN-004
+BRULE-EXAM-001	Phân bi?t Quiz, Chapter Test và Final Exam; ch?ng ch? ch? d?a trên Final Exam PASSED và progress = 100%.	REQ-LRN-005, REQ-LRN-008, REQ-TCH-003
+BRULE-TEACHER-001	Ngu?i dang ký Giáo viên ch? chuy?n sang PENDING_TEACHER_APPROVAL khi h? so d? thông tin; n?u h? so thi?u/sai thì dùng PENDING_PROFILE_COMPLETION ho?c NEEDS_PROFILE_UPDATE theo state machine. Ch? truy c?p REQ-TCH-* sau khi Admin phê duy?t.	REQ-AUTH-001, REQ-ADM-003, REQ-TCH-*
+BRULE-AI-001	Tính nang AI c?n consent/opt-out; ch? g?i context t?i thi?u; ngu?i dùng có th? qu?n lý Cài d?t AI, b?t/t?t t?ng tính nang và xóa l?ch s? chat/l? trình AI có xác nh?n.	REQ-INT-002, REQ-INT-003
+BRULE-COURSE-001	Khóa h?c ch? du?c g?i duy?t/Approve khi có t?i thi?u 3 chuong, m?i chuong có ít nh?t 1 bài h?c và có final exam h?p l?. M?i enrollment ph?i luu course_version_id t?i th?i di?m mua; h?c sinh dã mua m?c d?nh gi? version dó, progress/final exam/ch?ng ch? tính theo version enrollment, giá m?i ch? áp d?ng cho don hàng m?i. Migration sang version m?i ch? th?c hi?n khi Admin/GV du?c phép nh?p lý do, mapping ?nh hu?ng progress/ch?ng ch?, ghi audit log và thông báo HS/PH.	REQ-TCH-001, REQ-TCH-002, REQ-PAY-002, REQ-LRN-001, REQ-LRN-005, REQ-LRN-008, REQ-ADM-004
+BRULE-WATCH-001	Ti?n d? video ch? tính theo unique watched duration; do?n b? tua qua không du?c tính là dã xem.	REQ-LRN-002
+BRULE-PAY-001	Webhook thanh toán ch? du?c ghi PAID/c?p quy?n h?c khi ch? ký h?p l? và order_id, transaction_id, payment_attempt_id ho?c gateway_order_id dã map n?i b?, amount, currency, gateway, status kh?p Order/payment_attempt g?c.	REQ-PAY-002, REQ-ADM-006
+BRULE-PAY-002	Retry thanh toán trong payment_expire_at gi? cùng Order PENDING nhung ph?i t?o PaymentAttempt m?i; Order ch? PAID khi có attempt SUCCEEDED và webhook h?p l?, không dùng Order FAILED cho retry còn h?n.	REQ-PAY-002
+BRULE-BANK-001	M?i thay d?i TK ngân hàng GV ph?i qua BANK_INFO_PENDING_REVIEW, xác th?c l?i/OTP, Admin duy?t 2 bu?c và g?i email c?nh báo; sau duy?t tr?ng thái cu?i là ACTIVE, payout b? hold cho d?n khi thông tin m?i ACTIVE.	REQ-AUTH-005, REQ-ADM-006
+BRULE-PRIVACY-001	HS có quy?n b?t/t?t riêng tu và c?p/thu h?i consent xem bài làm chi ti?t theo t?ng PH ACTIVE; n?u thi?u ngày sinh thì áp d?ng m?c d?nh b?o v? cao nh?t; m?i thay d?i consent ghi audit log.	REQ-AUTH-005, REQ-PRN-001, REQ-PRN-004
+BRULE-GRADE-001	S?a di?m trong 24 gi? ph?i nh?p lý do, luu old_score/new_score/grader_id/timestamp, thông báo l?i cho HS và tính l?i progress/k?t qu? exam/ch?ng ch?; ch?ng ch? b? ?nh hu?ng ph?i NEEDS_REVIEW tru?c khi REISSUED ho?c REVOKED.	REQ-TCH-006, REQ-LRN-008
+BRULE-ROLE-001	Ð?i vai trò/quy?n cao ph?i ch?ng leo thang quy?n: không t? khóa/xóa/h? quy?n Admin dang dang nh?p; không khóa/xóa/h? quy?n Admin ACTIVE cu?i cùng; m?i thay d?i sang/t? role Admin c?n 2FA, dual approval b?i Admin ACTIVE khác, lý do b?t bu?c và audit log role_before/role_after/actor_id/approver_id/target_user_id/timestamp.	REQ-ADM-003, Ph? l?c 6.2
+BRULE-RETAKE-001	Khi h?c sinh vu?t gi?i h?n 2 l?n làm l?i/14 ngày, ExamEnrollment chuy?n RETAKE_LOCKED. Giáo viên s? h?u khóa ho?c Admin du?c xem danh sách RETAKE_LOCKED, duy?t/t? ch?i yêu c?u m? thêm lu?t, b?t bu?c nh?p lý do, s? lu?t m? thêm 1-2/l?n và t?i da 2 l?n phê duy?t cho cùng exam/enrollment. Approve ? RETAKE_APPROVED, c?ng remaining_attempts và d?t retake_expire_at n?u có; Reject ? RETAKE_REJECTED; quá h?n/h?t lu?t du?c duy?t ? RETAKE_EXPIRED/RETAKE_LOCKED. M?i quy?t d?nh ghi audit log approval_id/enrollment_id/exam_id/attempt_id/requested_by/approver_id/approver_role/extra_attempts/reason/timestamp.	REQ-LRN-005, REQ-TCH-006, Ph? l?c 6.3
+6.5. External Interface Contracts tóm t?t
+Interface	Input chính	Output chính	Timeout/Retry	Ki?m th? chính
+Payment Gateway webhook	gateway, transaction_id, order_id, payment_attempt_id ho?c gateway_order_id, amount, currency, status, signature, timestamp	ACK success/fail;
+update payment_attempt_status + payment_status + reconciliation_status	Timeout 10s; retry idempotent theo transaction_id + payment_attempt_id/gateway_order_id	Ch? ký h?p l?/sai; webhook trùng/tr?; payment_attempt_id/gateway_order_id mismatch; amount/order/currency/gateway mismatch; không c?p quy?n khi mismatch
+AI Engine	user_id ?n danh, course_id, prompt, minimal learning context, consent flag	answer, source_refs, refusal_reason, latency	Timeout 15s; fallback g?i câu h?i cho GV/l? trình m?c d?nh	Timeout, policy violation, opt-out, không g?i d? li?u ngoài ph?m vi
+Notification/Email
+(internal service)	recipient, template_id, variables, channel, priority	delivery status, message_id	Retry 3 l?n v?i backoff; log th?t b?i	Email kích ho?t/reset/ticket/Q&A/payout g?i dúng ngu?i
+Media signed URL/CDN	user_id, course_id, lesson_id, file_id, permission scope	signed_url, expires_at, one_time_flag	URL tài li?u 5 phút; ch?ng ch? 10 phút	403 khi không s? h?u khóa; URL h?t h?n; watermark PDF
+Payment Gateway create payment URL	order_id, payment_attempt_id, amount, currency, return_url, notify_url, gateway, signature	payment_url, gateway_order_id, expired_at, error_code; c?p nh?t payment_attempt_status	Timeout 10s; retry b?ng cùng order_id nhung t?o payment_attempt m?i khi chua quá payment_expire_at; không t?o giao d?ch trùng	T?o URL OK/l?i; timeout; retry tru?c/sau payment_expire_at; idempotency_key
+AI Engine question generation	teacher_id, course_id, chapter_scope, prompt/material, question_count, question_type, difficulty, consent/policy context	questions[]: question_type, stem, options, correct_answer, explanation, difficulty, source_refs, policy_flags	Timeout 15s; tr? l?i schema/policy; không auto-publish	Schema h?p l?/sai; policy violation; GV review/edit/approve; audit log prompt/action

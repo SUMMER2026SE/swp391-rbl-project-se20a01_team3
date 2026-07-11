@@ -5,9 +5,12 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { notify } from '../../lib/toast';
 import * as questionService from '../../api/questionService';
+import * as questionBankService from '../../api/questionBankService';
+import { isApiError } from '../../api/client';
 import type {
   QuestionResponse, Difficulty, QuestionStatus, CreateQuestionRequest, QuestionMetadata, MatchingPair,
 } from '../../api/questionService';
+import type { QuestionBankResponse } from '../../api/questionBankService';
 import { listCategories } from '../../api/courseService';
 import { listMyCourses, getCourseDetail } from '../../api/teacherCourseService';
 import type { TeacherCourseResponse, TeacherChapterResponse } from '../../api/teacherCourseService';
@@ -170,6 +173,7 @@ interface ReadingPassageOption {
 }
 
 interface FormState {
+  questionBankId: string;
   categoryId: string;
   grade: string;
   courseId: string;
@@ -198,6 +202,7 @@ interface FormState {
 
 function emptyForm(): FormState {
   return {
+    questionBankId: '',
     categoryId: '', grade: '', courseId: '', chapterId: '',
     content: '', explanation: '',
     difficulty: 'medium', type: 'multiple_choice',
@@ -223,6 +228,7 @@ function emptyForm(): FormState {
 function formFromQuestion(q: QuestionResponse): FormState {
   const metadata = q.metadata ?? {};
   return {
+    questionBankId: q.questionBankId ?? '',
     categoryId:  q.categoryId  ?? '',
     grade:       q.grade ? String(q.grade) : '',
     courseId:    '',
@@ -257,12 +263,13 @@ interface QuestionFormPanelProps {
   editing: QuestionResponse | null;
   categories: Category[];
   courses: TeacherCourseResponse[];
+  banks: QuestionBankResponse[];
   questions: QuestionResponse[];
   onClose: () => void;
   onSaved: () => void;
 }
 
-function QuestionFormPanel({ open, editing, categories, courses, questions, onClose, onSaved }: QuestionFormPanelProps) {
+function QuestionFormPanel({ open, editing, categories, courses, banks, questions, onClose, onSaved }: QuestionFormPanelProps) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [chapters, setChapters] = useState<TeacherChapterResponse[]>([]);
   const [loadingChapters, setLoadingChapters] = useState(false);
@@ -335,8 +342,52 @@ function QuestionFormPanel({ open, editing, categories, courses, questions, onCl
     setForm(f => ({ ...f, [key]: value }));
   }
 
+  function handleQuestionBankChange(nextQuestionBankId: string) {
+    if (!nextQuestionBankId) {
+      setForm(f => ({ ...f, questionBankId: '' }));
+      return;
+    }
+
+    const selectedBank = banks.find(bank => bank.id === nextQuestionBankId);
+    if (!selectedBank) {
+      setForm(f => ({ ...f, questionBankId: nextQuestionBankId }));
+      return;
+    }
+
+    const currentCourse = courses.find(course => course.id === form.courseId);
+    const courseMatchesBank = !currentCourse
+      || (currentCourse.categoryId === selectedBank.categoryId
+        && (currentCourse.grades?.includes(selectedBank.grade) ?? false));
+
+    setForm(f => {
+      return {
+        ...f,
+        questionBankId: nextQuestionBankId,
+        categoryId: selectedBank.categoryId,
+        grade: String(selectedBank.grade),
+        courseId: courseMatchesBank ? f.courseId : '',
+        chapterId: courseMatchesBank ? f.chapterId : '',
+      };
+    });
+
+    if (!courseMatchesBank) {
+      setChapters([]);
+    }
+  }
+
   function handleCourseChange(nextCourseId: string) {
     const selectedCourse = courses.find(c => c.id === nextCourseId);
+    if (selectedCourse && form.questionBankId) {
+      const selectedBank = banks.find(bank => bank.id === form.questionBankId);
+      const matchesBank = !selectedBank
+        || (selectedCourse.categoryId === selectedBank.categoryId
+          && (selectedCourse.grades?.includes(selectedBank.grade) ?? false));
+      if (!matchesBank) {
+        notify.error('Khóa học phải cùng môn học và lớp với ngân hàng câu hỏi đã chọn');
+        return;
+      }
+    }
+
     setForm(f => ({
       ...f,
       courseId: nextCourseId,
@@ -594,6 +645,7 @@ function QuestionFormPanel({ open, editing, categories, courses, questions, onCl
     const req: CreateQuestionRequest = {
       categoryId:  form.categoryId,
       grade:       Number(form.grade),
+      questionBankId: form.questionBankId || undefined,
       chapterId:   form.chapterId || undefined,
       content:     form.content.trim(),
       explanation: form.explanation.trim() || undefined,
@@ -623,8 +675,8 @@ function QuestionFormPanel({ open, editing, categories, courses, questions, onCl
     }
   }
 
-  const isCategoryLocked = Boolean(form.courseId);
-  const isGradeLocked = Boolean(form.courseId);
+  const isCategoryLocked = Boolean(form.courseId || form.questionBankId);
+  const isGradeLocked = Boolean(form.courseId || form.questionBankId);
 
   return (
     <>
@@ -662,8 +714,33 @@ function QuestionFormPanel({ open, editing, categories, courses, questions, onCl
             {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-              {/* Course and chapter */}
-              <div className="grid grid-cols-3 gap-3">
+              {/* Bank, course and chapter */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-bold text-on-surface mb-1.5">
+                    Ngân hàng câu hỏi <span className="text-xs font-normal text-on-surface-variant">(tùy chọn)</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={form.questionBankId}
+                      onChange={e => handleQuestionBankChange(e.target.value)}
+                      className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                    >
+                      <option value="">-- Không gắn ngân hàng cụ thể --</option>
+                      {banks.map(bank => (
+                        <option key={bank.id} value={bank.id}>
+                          {bank.title} · {bank.categoryName} · Lớp {bank.grade}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
+                  </div>
+                  {form.questionBankId && (
+                    <p className="text-xs text-primary/70 mt-1">
+                      Môn học và lớp đang được đồng bộ theo ngân hàng đã chọn.
+                    </p>
+                  )}
+                </div>
                 <div>
                   <label className="block text-sm font-bold text-on-surface mb-1.5">Khóa học</label>
                   <div className="relative">
@@ -677,6 +754,11 @@ function QuestionFormPanel({ open, editing, categories, courses, questions, onCl
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
                   </div>
+                  {form.questionBankId && (
+                    <p className="text-xs text-on-surface-variant mt-1">
+                      Chỉ chọn khóa học cùng môn và lớp với ngân hàng câu hỏi.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-on-surface mb-1.5">Chương</label>
@@ -696,6 +778,9 @@ function QuestionFormPanel({ open, editing, categories, courses, questions, onCl
                     }
                   </div>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-bold text-on-surface mb-1.5">
                     Lớp <span className="text-red-500">*</span>
@@ -716,36 +801,38 @@ function QuestionFormPanel({ open, editing, categories, courses, questions, onCl
                     }
                   </div>
                   {isGradeLocked && (
-                    <p className="text-xs text-primary/70 mt-1">Lớp được lấy từ khóa học đã chọn</p>
+                    <p className="text-xs text-primary/70 mt-1">
+                      {form.questionBankId ? 'Lớp được lấy từ ngân hàng câu hỏi đã chọn' : 'Lớp được lấy từ khóa học đã chọn'}
+                    </p>
                   )}
                 </div>
-              </div>
 
-              {/* Subject */}
-              <div>
-                <label className="block text-sm font-bold text-on-surface mb-1.5">
-                  Môn học <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <select
-                    value={form.categoryId}
-                    onChange={e => set('categoryId', e.target.value)}
-                    disabled={isCategoryLocked}
-                    className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <option value="">-- Chọn môn học --</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  {isCategoryLocked
-                    ? <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/60" />
-                    : <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
-                  }
+                {/* Subject */}
+                <div>
+                  <label className="block text-sm font-bold text-on-surface mb-1.5">
+                    Môn học <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={form.categoryId}
+                      onChange={e => set('categoryId', e.target.value)}
+                      disabled={isCategoryLocked}
+                      className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <option value="">-- Chọn môn học --</option>
+                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    {isCategoryLocked
+                      ? <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/60" />
+                      : <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
+                    }
+                  </div>
+                  {isCategoryLocked && (
+                    <p className="text-xs text-primary/70 mt-1">
+                      {form.questionBankId ? 'Môn học được lấy từ ngân hàng câu hỏi đã chọn' : 'Môn học được lấy từ khóa học đã chọn'}
+                    </p>
+                  )}
                 </div>
-                {isCategoryLocked && (
-                  <p className="text-xs text-primary/70 mt-1">
-                    Môn học được lấy từ khóa học đã chọn
-                  </p>
-                )}
               </div>
               {/* Question type */}
               <div>
@@ -1410,6 +1497,184 @@ function ConfirmBulkDeleteDialog({
   );
 }
 
+function QuestionBankCreateDialog({
+  open,
+  categories,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  categories: Category[];
+  onClose: () => void;
+  onCreated: (bank: QuestionBankResponse) => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [grade, setGrade] = useState('');
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setTitle('');
+    setCategoryId('');
+    setGrade('');
+    setDescription('');
+    setSaving(false);
+  }, [open]);
+
+  async function handleSave() {
+    if (!title.trim()) {
+      notify.error('Vui lòng nhập tên ngân hàng câu hỏi');
+      return;
+    }
+    if (!categoryId) {
+      notify.error('Vui lòng chọn lĩnh vực / môn học');
+      return;
+    }
+    if (!grade) {
+      notify.error('Vui lòng chọn lớp');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const created = await questionBankService.createQuestionBank({
+        title: title.trim(),
+        categoryId,
+        grade: Number(grade),
+        description: description.trim() || undefined,
+      });
+      notify.success('Đã tạo ngân hàng câu hỏi');
+      onCreated(created);
+      onClose();
+    } catch (error) {
+      notify.error(isApiError(error) ? error.message : 'Không tạo được ngân hàng câu hỏi');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/50"
+            onClick={saving ? undefined : onClose}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 12 }}
+            className="fixed z-50 top-1/2 left-1/2 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-3xl bg-surface p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4 mb-5">
+              <div>
+                <h3 className="text-xl font-extrabold text-on-surface">Tạo ngân hàng câu hỏi</h3>
+                <p className="text-sm text-on-surface-variant mt-1">
+                  Khởi tạo bank rỗng để tiếp tục bổ sung câu hỏi ở bước sau.
+                </p>
+              </div>
+              <button
+                onClick={onClose}
+                disabled={saving}
+                className="p-2 rounded-xl hover:bg-surface-container text-on-surface-variant disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-on-surface mb-1.5">
+                  Tên ngân hàng <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  placeholder="Ví dụ: Ngân hàng Toán lớp 8 - Đại số"
+                  className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-bold text-on-surface mb-1.5">
+                    Lĩnh vực / môn học <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={categoryId}
+                      onChange={e => setCategoryId(e.target.value)}
+                      className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                    >
+                      <option value="">-- Chọn môn học --</option>
+                      {categories.map(category => (
+                        <option key={category.id} value={category.id}>{category.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-on-surface mb-1.5">
+                    Lớp <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={grade}
+                      onChange={e => setGrade(e.target.value)}
+                      className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                    >
+                      <option value="">-- Chọn lớp --</option>
+                      {[6, 7, 8, 9].map(item => <option key={item} value={item}>Lớp {item}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-on-surface mb-1.5">
+                  Mô tả <span className="text-xs font-normal text-on-surface-variant">(tùy chọn)</span>
+                </label>
+                <textarea
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  rows={4}
+                  placeholder="Mô tả phạm vi câu hỏi, mục tiêu sử dụng hoặc ghi chú biên soạn..."
+                  className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={onClose}
+                disabled={saving}
+                className="flex-1 py-2.5 text-sm font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high rounded-xl disabled:opacity-50"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 py-2.5 text-sm font-bold bg-primary text-on-primary rounded-xl hover:bg-primary/90 disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {saving ? 'Đang tạo...' : 'Tạo ngân hàng'}
+              </button>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
 // Main page
 
 const DIFFICULTY_OPTS = [
@@ -1443,6 +1708,7 @@ export default function QuestionBankPage() {
 
   // Data
   const [questions,   setQuestions]   = useState<QuestionResponse[]>([]);
+  const [banks,       setBanks]       = useState<QuestionBankResponse[]>([]);
   // totalItems stores the real total from the backend, even when the fetch is limited.
   // It is used to warn teachers when the current client list is truncated.
   const [totalItems,  setTotalItems]  = useState(0);
@@ -1452,12 +1718,14 @@ export default function QuestionBankPage() {
 
   // Loading
   const [loadingQ,    setLoadingQ]    = useState(true);
+  const [loadingBanks,setLoadingBanks]= useState(true);
   const [loadingMeta, setLoadingMeta] = useState(true);
 
   // Filters
   const [diffFilter,    setDiffFilter]    = useState<Difficulty | 'all'>('all');
   const [statusFilter,  setStatusFilter]  = useState<QuestionStatus | 'all'>('all');
   const [typeFilter,    setTypeFilter]    = useState<BankQuestionType | 'all'>('all');
+  const [bankFilter,    setBankFilter]    = useState('');
   const [categoryFilter,setCategoryFilter]= useState('');
   const [gradeFilter,   setGradeFilter]   = useState('');
   const [courseFilter,  setCourseFilter]  = useState('');
@@ -1466,6 +1734,7 @@ export default function QuestionBankPage() {
   // Panel and dialog state
   const [isSidebarOpen,  setIsSidebarOpen]  = useState(false);
   const [panelOpen,      setPanelOpen]      = useState(false);
+  const [bankDialogOpen, setBankDialogOpen] = useState(false);
   const [importOpen,     setImportOpen]     = useState(false);
   const [aiScanOpen,     setAiScanOpen]     = useState(false);
   const [editingQ,       setEditingQ]       = useState<QuestionResponse | null>(null);
@@ -1510,6 +1779,24 @@ export default function QuestionBankPage() {
 
   // refreshKey is incremented to trigger a manual reload after save/delete actions.
   const [refreshKey, setRefreshKey] = useState(0);
+  const [bankRefreshKey, setBankRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingBanks(true);
+    questionBankService.listQuestionBanks()
+      .then(items => {
+        if (cancelled) return;
+        setBanks(items);
+      })
+      .catch(() => {
+        if (!cancelled) notify.error('Không tải được danh sách ngân hàng câu hỏi');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingBanks(false);
+      });
+    return () => { cancelled = true; };
+  }, [bankRefreshKey]);
 
   // Load questions with a cancellable effect to avoid stale updates in StrictMode.
   useEffect(() => {
@@ -1519,6 +1806,7 @@ export default function QuestionBankPage() {
     const params: questionService.ListQuestionsParams = { page: 0, size: FETCH_LIMIT };
     if (diffFilter    !== 'all') params.difficulty = diffFilter;
     if (statusFilter  !== 'all') params.status     = statusFilter;
+    if (bankFilter)              params.questionBankId = bankFilter;
     if (categoryFilter)          params.categoryId = categoryFilter;
     if (gradeFilter)             params.grade      = Number(gradeFilter);
     if (chapterFilter)           params.chapterId  = chapterFilter;
@@ -1532,6 +1820,7 @@ export default function QuestionBankPage() {
           if (chapterFilter && q.chapterId !== chapterFilter) return false;
           if (diffFilter !== 'all' && q.difficulty !== diffFilter) return false;
           if (statusFilter !== 'all' && q.status !== statusFilter) return false;
+          if (bankFilter && q.questionBankId !== bankFilter) return false;
           return true;
         });
         setQuestions(filteredItems);
@@ -1543,10 +1832,14 @@ export default function QuestionBankPage() {
       .finally(() => { if (!cancelled) setLoadingQ(false); });
 
     return () => { cancelled = true; };
-  }, [diffFilter, statusFilter, categoryFilter, gradeFilter, chapterFilter, refreshKey]);
+  }, [diffFilter, statusFilter, bankFilter, categoryFilter, gradeFilter, chapterFilter, refreshKey]);
 
   // Expose a stable reload callback for save/delete flows.
   const loadQuestions = useCallback(() => setRefreshKey(k => k + 1), []);
+  const reloadPageData = useCallback(() => {
+    loadQuestions();
+    setBankRefreshKey(k => k + 1);
+  }, [loadQuestions]);
 
   const filteredQuestions = typeFilter === 'all'
     ? questions
@@ -1559,6 +1852,10 @@ export default function QuestionBankPage() {
   // Actions
   function openAdd()  { setEditingQ(null); setPanelOpen(true); }
   function openEdit(q: QuestionResponse) { setEditingQ(q); setPanelOpen(true); }
+  function handleQuestionBankCreated(bank: QuestionBankResponse) {
+    setBankFilter(bank.id);
+    setBankRefreshKey(key => key + 1);
+  }
 
   const allQuestionIds = filteredQuestions.map(q => q.id);
   const selectedCount = selectedIds.length;
@@ -1590,7 +1887,7 @@ export default function QuestionBankPage() {
     setBulkDeleting(false);
     setBulkDeleteOpen(false);
     setSelectedIds([]);
-    loadQuestions();
+    reloadPageData();
   }
 
   async function confirmDelete() {
@@ -1599,7 +1896,7 @@ export default function QuestionBankPage() {
       await questionService.deleteQuestion(deleteTarget.id);
       notify.success('Đã xóa câu hỏi');
       setDeleteTarget(null);
-      loadQuestions();
+      reloadPageData();
     } catch {
       notify.error('Không xóa được câu hỏi');
     }
@@ -1615,7 +1912,15 @@ export default function QuestionBankPage() {
     hard:   filteredQuestions.filter(q => q.difficulty === 'hard').length,
   };
 
-  const hasFilter = diffFilter !== 'all' || statusFilter !== 'all' || typeFilter !== 'all' || categoryFilter || gradeFilter || courseFilter || chapterFilter;
+  const selectedBank = banks.find(bank => bank.id === bankFilter) ?? null;
+  const hasFilter = diffFilter !== 'all'
+    || statusFilter !== 'all'
+    || typeFilter !== 'all'
+    || bankFilter
+    || categoryFilter
+    || gradeFilter
+    || courseFilter
+    || chapterFilter;
 
   // Render
   return (
@@ -1713,6 +2018,11 @@ export default function QuestionBankPage() {
                       · {stats.easy} dễ · {stats.medium} trung bình · {stats.hard} khó
                     </span>
                   )}
+                  {selectedBank && (
+                    <span className="ml-2 text-primary/80">
+                      · đang xem bank: {selectedBank.title}
+                    </span>
+                  )}
                 </p>
               )}
             </div>
@@ -1734,11 +2044,17 @@ export default function QuestionBankPage() {
                   </button>
                 </div>
               )}
-              <button onClick={loadQuestions} disabled={loadingQ}
+              <button onClick={reloadPageData} disabled={loadingQ}
                 className="p-2.5 text-on-surface-variant hover:text-primary hover:bg-primary/5 rounded-xl transition-colors"
                 title="Làm mới"
               >
                 <RefreshCcw className={`w-5 h-5 ${loadingQ ? 'animate-spin' : ''}`} />
+              </button>
+              <button
+                onClick={() => setBankDialogOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-colors shadow-md shadow-amber-500/20"
+              >
+                <Plus className="w-4 h-4" /> Tạo bank
               </button>
               <button
                 onClick={() => setAiScanOpen(true)}
@@ -1760,6 +2076,110 @@ export default function QuestionBankPage() {
             </div>
           </motion.div>
 
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.02 }}
+            className="mb-5 rounded-2xl border border-outline-variant/40 bg-surface-container-lowest p-4 shadow-sm"
+          >
+            <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+              <div>
+                <h3 className="text-lg font-extrabold text-on-surface">Danh sách question bank</h3>
+                <p className="text-sm text-on-surface-variant mt-1">
+                  Tạo bank rỗng, chọn đúng môn học và lớp, rồi tiếp tục bổ sung câu hỏi vào từng bank.
+                </p>
+              </div>
+              <button
+                onClick={() => setBankDialogOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-primary bg-primary/10 rounded-xl hover:bg-primary/15 transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Ngân hàng mới
+              </button>
+            </div>
+
+            {loadingBanks ? (
+              <div className="flex items-center gap-2 text-sm text-on-surface-variant">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                Đang tải danh sách ngân hàng câu hỏi...
+              </div>
+            ) : banks.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-outline-variant/50 bg-surface px-4 py-8 text-center">
+                <Database className="w-10 h-10 text-on-surface-variant/30 mx-auto mb-3" />
+                <p className="font-bold text-on-surface">Chưa có question bank nào</p>
+                <p className="text-sm text-on-surface-variant mt-1 mb-4">
+                  Tạo bank đầu tiên để quản lý câu hỏi theo từng nhóm nội dung.
+                </p>
+                <button
+                  onClick={() => setBankDialogOpen(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-on-primary font-bold rounded-xl hover:bg-primary/90 transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Tạo question bank
+                </button>
+              </div>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <button
+                  onClick={() => setBankFilter('')}
+                  className={`rounded-2xl border p-4 text-left transition-colors ${
+                    !bankFilter
+                      ? 'border-primary bg-primary/5'
+                      : 'border-outline-variant/40 bg-surface hover:bg-surface-container'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-extrabold text-on-surface">Tất cả câu hỏi</p>
+                      <p className="text-xs text-on-surface-variant mt-1">
+                        Bỏ lọc theo question bank
+                      </p>
+                    </div>
+                    <span className="inline-flex rounded-full bg-primary/10 px-2 py-1 text-xs font-bold text-primary">
+                      {banks.length} bank
+                    </span>
+                  </div>
+                </button>
+
+                {banks.map(bank => (
+                  <button
+                    key={bank.id}
+                    onClick={() => setBankFilter(current => current === bank.id ? '' : bank.id)}
+                    className={`rounded-2xl border p-4 text-left transition-colors ${
+                      bankFilter === bank.id
+                        ? 'border-primary bg-primary/5'
+                        : 'border-outline-variant/40 bg-surface hover:bg-surface-container'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-extrabold text-on-surface truncate">{bank.title}</p>
+                        <p className="text-xs text-on-surface-variant mt-1">
+                          {bank.categoryName} · Lớp {bank.grade}
+                        </p>
+                      </div>
+                      <span className="inline-flex rounded-full bg-primary/10 px-2 py-1 text-xs font-bold text-primary whitespace-nowrap">
+                        {bank.questionCount} câu
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm text-on-surface-variant line-clamp-2">
+                      {bank.description?.trim() || 'Chưa có mô tả cho ngân hàng này.'}
+                    </p>
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-bold ${
+                        bank.status === 'active' ? 'bg-green-500/10 text-green-600' : 'bg-slate-500/10 text-slate-500'
+                      }`}>
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {bank.status === 'active' ? 'ACTIVE' : 'INACTIVE'}
+                      </span>
+                      <span className="text-xs text-on-surface-variant">
+                        {formatDate(bank.createdAt)}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </motion.div>
+
           {/* Filter bar */}
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
             className="flex items-center gap-3 mb-5 flex-wrap"
@@ -1767,6 +2187,18 @@ export default function QuestionBankPage() {
             <div className="flex items-center gap-1.5 text-on-surface-variant">
               <Filter className="w-4 h-4" />
               <span className="text-sm font-medium">Lọc:</span>
+            </div>
+
+            <div className="relative">
+              <select value={bankFilter} onChange={e => setBankFilter(e.target.value)}
+                className="appearance-none pl-3 pr-8 py-2 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface font-medium focus:outline-none focus:border-primary cursor-pointer max-w-[240px]"
+              >
+                <option value="">Tất cả question bank</option>
+                {banks.map(bank => (
+                  <option key={bank.id} value={bank.id}>{bank.title}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant pointer-events-none" />
             </div>
 
             <div className="relative">
@@ -1848,7 +2280,7 @@ export default function QuestionBankPage() {
 
             {hasFilter && (
               <button
-                onClick={() => { setDiffFilter('all'); setStatusFilter('all'); setTypeFilter('all'); setCategoryFilter(''); setGradeFilter(''); setCourseFilter(''); setChapterFilter(''); }}
+                onClick={() => { setDiffFilter('all'); setStatusFilter('all'); setTypeFilter('all'); setBankFilter(''); setCategoryFilter(''); setGradeFilter(''); setCourseFilter(''); setChapterFilter(''); }}
                 className="text-xs font-bold text-primary hover:underline"
               >
                 Xóa bộ lọc
@@ -1918,6 +2350,7 @@ export default function QuestionBankPage() {
                         <th className="text-left px-4 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide">Độ khó</th>
                         <th className="text-left px-4 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide hidden md:table-cell">Chương</th>
                         <th className="text-left px-4 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide hidden md:table-cell">Môn</th>
+                        <th className="text-left px-4 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide hidden xl:table-cell">Question bank</th>
                         <th className="text-center px-4 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide hidden lg:table-cell">Dùng</th>
                         <th className="text-left px-4 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide hidden lg:table-cell">Ngày tạo</th>
                         <th className="text-left px-4 py-3 font-bold text-on-surface-variant text-xs uppercase tracking-wide">Trạng thái</th>
@@ -1962,6 +2395,11 @@ export default function QuestionBankPage() {
                               {q.categoryName
                                 ? <span className="text-xs font-medium bg-primary/10 text-primary px-2 py-1 rounded-full">{q.categoryName}</span>
                                 : <span className="text-on-surface-variant/30 text-xs">-</span>}
+                            </td>
+                            <td className="px-4 py-3 hidden xl:table-cell text-xs text-on-surface-variant">
+                              {q.questionBankTitle
+                                ? <span className="font-medium text-on-surface">{truncate(q.questionBankTitle, 28)}</span>
+                                : <span className="opacity-30">-</span>}
                             </td>
                             <td className="px-4 py-3 text-center hidden lg:table-cell">
                               <span className={`font-bold text-sm ${q.usageCount > 0 ? 'text-primary' : 'text-on-surface-variant/40'}`}>
@@ -2011,9 +2449,17 @@ export default function QuestionBankPage() {
         editing={editingQ}
         categories={categories}
         courses={courses}
+        banks={banks}
         questions={questions}
         onClose={() => setPanelOpen(false)}
-        onSaved={loadQuestions}
+        onSaved={reloadPageData}
+      />
+
+      <QuestionBankCreateDialog
+        open={bankDialogOpen}
+        categories={categories}
+        onClose={() => setBankDialogOpen(false)}
+        onCreated={handleQuestionBankCreated}
       />
 
       {/* Delete Dialog */}
@@ -2034,14 +2480,16 @@ export default function QuestionBankPage() {
       <ExcelImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        onImported={loadQuestions}
+        onImported={reloadPageData}
+        selectedQuestionBank={selectedBank}
       />
 
       {/* AI Scan Modal */}
       <AIScanModal
         open={aiScanOpen}
         onClose={() => setAiScanOpen(false)}
-        onImported={loadQuestions}
+        onImported={reloadPageData}
+        selectedQuestionBank={selectedBank}
       />
     </div>
   );
