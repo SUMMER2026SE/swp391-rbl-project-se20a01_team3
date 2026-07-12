@@ -130,3 +130,47 @@ export async function getStudentExam(
   );
   return unwrap(res.data);
 }
+
+export type ExamRetakeRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface ExamRetakeRequest {
+  id: string;
+  examConfigId: string;
+  courseId: string;
+  courseTitle: string;
+  slotIndex: number;
+  examName: string;
+  studentId: string;
+  studentName: string;
+  status: ExamRetakeRequestStatus;
+  requestedReason: string;
+  extraAttempts: number | null;
+  decidedReason: string | null;
+  retakeExpireAt: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+  attemptsUsed: number;
+  maxAttempts: number;
+}
+
+export async function requestExamRetake(
+  courseId: string,
+  slotIndex: number,
+  reason: string,
+): Promise<ExamRetakeRequest> {
+  const res = await apiClient.post<ApiResponse<ExamRetakeRequest>>(
+    `/api/student/courses/${encodeURIComponent(courseId)}/exams/${slotIndex}/retake-requests`,
+    { reason },
+  );
+  return unwrap(res.data);
+}
+
+export async function getLatestExamRetakeRequest(
+  courseId: string,
+  slotIndex: number,
+): Promise<ExamRetakeRequest | null> {
+  const res = await apiClient.get<ApiResponse<ExamRetakeRequest | null>>(
+    `/api/student/courses/${encodeURIComponent(courseId)}/exams/${slotIndex}/retake-requests/latest`,
+  );
+  return unwrap(res.data) ?? null;
+}

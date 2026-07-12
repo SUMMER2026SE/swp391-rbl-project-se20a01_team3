@@ -114,6 +114,7 @@ public class ExamService {
     private final UserNotificationService userNotificationService;
     private final RewardService rewardService;
     private final CertificateService certificateService;
+    private final ExamRetakeService examRetakeService;
 
     @Transactional(readOnly = true)
     public List<ExamConfigResponse> listExams(UUID courseId, AuthenticatedUser me) {
@@ -803,7 +804,10 @@ public class ExamService {
     private int enforceStudentAttemptWindow(UUID studentId, ExamConfig config) {
         int submittedCount = examAttemptRepository.countByStudentIdAndExamConfigIdAndSubmittedAtIsNotNull(
                 studentId, config.getId());
-        if (submittedCount >= config.getMaxAttempts()) {
+        // BRULE-RETAKE-001: lượt được GV/Admin duyệt thêm cộng vào maxAttempts gốc.
+        int allowedAttempts = config.getMaxAttempts()
+                + examRetakeService.extraAttemptsGranted(studentId, config.getId());
+        if (submittedCount >= allowedAttempts) {
             throw new BusinessException("RETAKE_LOCKED",
                     "Ban da het luot lam bai kiem tra. Hay gui yeu cau mo them luot neu can.",
                     HttpStatus.FORBIDDEN);
@@ -813,6 +817,8 @@ public class ExamService {
                 .filter(firstAttempt -> firstAttempt.getSubmittedAt() != null)
                 .filter(firstAttempt -> firstAttempt.getSubmittedAt()
                         .isBefore(Instant.now().minus(RETAKE_WINDOW_DAYS, ChronoUnit.DAYS)))
+                // Lần duyệt gần nhất mở lại cửa sổ làm bài đến retake_expire_at.
+                .filter(firstAttempt -> !examRetakeService.hasActiveRetakeWindow(studentId, config.getId()))
                 .ifPresent(firstAttempt -> {
                     throw new BusinessException("RETAKE_LOCKED",
                             "Da qua han 14 ngay ke tu lan nop dau tien. Hay gui yeu cau mo them luot.",

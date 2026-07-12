@@ -236,3 +236,43 @@ export async function gradeTeacherExamAttempt(
   );
   return unwrap(res.data);
 }
+
+export interface TeacherRetakeRequest {
+  id: string;
+  examConfigId: string;
+  courseId: string;
+  courseTitle: string;
+  slotIndex: number;
+  examName: string;
+  studentId: string;
+  studentName: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requestedReason: string;
+  extraAttempts: number | null;
+  decidedReason: string | null;
+  retakeExpireAt: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+  attemptsUsed: number;
+  maxAttempts: number;
+}
+
+export async function listRetakeRequests(): Promise<TeacherRetakeRequest[]> {
+  const res = await apiClient.get<ApiResponse<TeacherRetakeRequest[]>>(
+    '/api/teacher/retake-requests',
+  );
+  return unwrap(res.data) ?? [];
+}
+
+export async function decideRetakeRequest(
+  requestId: string,
+  approve: boolean,
+  reason: string,
+  extraAttempts?: number,
+): Promise<TeacherRetakeRequest> {
+  const res = await apiClient.patch<ApiResponse<TeacherRetakeRequest>>(
+    `/api/teacher/retake-requests/${requestId}/decide`,
+    { approve, reason, extraAttempts },
+  );
+  return unwrap(res.data);
+}

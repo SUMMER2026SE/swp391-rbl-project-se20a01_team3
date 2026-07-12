@@ -1,12 +1,15 @@
 package com.beeacademy.backend.controller;
 
 import com.beeacademy.backend.dto.response.ApiResponse;
+import com.beeacademy.backend.dto.response.ExamRetakeRequestResponse;
 import com.beeacademy.backend.dto.response.StudentExamResponse;
+import com.beeacademy.backend.dto.request.ExamRetakeRequestCreate;
 import com.beeacademy.backend.dto.request.SaveExamDraftRequest;
 import com.beeacademy.backend.dto.request.SubmitExamRequest;
 import com.beeacademy.backend.dto.response.StudentExamSubmissionResponse;
 import com.beeacademy.backend.dto.response.UploadResponse;
 import com.beeacademy.backend.security.CurrentUser;
+import com.beeacademy.backend.service.ExamRetakeService;
 import com.beeacademy.backend.service.ExamService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +34,7 @@ import java.util.UUID;
 public class StudentExamController {
 
     private final ExamService examService;
+    private final ExamRetakeService examRetakeService;
 
     @GetMapping
     public ApiResponse<List<StudentExamResponse>> listCourseExams(@PathVariable UUID courseId) {
@@ -70,5 +74,24 @@ public class StudentExamController {
             @Valid @RequestBody SaveExamDraftRequest request) {
         examService.saveStudentExamDraft(courseId, slotIndex, CurrentUser.required(), request);
         return ApiResponse.ok(null, "Da luu nhap bai kiem tra");
+    }
+
+    @PostMapping("/{slotIndex}/retake-requests")
+    public ApiResponse<ExamRetakeRequestResponse> requestRetake(
+            @PathVariable UUID courseId,
+            @PathVariable Integer slotIndex,
+            @Valid @RequestBody ExamRetakeRequestCreate request) {
+        return ApiResponse.ok(
+                examRetakeService.requestRetake(courseId, slotIndex, CurrentUser.required(), request),
+                "Da gui yeu cau mo them luot lam bai");
+    }
+
+    @GetMapping("/{slotIndex}/retake-requests/latest")
+    public ApiResponse<ExamRetakeRequestResponse> latestRetakeRequest(
+            @PathVariable UUID courseId,
+            @PathVariable Integer slotIndex) {
+        return ApiResponse.ok(
+                examRetakeService.getLatestRequest(courseId, slotIndex, CurrentUser.required())
+                        .orElse(null));
     }
 }

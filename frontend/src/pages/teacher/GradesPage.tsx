@@ -58,6 +58,7 @@ import {
   listTeacherExamAttempts,
   type TeacherExamAttemptResponse,
 } from '../../api/examService';
+import RetakeRequestsPanel from '../../components/teacher/RetakeRequestsPanel';
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Tổng quan', path: '/teacher' },
@@ -664,6 +665,10 @@ export default function TeacherGradesPage() {
                 Làm mới
               </button>
             </div>
+          </div>
+
+          <div className="mb-6">
+            <RetakeRequestsPanel />
           </div>
 
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">

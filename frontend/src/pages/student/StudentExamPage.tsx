@@ -17,9 +17,12 @@ import LatexText from '../../components/LatexText';
 import { isApiError } from '../../api/client';
 import { notify } from '../../lib/toast';
 import {
+  getLatestExamRetakeRequest,
   getStudentExam,
+  requestExamRetake,
   saveStudentExamDraft,
   submitStudentExam,
+  type ExamRetakeRequest,
   type StudentExam,
   type StudentExamAnswerImageUpload,
   type StudentExamQuestion,
@@ -187,6 +190,10 @@ export default function StudentExamPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submission, setSubmission] = useState<StudentExamSubmissionResponse | null>(null);
+  const [retakeLocked, setRetakeLocked] = useState(false);
+  const [retakeRequest, setRetakeRequest] = useState<ExamRetakeRequest | null>(null);
+  const [retakeReason, setRetakeReason] = useState('');
+  const [sendingRetake, setSendingRetake] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [integrityViolations, setIntegrityViolations] = useState(0);
   const autoSubmittingRef = useRef(false);
@@ -401,9 +408,34 @@ export default function StudentExamPage() {
         window.localStorage.removeItem(draftKey);
       }
     } catch (err) {
+      if (isApiError(err) && err.code === 'RETAKE_LOCKED') {
+        setRetakeLocked(true);
+        getLatestExamRetakeRequest(courseId, parsedSlotIndex)
+          .then(setRetakeRequest)
+          .catch(() => {});
+      }
       setSubmitError(err instanceof Error ? err.message : 'Khong the nop bai kiem tra.');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSendRetakeRequest() {
+    if (!courseId || sendingRetake) return;
+    if (retakeReason.trim().length < 10) {
+      notify.error('Lý do cần tối thiểu 10 ký tự.');
+      return;
+    }
+    setSendingRetake(true);
+    try {
+      const created = await requestExamRetake(courseId, parsedSlotIndex, retakeReason.trim());
+      setRetakeRequest(created);
+      setRetakeReason('');
+      notify.success('Đã gửi yêu cầu mở thêm lượt cho giáo viên.');
+    } catch (err) {
+      notify.error(isApiError(err) ? err.message : 'Không gửi được yêu cầu.');
+    } finally {
+      setSendingRetake(false);
     }
   }
 
@@ -914,6 +946,48 @@ export default function StudentExamPage() {
                 {submitError && (
                   <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
                     {submitError}
+                  </div>
+                )}
+                {retakeLocked && !submission && (
+                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                    <p className="text-xs font-extrabold text-amber-800">
+                      Yêu cầu mở thêm lượt làm bài
+                    </p>
+                    {retakeRequest?.status === 'PENDING' ? (
+                      <p className="text-xs font-semibold text-amber-700">
+                        Yêu cầu của bạn đang chờ giáo viên duyệt. Bạn sẽ nhận thông báo khi có kết quả.
+                      </p>
+                    ) : retakeRequest?.status === 'APPROVED' ? (
+                      <p className="text-xs font-semibold text-green-700">
+                        Yêu cầu gần nhất đã được duyệt (+{retakeRequest.extraAttempts} lượt).
+                        Nếu vẫn bị khóa, bạn đã dùng hết lượt được cấp — có thể gửi yêu cầu mới bên dưới.
+                      </p>
+                    ) : retakeRequest?.status === 'REJECTED' ? (
+                      <p className="text-xs font-semibold text-red-700">
+                        Yêu cầu trước bị từ chối: {retakeRequest.decidedReason ?? 'không có lý do'}.
+                        Bạn có thể gửi lại yêu cầu mới bên dưới.
+                      </p>
+                    ) : null}
+                    {retakeRequest?.status !== 'PENDING' && (
+                      <>
+                        <textarea
+                          value={retakeReason}
+                          onChange={e => setRetakeReason(e.target.value)}
+                          rows={3}
+                          maxLength={1000}
+                          placeholder="Nêu lý do bạn cần mở thêm lượt (tối thiểu 10 ký tự)..."
+                          className="w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs font-medium text-on-surface focus:outline-none focus:border-amber-400"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSendRetakeRequest}
+                          disabled={sendingRetake || retakeReason.trim().length < 10}
+                          className="w-full rounded-xl bg-amber-500 px-3 py-2 text-xs font-extrabold text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {sendingRetake ? 'Đang gửi...' : 'Gửi yêu cầu cho giáo viên'}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
                 {submission ? (
