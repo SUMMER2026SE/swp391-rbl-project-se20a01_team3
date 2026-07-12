@@ -87,6 +87,7 @@ export async function markAdminNotificationRead(notificationId: string):
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type PayoutStatus = 'PENDING' | 'PROCESSING' | 'PAID';
+export type BankVerifyStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
 
 /** Một dòng đối soát — mỗi GV trong 1 kỳ (tháng). */
 export interface AdminPayoutRow {
@@ -97,6 +98,8 @@ export interface AdminPayoutRow {
   bankName: string | null;
   accountNumber: string | null;
   accountHolder: string | null;
+  /** TK chưa VERIFIED thì kỳ chi trả bị hold (REQ-ADM-006 AC6). */
+  bankVerifyStatus: BankVerifyStatus | null;
   totalGross: number;
   platformFee: number;
   teacherAmount: number;
@@ -137,6 +140,42 @@ export async function confirmPayout(
   const res = await apiClient.patch<ApiResponse<AdminPayoutRow>>(
     `/api/admin/payouts/${periodId}/confirm`,
     payload,
+  );
+  return unwrap(res.data);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Duyệt TK ngân hàng GV — TK PENDING giữ (hold) chi trả cho tới khi Admin duyệt
+//  GET   /api/admin/bank-accounts/pending
+//  PATCH /api/admin/bank-accounts/:teacherId/review
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AdminBankAccount {
+  teacherId: string;
+  teacherName: string;
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  branch: string | null;
+  verifyStatus: BankVerifyStatus;
+  updatedAt: string;
+}
+
+export async function getPendingBankAccounts(): Promise<AdminBankAccount[]> {
+  const res = await apiClient.get<ApiResponse<AdminBankAccount[]>>(
+    '/api/admin/bank-accounts/pending',
+  );
+  return unwrap(res.data) ?? [];
+}
+
+export async function reviewBankAccount(
+  teacherId: string,
+  approve: boolean,
+  note?: string,
+): Promise<AdminBankAccount> {
+  const res = await apiClient.patch<ApiResponse<AdminBankAccount>>(
+    `/api/admin/bank-accounts/${teacherId}/review`,
+    { approve, note },
   );
   return unwrap(res.data);
 }
