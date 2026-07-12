@@ -808,8 +808,8 @@ export default function TeacherCoursesPage() {
       setCourses(prev => prev.filter(c => c.id !== deleteTarget.id));
       notify.success(`Đã xóa "${deleteTarget.title}"`);
       setDeleteTarget(null);
-    } catch {
-      notify.error('Không xóa được khóa học');
+    } catch (err: unknown) {
+      notify.error(isApiError(err) ? err.message : 'Không xóa được khóa học');
     } finally {
       setDeleting(false);
     }
@@ -1107,8 +1107,7 @@ export default function TeacherCoursesPage() {
                           // Chỉ draft | rejected | needs_revision mới cho nộp duyệt
                           const canSubmit = SUBMITTABLE.includes(course.status);
                           const canEdit = EDITABLE_STATUSES.includes(course.status);
-                          // Chỉ draft | needs_revision mới cho xóa (không xóa khi đang pending hoặc published)
-                          const canDelete = course.status === 'draft';
+                          const canDelete = true;
                           const isSubmitting = submittingId === course.id;
 
                           return (
@@ -1241,18 +1240,14 @@ export default function TeacherCoursesPage() {
                                     <MessageSquare className="w-4 h-4" />
                                   </button>
 
-                                  {/* Xóa — chỉ khi draft */}
-                                  {canDelete ? (
-                                    <button
-                                      onClick={() => setDeleteTarget(course)}
-                                      title="Xóa"
-                                      className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  ) : (
-                                    <div className="w-8 h-8" aria-hidden="true" />
-                                  )}
+                                  <button
+                                    onClick={() => setDeleteTarget(course)}
+                                    disabled={!canDelete}
+                                    title="Xóa"
+                                    className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
                                 </div>
                               </td>
                             </motion.tr>
@@ -1280,7 +1275,7 @@ export default function TeacherCoursesPage() {
                 <Link to="/teacher/content" className="font-semibold text-blue-600 underline underline-offset-2">Thêm chương & bài giảng</Link>
                 {' '}→ Nộp duyệt → Admin xem xét → Duyệt hoặc Yêu cầu sửa.{' '}
                 <span className="font-bold text-on-surface">Phải có ít nhất 1 chương và 1 bài giảng</span> trước khi nộp.
-                {' '}Khóa học đã duyệt <span className="font-bold text-on-surface">không thể xóa</span> — liên hệ Admin qua Khiếu nại.
+                {' '}Khi xóa khóa học, hệ thống sẽ yêu cầu xác nhận và thông báo nếu backend không cho phép.
               </p>
             </motion.div>
           )}

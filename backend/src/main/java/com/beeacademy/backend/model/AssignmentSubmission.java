@@ -69,4 +69,30 @@ public class AssignmentSubmission {
         this.status = "graded";
         this.gradedAt = Instant.now();
     }
+
+    public static AssignmentSubmission submit(Assignment assignment, Profile student,
+                                              String content, String fileUrlsJson) {
+        AssignmentSubmission submission = new AssignmentSubmission();
+        submission.id = UUID.randomUUID();
+        submission.assignment = assignment;
+        submission.student = student;
+        submission.applyContent(content, fileUrlsJson);
+        return submission;
+    }
+
+    public void resubmit(String content, String fileUrlsJson) {
+        applyContent(content, fileUrlsJson);
+        this.score = null;
+        this.feedback = null;
+        this.gradedBy = null;
+        this.gradedAt = null;
+    }
+
+    private void applyContent(String content, String fileUrlsJson) {
+        this.content = content == null || content.isBlank() ? null : content.trim();
+        this.fileUrlsJson = fileUrlsJson == null || fileUrlsJson.isBlank()
+                ? "[]" : fileUrlsJson;
+        this.status = "submitted";
+        this.submittedAt = Instant.now();
+    }
 }

@@ -101,6 +101,12 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
   );
 }
 
+function correctChoiceCount(
+  choices: Array<{ isCorrect: boolean | null | undefined }>,
+) {
+  return choices.filter(choice => Boolean(choice.isCorrect)).length;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function QuizChapterPage() {
@@ -637,7 +643,9 @@ export default function QuizChapterPage() {
                                       <div className="flex items-center gap-2 mt-1">
                                         <DiffBadge d={q.difficulty} />
                                         <span className="text-xs text-on-surface-variant">
-                                          {q.type === 'multiple_choice' ? 'Trắc nghiệm' : 'Đúng/Sai'}
+                                          {q.type === 'multiple_choice'
+                                            ? (correctChoiceCount(q.choices) > 1 ? 'Trắc nghiệm nhiều đáp án' : 'Trắc nghiệm 1 đáp án')
+                                            : 'Đúng/Sai'}
                                         </span>
                                         {q.usageCount > 0 && (
                                           <span className="text-xs text-on-surface-variant">· dùng {q.usageCount} lần</span>

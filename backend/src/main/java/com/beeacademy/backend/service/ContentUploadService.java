@@ -32,8 +32,8 @@ import java.util.UUID;
  * <ul>
  *   <li>{@code course-videos} — PRIVATE. Video phải được truy cập qua
  *       signed URL (TTL 1 giờ). Lưu {@code storagePath}, không lưu URL.</li>
- *   <li>{@code course-docs}   — PUBLIC. PDF/slide truy cập trực tiếp
- *       qua public URL, không cần signed URL.</li>
+ *   <li>{@code course-documents} — PRIVATE. PDF/slide chỉ được tải qua
+ *       one-time download link do UC15 cấp.</li>
  * </ul>
  */
 @Slf4j
@@ -42,8 +42,10 @@ import java.util.UUID;
 public class ContentUploadService {
 
     private static final String VIDEO_BUCKET = "course-videos";
-    private static final String DOCS_BUCKET  = "course-docs";
-    private static final String THUMBNAIL_BUCKET = DOCS_BUCKET;
+    private static final String DOCS_BUCKET  = "course-documents";
+    private static final String PUBLIC_ASSET_BUCKET = "course-docs";
+    private static final String THUMBNAIL_BUCKET = PUBLIC_ASSET_BUCKET;
+    private static final String QUESTION_ASSET_BUCKET = PUBLIC_ASSET_BUCKET;
 
     private static final Set<String> ALLOWED_VIDEO_MIME = Set.of(
             "video/mp4", "video/webm", "video/quicktime");
@@ -55,10 +57,30 @@ public class ContentUploadService {
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     private static final Set<String> ALLOWED_THUMBNAIL_MIME = Set.of(
             "image/jpeg", "image/png", "image/webp");
+    private static final Set<String> ALLOWED_QUESTION_IMAGE_MIME = Set.of(
+            "image/jpeg", "image/jpg", "image/png", "image/webp");
+    private static final Set<String> ALLOWED_QUESTION_AUDIO_MIME = Set.of(
+            "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav",
+            "audio/ogg", "audio/mp4", "audio/x-m4a", "audio/aac", "audio/m4a");
+    private static final Set<String> ALLOWED_QUESTION_IMAGE_EXT = Set.of(
+            "jpg", "jpeg", "png", "webp");
+    private static final Set<String> ALLOWED_QUESTION_AUDIO_EXT = Set.of(
+            "mp3", "wav", "ogg", "m4a", "aac");
+
+    private static final Set<String> ALLOWED_SUBMISSION_MIME = Set.of(
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "image/jpeg", "image/png", "image/webp");
 
     private static final long MAX_VIDEO_BYTES = 2L * 1024 * 1024 * 1024; // 2 GB
     private static final long MAX_DOC_BYTES   = 100L * 1024 * 1024;      // 100 MB
+    private static final long MAX_SUBMISSION_BYTES = 20L * 1024 * 1024;  // 20 MB
     private static final long MAX_THUMBNAIL_BYTES = 5L * 1024 * 1024; // 5 MB
+    private static final long MAX_QUESTION_IMAGE_BYTES = 5L * 1024 * 1024;
+    private static final long MAX_QUESTION_AUDIO_BYTES = 20L * 1024 * 1024;
 
     private final SupabaseStorageClient  storageClient;
     private final CourseRepository       courseRepository;
@@ -121,7 +143,7 @@ public class ContentUploadService {
     // ========================================================================
 
     /**
-     * Upload tài liệu (PDF/slide) lên public bucket và lưu metadata vào DB.
+     * Upload tài liệu (PDF/slide) lên private bucket và lưu metadata vào DB.
      *
      * <p>BUG FIX so với phiên bản cũ:
      * <ol>
@@ -130,7 +152,7 @@ public class ContentUploadService {
      *       — trước đây chỉ trả URL, không persist → reload trang là mất dữ liệu.</li>
      * </ol>
      *
-     * @return UploadResponse với publicUrl truy cập trực tiếp
+     * @return UploadResponse không chứa public URL
      */
     @Transactional
     public UploadResponse uploadDocument(UUID lessonId, UUID teacherId,
@@ -157,8 +179,8 @@ public class ContentUploadService {
         String path     = lessonId + "/" + UUID.randomUUID() + "." + ext;
         String fileType = ext;
 
-        String publicUrl = storageClient.upload(DOCS_BUCKET, path,
-                                                file.getContentType(), file.getResource(), file.getSize());
+        storageClient.upload(DOCS_BUCKET, path,
+                             file.getContentType(), file.getResource(), file.getSize());
         deleteUploadedObjectOnRollback(DOCS_BUCKET, path);
 
         // DATA FIX: lưu CourseDocument vào DB để lesson detail có thể load lại được.
@@ -172,12 +194,34 @@ public class ContentUploadService {
         String name   = (displayName != null && !displayName.isBlank())
                         ? displayName.trim()
                         : file.getOriginalFilename();
-        CourseDocument doc = CourseDocument.create(lesson, name, publicUrl,
+        CourseDocument doc = CourseDocument.create(lesson, name, null, path, DOCS_BUCKET,
                                                    fileType, file.getSize(), position);
         documentRepository.save(doc);
 
-        log.info("Upload tài liệu thành công: lessonId={} path={} url={}", lessonId, path, publicUrl);
-        return new UploadResponse(path, publicUrl, fileType, file.getSize());
+        log.info("Upload tài liệu private thành công: lessonId={} path={}", lessonId, path);
+        return new UploadResponse(path, null, fileType, file.getSize());
+    }
+
+    /**
+     * Upload file bài làm của học sinh (UC16) lên public bucket.
+     * Enrollment check thực hiện ở AssignmentService.verifyCanSubmit trước khi gọi.
+     */
+    @Transactional
+    public UploadResponse uploadAssignmentFile(UUID assignmentId, UUID studentId,
+                                                MultipartFile file) {
+        validateFile(file, ALLOWED_SUBMISSION_MIME, MAX_SUBMISSION_BYTES,
+                     "PDF, DOCX, PPTX hoặc ảnh JPEG/PNG/WEBP", "20MB");
+
+        String ext  = getExtension(file.getOriginalFilename(), "pdf");
+        String path = "assignment-submissions/" + assignmentId + "/" + studentId + "/"
+                + UUID.randomUUID() + "." + ext;
+
+        String publicUrl = storageClient.upload(DOCS_BUCKET, path,
+                                                file.getContentType(), file.getResource(), file.getSize());
+
+        log.info("Upload file bài làm thành công: assignmentId={} studentId={} path={}",
+                 assignmentId, studentId, path);
+        return new UploadResponse(path, publicUrl, ext, file.getSize());
     }
 
     /** Xóa đúng tài liệu theo id sau khi xác minh giáo viên sở hữu bài giảng. */
@@ -235,12 +279,46 @@ public class ContentUploadService {
         String ext = getExtension(file.getOriginalFilename(), "mp4");
         String path = "course-intros/" + teacherId + "/" + UUID.randomUUID() + "." + ext;
 
-        String publicUrl = storageClient.upload(DOCS_BUCKET, path,
+        String publicUrl = storageClient.upload(PUBLIC_ASSET_BUCKET, path,
                                                 file.getContentType(), file.getResource(), file.getSize());
 
         log.info("Upload course intro video thanh cong: teacherId={} path={} url={}",
                  teacherId, path, publicUrl);
         return new UploadResponse(path, publicUrl, file.getContentType(), file.getSize());
+    }
+
+    @Transactional
+    public UploadResponse uploadQuestionImage(UUID teacherId, MultipartFile file) {
+        validateFileByMimeOrExtension(file,
+                ALLOWED_QUESTION_IMAGE_MIME, ALLOWED_QUESTION_IMAGE_EXT, MAX_QUESTION_IMAGE_BYTES,
+                "anh JPEG, PNG hoac WEBP", "5MB");
+
+        String contentType = normalizeQuestionImageContentType(file);
+        String ext = imageExtension(contentType);
+        String path = "question-assets/" + teacherId + "/images/" + UUID.randomUUID() + "." + ext;
+        String publicUrl = storageClient.upload(QUESTION_ASSET_BUCKET, path,
+                contentType, file.getResource(), file.getSize());
+
+        log.info("Upload question image thanh cong: teacherId={} path={} url={}",
+                teacherId, path, publicUrl);
+        return new UploadResponse(path, publicUrl, contentType, file.getSize());
+    }
+
+    @Transactional
+    public UploadResponse uploadQuestionAudio(UUID teacherId, MultipartFile file) {
+        validateFileByMimeOrExtension(file,
+                ALLOWED_QUESTION_AUDIO_MIME, ALLOWED_QUESTION_AUDIO_EXT, MAX_QUESTION_AUDIO_BYTES,
+                "audio MP3, WAV, OGG, M4A hoac AAC", "20MB");
+
+        String contentType = normalizeQuestionAudioContentType(file);
+        String ext = audioExtension(contentType, file.getOriginalFilename());
+        String path = "question-assets/" + teacherId + "/audio/" + UUID.randomUUID() + "." + ext;
+        String publicUrl = storageClient.upload(QUESTION_ASSET_BUCKET, path,
+                contentType, file.getResource(), file.getSize());
+
+        log.info("Upload question audio thanh cong: teacherId={} path={} url={}",
+                teacherId, path, publicUrl);
+        return new UploadResponse(path, publicUrl, contentType, file.getSize());
     }
 
     public String generateSignedVideoUrl(String storagePath) {
@@ -263,16 +341,17 @@ public class ContentUploadService {
         }
         videoPaths.forEach(path -> scheduleDeleteAfterCommit(VIDEO_BUCKET, path));
 
-        LinkedHashSet<String> docPaths = new LinkedHashSet<>();
+        LinkedHashSet<String> docObjects = new LinkedHashSet<>();
         if (documents != null) {
             documents.stream()
-                    .map(CourseDocument::getFileUrl)
-                    .map(url -> extractPublicObjectPath(DOCS_BUCKET, url))
+                    .map(this::documentStorageObject)
                     .filter(Objects::nonNull)
-                    .filter(path -> !path.isBlank())
-                    .forEach(docPaths::add);
+                    .forEach(docObjects::add);
         }
-        docPaths.forEach(path -> scheduleDeleteAfterCommit(DOCS_BUCKET, path));
+        docObjects.forEach(object -> {
+            int separator = object.indexOf('|');
+            scheduleDeleteAfterCommit(object.substring(0, separator), object.substring(separator + 1));
+        });
     }
 
     // ========================================================================
@@ -310,6 +389,16 @@ public class ContentUploadService {
                 cleanup.run();
             }
         });
+    }
+
+    private String documentStorageObject(CourseDocument document) {
+        String bucket = document.getStorageBucket();
+        String path = document.getStoragePath();
+        if (bucket == null || bucket.isBlank()) bucket = PUBLIC_ASSET_BUCKET;
+        if (path == null || path.isBlank()) {
+            path = extractPublicObjectPath(PUBLIC_ASSET_BUCKET, document.getFileUrl());
+        }
+        return path == null || path.isBlank() ? null : bucket + "|" + path;
     }
 
     private void deleteObjectQuietly(String bucket, String path) {
@@ -366,9 +455,61 @@ public class ContentUploadService {
      * Lấy phần mở rộng file từ tên gốc.
      * Trả defaultExt nếu không xác định được (null, không có dấu chấm).
      */
+    private void validateFileByMimeOrExtension(MultipartFile file,
+                                               Set<String> allowedMime,
+                                               Set<String> allowedExtensions,
+                                               long maxBytes, String typeDesc,
+                                               String sizeDesc) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException("FILE_REQUIRED", "Vui lÃ²ng chá»n file Ä‘á»ƒ upload.");
+        }
+        String mime = file.getContentType() == null ? "" : file.getContentType().trim().toLowerCase();
+        String ext = getExtension(file.getOriginalFilename(), "").toLowerCase();
+        boolean mimeAllowed = !mime.isBlank() && allowedMime.contains(mime);
+        boolean extAllowed = !ext.isBlank() && allowedExtensions.contains(ext);
+        if (!mimeAllowed && !extAllowed) {
+            throw new BusinessException("INVALID_FILE_TYPE",
+                    "Chá»‰ cháº¥p nháº­n " + typeDesc + ".");
+        }
+        if (file.getSize() > maxBytes) {
+            throw new BusinessException("FILE_TOO_LARGE",
+                    "File khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ " + sizeDesc + ".");
+        }
+    }
+
     private String getExtension(String filename, String defaultExt) {
         if (filename == null || !filename.contains(".")) return defaultExt;
         return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+    }
+
+    private String normalizeQuestionImageContentType(MultipartFile file) {
+        String mime = file.getContentType() == null ? "" : file.getContentType().trim().toLowerCase();
+        if (!mime.isBlank()) {
+            if ("image/jpg".equals(mime)) return "image/jpeg";
+            return mime;
+        }
+        return switch (getExtension(file.getOriginalFilename(), "").toLowerCase()) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "webp" -> "image/webp";
+            default -> "image/jpeg";
+        };
+    }
+
+    private String normalizeQuestionAudioContentType(MultipartFile file) {
+        String mime = file.getContentType() == null ? "" : file.getContentType().trim().toLowerCase();
+        if (!mime.isBlank()) {
+            if ("audio/m4a".equals(mime)) return "audio/x-m4a";
+            return mime;
+        }
+        return switch (getExtension(file.getOriginalFilename(), "").toLowerCase()) {
+            case "mp3" -> "audio/mpeg";
+            case "wav" -> "audio/wav";
+            case "ogg" -> "audio/ogg";
+            case "m4a" -> "audio/x-m4a";
+            case "aac" -> "audio/aac";
+            default -> "audio/mpeg";
+        };
     }
 
     private String imageExtension(String contentType) {
@@ -377,6 +518,17 @@ public class ContentUploadService {
             case "image/png" -> "png";
             case "image/webp" -> "webp";
             default -> "jpg";
+        };
+    }
+
+    private String audioExtension(String contentType, String originalFilename) {
+        return switch (contentType) {
+            case "audio/mpeg", "audio/mp3" -> "mp3";
+            case "audio/wav", "audio/x-wav" -> "wav";
+            case "audio/ogg" -> "ogg";
+            case "audio/mp4", "audio/x-m4a" -> "m4a";
+            case "audio/aac" -> "aac";
+            default -> getExtension(originalFilename, "mp3");
         };
     }
 }

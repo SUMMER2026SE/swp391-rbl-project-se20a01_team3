@@ -68,4 +68,25 @@ public class OrderController {
         OrderResponse order = orderService.verifyPayment(orderId, userId);
         return ResponseEntity.ok(ApiResponse.ok(order));
     }
+
+    /**
+     * Đối soát tất cả đơn PENDING của user với PayOS — fix trường hợp user
+     * thanh toán xong nhưng đóng tab/reload app trước khi về payment-result
+     * nên verifyPayment không chạy và webhook không đến được (local dev).
+     * Frontend gọi một lần khi app khởi động.
+     */
+    @PostMapping("/reconcile")
+    @PreAuthorize("hasRole('student')")
+    public ResponseEntity<ApiResponse<List<OrderResponse>>> reconcileOrders() {
+        UUID userId = CurrentUser.required().userId();
+        return ResponseEntity.ok(ApiResponse.ok(orderService.reconcilePendingOrders(userId)));
+    }
+
+    @PostMapping("/{orderId}/cancel")
+    public ResponseEntity<ApiResponse<OrderResponse>> cancelOrder(
+            @PathVariable UUID orderId) {
+        UUID userId = CurrentUser.required().userId();
+        OrderResponse order = orderService.cancelOrder(orderId, userId);
+        return ResponseEntity.ok(ApiResponse.ok(order));
+    }
 }

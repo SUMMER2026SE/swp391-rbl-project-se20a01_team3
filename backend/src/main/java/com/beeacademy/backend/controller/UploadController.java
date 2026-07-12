@@ -102,4 +102,20 @@ public class UploadController {
                 CurrentUser.required().userId(), file);
         return ApiResponse.ok(result, "Upload video gioi thieu thanh cong");
     }
+
+    @PostMapping("/question-image")
+    public ApiResponse<UploadResponse> uploadQuestionImage(
+            @RequestParam("file") MultipartFile file) {
+        UploadResponse result = uploadService.uploadQuestionImage(
+                CurrentUser.required().userId(), file);
+        return ApiResponse.ok(result, "Upload anh cau hoi thanh cong");
+    }
+
+    @PostMapping("/question-audio")
+    public ApiResponse<UploadResponse> uploadQuestionAudio(
+            @RequestParam("file") MultipartFile file) {
+        UploadResponse result = uploadService.uploadQuestionAudio(
+                CurrentUser.required().userId(), file);
+        return ApiResponse.ok(result, "Upload audio cau hoi thanh cong");
+    }
 }

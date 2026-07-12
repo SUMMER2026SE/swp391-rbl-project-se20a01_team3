@@ -56,7 +56,11 @@ public class SystemSettingsService {
     @Transactional
     public SystemSettingsResponse updateSettings(UpdateSystemSettingsRequest request) {
         SystemSettings settings = getOrCreate();
-        boolean turningOn = request.maintenanceMode() && !settings.isMaintenanceMode();
+        // Cũng coi là "vừa bật" nếu bảo trì đã bật sẵn nhưng chưa từng có mốc
+        // giờ (dữ liệu cũ từ trước khi có tính năng đếm ngược) - tự phục hồi
+        // thay vì kẹt ở null mãi mãi cho tới khi Admin tắt rồi bật lại.
+        boolean turningOn = request.maintenanceMode()
+                && (!settings.isMaintenanceMode() || settings.getMaintenanceStartedAt() == null);
 
         settings.setMaintenanceMode(request.maintenanceMode());
         settings.setPlatformFeePercent(request.platformFeePercent());

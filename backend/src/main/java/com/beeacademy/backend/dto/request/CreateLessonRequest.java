@@ -23,5 +23,10 @@ public record CreateLessonRequest(
         String videoEmbedUrl,
 
         /** upload | embed | none — FE gửi để backend biết intent khi lưu. */
-        String videoSource
+        String videoSource,
+        String completionRule,
+        String transcript,
+        String subtitleUrl,
+        String slideCueSeconds,
+        String videoFallbackUrl
 ) {}

@@ -41,8 +41,13 @@ export interface TeacherLessonResponse {
   videoEmbedUrl: string | null;
   videoStoragePath: string | null;
   videoUrl: string | null;
+  videoFallbackUrl: string | null;
   durationSec: number;
   hasVideo: boolean;
+  completionRule: 'DOCUMENT_OPENED' | 'MARK_AS_COMPLETE' | 'ASSIGNMENT_SUBMITTED' | 'ASSIGNMENT_PASSED' | null;
+  transcript: string | null;
+  subtitleUrl: string | null;
+  slideCueSeconds: string | null;
   documents: Array<{
     id: string;
     name: string;
@@ -111,6 +116,11 @@ export interface CreateLessonRequest {
   isFree: boolean;
   videoEmbedUrl?: string;
   videoSource?: 'upload' | 'embed' | 'none';
+  completionRule?: 'DOCUMENT_OPENED' | 'MARK_AS_COMPLETE' | 'ASSIGNMENT_SUBMITTED' | 'ASSIGNMENT_PASSED';
+  transcript?: string;
+  subtitleUrl?: string;
+  slideCueSeconds?: string;
+  videoFallbackUrl?: string;
 }
 
 // ─── Course CRUD ─────────────────────────────────────────────────────────────

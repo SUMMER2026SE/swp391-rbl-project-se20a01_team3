@@ -11,6 +11,9 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+
 /**
  * Client gọi Supabase Storage REST API để upload/xoá file binary.
  *
@@ -73,6 +76,28 @@ public class SupabaseStorageClient {
     public String upload(String bucket, String objectPath, String contentType,
                          Resource resource, long contentLength) {
         return uploadBody(bucket, objectPath, contentType, resource, contentLength);
+    }
+
+    /** Đọc binary object để backend watermark PDF trước khi cấp quyền tải. */
+    public byte[] download(String bucket, String objectPath) {
+        String uri = STORAGE_OBJECT_PATH + "/" + bucket + "/" + objectPath;
+        try {
+            byte[] body = restClient.get()
+                    .uri(uri)
+                    .header("apikey", serviceRoleKey)
+                    .header("Authorization", "Bearer " + serviceRoleKey)
+                    .retrieve()
+                    .body(byte[].class);
+            if (body == null) {
+                throw new BusinessException("DOCUMENT_UNAVAILABLE", "Tệp tạm thời không khả dụng.");
+            }
+            return body;
+        } catch (HttpClientErrorException ex) {
+            throw mapClientError(ex, "download " + objectPath);
+        } catch (RestClientException ex) {
+            throw new BusinessException("DOCUMENT_UNAVAILABLE",
+                    "Tệp tạm thời không khả dụng.", HttpStatus.SERVICE_UNAVAILABLE);
+        }
     }
 
     private String uploadBody(String bucket, String objectPath, String contentType,
@@ -185,6 +210,16 @@ public class SupabaseStorageClient {
             throw new BusinessException("SIGNED_URL_FAILED",
                     "Không thể tạo đường dẫn xem video. Vui lòng thử lại.");
         }
+    }
+
+    /** Signed URL tai file kem Content-Disposition download va ten file theo nghiep vu. */
+    public String generateSignedDownloadUrl(String bucket, String objectPath,
+                                            int expiresInSeconds, String filename) {
+        String signedUrl = generateSignedUrl(bucket, objectPath, expiresInSeconds);
+        if (filename == null || filename.isBlank()) return signedUrl;
+        String separator = signedUrl.contains("?") ? "&" : "?";
+        return signedUrl + separator + "download="
+                + URLEncoder.encode(filename, StandardCharsets.UTF_8);
     }
 
     /** DTO nội bộ để parse response signed URL từ Supabase. */
