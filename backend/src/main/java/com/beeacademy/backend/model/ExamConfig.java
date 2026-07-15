@@ -43,8 +43,14 @@ public class ExamConfig {
     @JoinColumn(name = "teacher_id", nullable = false)
     private Profile teacher;
 
+    @Column(name = "course_version_id")
+    private UUID courseVersionId;
+
     @Column(name = "slot_index", nullable = false)
     private Integer slotIndex;
+
+    @Column(name = "exam_type", nullable = false)
+    private String examType;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "scope_start_chapter_id")
@@ -78,6 +84,12 @@ public class ExamConfig {
     @Column(name = "show_answer_after_submit", nullable = false)
     private Boolean showAnswerAfterSubmit;
 
+    @Column(name = "require_fullscreen", nullable = false)
+    private Boolean requireFullscreen;
+
+    @Column(name = "block_copy_paste", nullable = false)
+    private Boolean blockCopyPaste;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "questions", nullable = false, columnDefinition = "jsonb")
     private String questionsJson;
@@ -97,6 +109,8 @@ public class ExamConfig {
                                     Integer durationMinutes, Integer passScorePercent,
                                     Integer maxAttempts, Boolean shuffleQuestions,
                                     Boolean shuffleOptions, Boolean showAnswerAfterSubmit,
+                                    String examType, Boolean requireFullscreen,
+                                    Boolean blockCopyPaste,
                                     String questionsJson) {
         ExamConfig config = new ExamConfig();
         config.id = UUID.randomUUID();
@@ -105,8 +119,13 @@ public class ExamConfig {
         config.slotIndex = slotIndex;
         config.update(scopeStartChapter, placementChapter, name, description,
                 durationMinutes, passScorePercent, maxAttempts,
-                shuffleQuestions, shuffleOptions, showAnswerAfterSubmit, questionsJson);
+                shuffleQuestions, shuffleOptions, showAnswerAfterSubmit,
+                examType, requireFullscreen, blockCopyPaste, questionsJson);
         return config;
+    }
+
+    public void assignCourseVersion(UUID courseVersionId) {
+        this.courseVersionId = courseVersionId;
     }
 
     public void update(Chapter scopeStartChapter, Chapter placementChapter,
@@ -114,9 +133,12 @@ public class ExamConfig {
                        Integer durationMinutes, Integer passScorePercent,
                        Integer maxAttempts, Boolean shuffleQuestions,
                        Boolean shuffleOptions, Boolean showAnswerAfterSubmit,
+                       String examType, Boolean requireFullscreen,
+                       Boolean blockCopyPaste,
                        String questionsJson) {
         this.scopeStartChapter = scopeStartChapter;
         this.placementChapter = placementChapter;
+        this.examType = examType;
         this.name = name;
         this.description = description;
         this.durationMinutes = durationMinutes;
@@ -125,6 +147,8 @@ public class ExamConfig {
         this.shuffleQuestions = shuffleQuestions;
         this.shuffleOptions = shuffleOptions;
         this.showAnswerAfterSubmit = showAnswerAfterSubmit;
+        this.requireFullscreen = requireFullscreen;
+        this.blockCopyPaste = blockCopyPaste;
         this.questionsJson = questionsJson;
     }
 }

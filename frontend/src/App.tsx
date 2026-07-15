@@ -17,9 +17,13 @@ import FavoritesPage from './pages/student/FavoritesPage';
 import AccountPage from './pages/student/AccountPage';
 import AvatarPage from './pages/student/AvatarPage';
 import ComplaintsPage from './pages/student/ComplaintsPage';
+import ProgressPage from './pages/student/ProgressPage';
+import RewardsPage from './pages/student/RewardsPage';
 import StudentQuizPage from './pages/student/StudentQuizPage';
 import StudentExamPage from './pages/student/StudentExamPage';
 import NotificationsPage from './pages/student/NotificationsPage';
+import CertificatesPage from './pages/student/CertificatesPage';
+import AiTutorPage from './pages/student/AiTutorPage';
 import DashboardAdmin from './pages/admin/DashboardAdmin';
 import DashboardTeacher from './pages/teacher/DashboardTeacher';
 import TeacherCoursesPage from './pages/teacher/CoursesPage';
@@ -38,6 +42,7 @@ import TeacherAccountPage from './pages/teacher/AccountPage';
 import ApprovalsPage from './pages/admin/ApprovalsPage';
 import CourseReviewPage from './pages/admin/CourseReviewPage';
 import OAuthCallbackPage from './pages/common/OAuthCallbackPage';
+import CertificateVerifyPage from './pages/common/CertificateVerifyPage';
 import ParentDashboard from './pages/parents/ParentDashboard';
 import ParentCourses from './pages/parents/ParentCourses';
 import ParentProgress from './pages/parents/ParentProgress';
@@ -59,6 +64,7 @@ export default function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/auth/callback" element={<OAuthCallbackPage />} />
+        <Route path="/certificates/verify/:verificationCode" element={<CertificateVerifyPage />} />
 
 
         {/* ── Student (cần đăng nhập) ── */}
@@ -74,6 +80,10 @@ export default function App() {
         <Route path="/payment-result" element={<ProtectedRoute role="student"><PaymentResultPage /></ProtectedRoute>} />
         <Route path="/orders"        element={<ProtectedRoute role="student"><OrdersPage /></ProtectedRoute>} />
         <Route path="/favorites"     element={<ProtectedRoute role="student"><FavoritesPage /></ProtectedRoute>} />
+        <Route path="/progress"      element={<ProtectedRoute role="student"><ProgressPage /></ProtectedRoute>} />
+        <Route path="/rewards"       element={<ProtectedRoute role="student"><RewardsPage /></ProtectedRoute>} />
+        <Route path="/certificates"  element={<ProtectedRoute role="student"><CertificatesPage /></ProtectedRoute>} />
+        <Route path="/ai-tutor"      element={<ProtectedRoute role="student"><AiTutorPage /></ProtectedRoute>} />
         <Route path="/messages"      element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
         <Route path="/profile"       element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         <Route path="/account/type"  element={<ProtectedRoute><ComingSoonPage title="Loại tài khoản" subtitle="Quản lý gói đăng ký của bạn" /></ProtectedRoute>} />

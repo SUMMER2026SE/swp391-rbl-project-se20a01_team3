@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { CheckCircle2, XCircle, Clock, ArrowRight, RotateCcw, BookOpen } from 'lucide-react';
-import { getOrderStatus, verifyPayment, type OrderResponse } from '../../api/orderService';
+import { cancelOrder, getOrderStatus, verifyPayment, type OrderResponse } from '../../api/orderService';
 import { useCartStore } from '../../store/useCartStore';
 import { useCourseStore } from '../../store/useCourseStore';
 
@@ -30,7 +30,9 @@ export default function PaymentResultPage() {
   const { enrollCourses } = useCourseStore();
 
   const initialStatus = resolveInitialStatus(searchParams);
-  const orderId = searchParams.get('orderId') ?? sessionStorage.getItem('pendingOrderId');
+  const orderId = searchParams.get('orderId')
+    ?? localStorage.getItem('pendingOrderId')
+    ?? sessionStorage.getItem('pendingOrderId');
 
   const [status, setStatus] = useState<ResultStatus>(initialStatus ?? 'loading');
   const [order, setOrder] = useState<OrderResponse | null>(null);
@@ -42,6 +44,7 @@ export default function PaymentResultPage() {
     const handlePaidOrder = (o: OrderResponse) => {
       setOrder(o);
       clearCart();
+      localStorage.removeItem('pendingOrderId');
       sessionStorage.removeItem('pendingOrderId');
       // Sync courseIds vào Zustand để CourseDetailPage nhận ngay không cần reload
       if (o.items?.length) {
@@ -57,6 +60,14 @@ export default function PaymentResultPage() {
         } else if (o.status === 'EXPIRED') {
           setStatus('expired');
         } else if (o.status === 'CANCELLED') {
+          setStatus('cancelled');
+        } else if (initialStatus === 'cancelled') {
+          try {
+            const cancelled = await cancelOrder(orderId);
+            setOrder(cancelled);
+          } catch {
+            setOrder(o);
+          }
           setStatus('cancelled');
         } else if (initialStatus === 'success') {
           // PayOS redirect với code=00 nhưng webhook chưa đến (local dev, firewall).
@@ -117,6 +128,11 @@ export default function PaymentResultPage() {
 
   const c = config[status];
 
+  // Vào thẳng khóa học vừa mua; mua nhiều khóa hoặc thiếu thông tin đơn → về danh sách
+  const learnLink = order?.items?.length === 1
+    ? `/courses/${order.items[0].courseId}`
+    : '/courses';
+
   return (
     <div className="min-h-screen bg-surface flex items-center justify-center p-4 font-sans relative overflow-hidden">
       <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[100px] opacity-15 pointer-events-none ${c.glow}`} />
@@ -161,7 +177,7 @@ export default function PaymentResultPage() {
         <div className="flex flex-col gap-4">
           {status === 'success' && (
             <>
-              <Link to="/courses" className="w-full py-4 bg-primary text-on-primary rounded-xl font-bold text-lg shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
+              <Link to={learnLink} className="w-full py-4 bg-primary text-on-primary rounded-xl font-bold text-lg shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
                 Vào Học Ngay <ArrowRight className="w-5 h-5" />
               </Link>
               <Link to="/orders" className="w-full py-3 bg-surface-container hover:bg-surface-container-high text-on-surface rounded-xl font-semibold transition-colors flex items-center justify-center gap-2">

@@ -2,8 +2,10 @@ package com.beeacademy.backend.repository;
 
 import com.beeacademy.backend.model.Order;
 import com.beeacademy.backend.model.OrderStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -17,6 +19,17 @@ import java.util.UUID;
 public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     Optional<Order> findByOrderCode(Long orderCode);
+
+    /**
+     * Khóa row đơn hàng khi xử lý thanh toán — chống race condition khi
+     * webhook PayOS và nút "verify" của user chạy đồng thời: cả hai cùng
+     * đọc được PENDING rồi cùng processPaidOrder (double revenue split).
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Order o WHERE o.orderCode = :orderCode")
+    Optional<Order> findByOrderCodeForUpdate(@Param("orderCode") Long orderCode);
+
+    List<Order> findByUserIdAndStatus(UUID userId, OrderStatus status);
 
     @Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.items WHERE o.userId = :userId ORDER BY o.createdAt DESC")
     List<Order> findByUserIdWithItems(@Param("userId") UUID userId);

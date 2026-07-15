@@ -6,6 +6,7 @@ import com.beeacademy.backend.model.Enrollment;
 import com.beeacademy.backend.repository.CourseProgressItemRepository;
 import com.beeacademy.backend.repository.CourseRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
+import com.beeacademy.backend.repository.ExamAttemptRepository;
 import com.beeacademy.backend.repository.LessonRepository;
 import com.beeacademy.backend.repository.QuizConfigRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
@@ -46,6 +47,15 @@ class CourseProgressServiceTest {
     @Mock
     private QuizConfigRepository quizConfigRepository;
 
+    @Mock
+    private ExamAttemptRepository examAttemptRepository;
+
+    @Mock
+    private CertificateService certificateService;
+
+    @Mock
+    private CourseVersionSnapshotService courseVersionSnapshotService;
+
     @InjectMocks
     private CourseProgressService service;
 
@@ -54,7 +64,7 @@ class CourseProgressServiceTest {
         UUID studentId = UUID.randomUUID();
         UUID courseId = UUID.randomUUID();
         UUID lessonId = UUID.randomUUID();
-        Enrollment enrollment = Enrollment.create(studentId, courseId);
+        Enrollment enrollment = Enrollment.create(studentId, courseId, UUID.randomUUID());
 
         when(courseRepository.existsById(courseId)).thenReturn(true);
         when(enrollmentRepository.existsByStudentIdAndCourseId(studentId, courseId)).thenReturn(true);
@@ -87,7 +97,7 @@ class CourseProgressServiceTest {
         UUID studentId = UUID.randomUUID();
         UUID courseId = UUID.randomUUID();
         UUID chapterId = UUID.randomUUID();
-        Enrollment enrollment = Enrollment.create(studentId, courseId);
+        Enrollment enrollment = Enrollment.create(studentId, courseId, UUID.randomUUID());
 
         when(courseRepository.existsById(courseId)).thenReturn(true);
         when(enrollmentRepository.existsByStudentIdAndCourseId(studentId, courseId)).thenReturn(true);
@@ -105,6 +115,7 @@ class CourseProgressServiceTest {
                 new CompleteCourseProgressItemRequest(chapterId, "quiz"));
 
         verify(progressRepository, never()).save(any());
+        verify(certificateService).tryIssueAfterProgress(studentId, courseId);
         assertThat(enrollment.getProgressPct()).isEqualTo(100);
     }
 

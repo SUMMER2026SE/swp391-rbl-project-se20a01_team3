@@ -16,6 +16,9 @@ public record QaThreadResponse(
         UUID lessonId,
         String lessonTitle,
         String status,
+        String visibility,
+        UUID duplicateOfThreadId,
+        Instant duplicateMarkedAt,
         Instant createdAt,
         Instant lastActivityAt,
         List<QaMessageResponse> messages
@@ -38,6 +41,9 @@ public record QaThreadResponse(
                 thread.getLesson() != null ? thread.getLesson().getId() : null,
                 thread.getLesson() != null ? thread.getLesson().getTitle() : null,
                 thread.getStatus().toDbValue(),
+                thread.getVisibility(),
+                thread.getDuplicateOfThreadId(),
+                thread.getDuplicateMarkedAt(),
                 thread.getCreatedAt(),
                 thread.getLastActivityAt(),
                 messages

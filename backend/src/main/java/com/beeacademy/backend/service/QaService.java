@@ -3,6 +3,7 @@ package com.beeacademy.backend.service;
 import com.beeacademy.backend.client.SupabaseStorageClient;
 import com.beeacademy.backend.dto.request.CreateQaMessageRequest;
 import com.beeacademy.backend.dto.request.CreateQaThreadRequest;
+import com.beeacademy.backend.dto.response.QaKpiReportResponse;
 import com.beeacademy.backend.dto.response.QaThreadResponse;
 import com.beeacademy.backend.dto.response.UploadResponse;
 import com.beeacademy.backend.exception.BusinessException;
@@ -10,6 +11,7 @@ import com.beeacademy.backend.exception.ResourceNotFoundException;
 import com.beeacademy.backend.model.Course;
 import com.beeacademy.backend.model.Lesson;
 import com.beeacademy.backend.model.Profile;
+import com.beeacademy.backend.model.QaMessage;
 import com.beeacademy.backend.model.QaThread;
 import com.beeacademy.backend.model.UserRole;
 import com.beeacademy.backend.repository.CourseRepository;
@@ -24,6 +26,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -47,6 +51,7 @@ public class QaService {
     private final UserNotificationService notificationService;
     private final ParentTeacherMessageEmailService parentTeacherMessageEmailService;
     private final SupabaseStorageClient storageClient;
+    private final TeacherAccessService teacherAccessService;
 
     @Transactional(readOnly = true)
     public List<QaThreadResponse> listStudentThreads(AuthenticatedUser me) {
@@ -57,6 +62,7 @@ public class QaService {
 
     @Transactional(readOnly = true)
     public List<QaThreadResponse> listTeacherThreads(AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
         return qaThreadRepository.findTeacherThreads(me.userId()).stream()
                 .map(QaThreadResponse::fromEntity)
                 .toList();
@@ -95,7 +101,8 @@ public class QaService {
         QaThread saved = qaThreadRepository.saveAndFlush(
                 QaThread.create(student, course, lesson, req.content(),
                         req.attachmentUrl(), req.attachmentName(),
-                        req.attachmentType(), req.attachmentSizeBytes()));
+                        req.attachmentType(), req.attachmentSizeBytes(),
+                        normalizeVisibility(req.visibility())));
         return QaThreadResponse.fromEntity(saved);
     }
 
@@ -120,6 +127,7 @@ public class QaService {
     public QaThreadResponse addTeacherMessage(UUID threadId, AuthenticatedUser me,
                                               CreateQaMessageRequest req) {
         Profile teacher = loadProfile(me.userId());
+        teacherAccessService.requireApprovedTeacher(me, teacher);
         assertRole(teacher, UserRole.TEACHER);
         validateAttachment(me.userId(), req.attachmentUrl(), req.attachmentType(),
                 req.attachmentSizeBytes());
@@ -129,13 +137,96 @@ public class QaService {
                 req.attachmentUrl(), req.attachmentName(),
                 req.attachmentType(), req.attachmentSizeBytes());
         QaThread saved = qaThreadRepository.saveAndFlush(thread);
+        notifyStudentAboutTeacherReply(saved, teacher);
         notifyParentsAboutTeacherReply(saved, teacher, req.content());
         return QaThreadResponse.fromEntity(saved);
     }
 
     @Transactional
+    public QaThreadResponse editTeacherMessage(UUID threadId, UUID messageId,
+                                               AuthenticatedUser me,
+                                               CreateQaMessageRequest req) {
+        teacherAccessService.requireApprovedTeacher(me);
+        loadProfile(me.userId());
+        QaThread thread = loadThread(threadId);
+        verifyTeacherOwner(thread, me.userId());
+        QaMessage message = thread.getMessages().stream()
+                .filter(m -> m.getId().equals(messageId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("QaMessage", messageId));
+        if (message.getAuthorRole() != UserRole.TEACHER
+                || !message.getAuthor().getId().equals(me.userId())) {
+            throwForbidden();
+        }
+        message.updateContent(req.content());
+        return QaThreadResponse.fromEntity(qaThreadRepository.saveAndFlush(thread));
+    }
+
+    @Transactional
+    public QaThreadResponse markDuplicate(UUID threadId, UUID duplicateOfThreadId,
+                                          AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
+        QaThread thread = loadThread(threadId);
+        verifyTeacherOwner(thread, me.userId());
+        QaThread duplicateOf = loadThread(duplicateOfThreadId);
+        verifyTeacherOwner(duplicateOf, me.userId());
+        if (!thread.getCourse().getId().equals(duplicateOf.getCourse().getId())) {
+            throw new BusinessException("DUPLICATE_COURSE_MISMATCH",
+                    "Chi co the danh dau trung lap trong cung mot khoa hoc.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        if (thread.getId().equals(duplicateOfThreadId)) {
+            throw new BusinessException("DUPLICATE_SELF",
+                    "Khong the danh dau cau hoi trung voi chinh no.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        thread.markDuplicate(duplicateOfThreadId);
+        return QaThreadResponse.fromEntity(qaThreadRepository.saveAndFlush(thread));
+    }
+
+    @Transactional(readOnly = true)
+    public QaKpiReportResponse getTeacherKpiReport(AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
+        List<QaThread> threads = qaThreadRepository.findTeacherThreads(me.userId());
+        long totalAnswered = 0;
+        long within48Hours = 0;
+        long within7Days = 0;
+        for (QaThread thread : threads) {
+            Instant createdAt = thread.getCreatedAt();
+            Instant firstTeacherReplyAt = thread.getMessages().stream()
+                    .filter(message -> message.getAuthorRole() == UserRole.TEACHER)
+                    .map(QaMessage::getCreatedAt)
+                    .filter(java.util.Objects::nonNull)
+                    .min(Instant::compareTo)
+                    .orElse(null);
+            if (createdAt == null || firstTeacherReplyAt == null) {
+                continue;
+            }
+            totalAnswered++;
+            Duration elapsed = Duration.between(createdAt, firstTeacherReplyAt);
+            if (!elapsed.minusHours(48).isNegative() && !elapsed.minusHours(48).isZero()) {
+                // elapsed > 48h
+            } else {
+                within48Hours++;
+            }
+            if (!elapsed.minusDays(7).isNegative() && !elapsed.minusDays(7).isZero()) {
+                // elapsed > 7d
+            } else {
+                within7Days++;
+            }
+        }
+        return new QaKpiReportResponse(
+                totalAnswered,
+                within48Hours,
+                within7Days,
+                ratio(within48Hours, totalAnswered),
+                ratio(within7Days, totalAnswered));
+    }
+
+    @Transactional
     public QaThreadResponse updateTeacherStatus(UUID threadId, AuthenticatedUser me,
                                                 boolean resolved) {
+        teacherAccessService.requireApprovedTeacher(me);
         QaThread thread = loadThread(threadId);
         verifyTeacherOwner(thread, me.userId());
         if (resolved) {
@@ -224,6 +315,21 @@ public class QaService {
         }
     }
 
+    private void notifyStudentAboutTeacherReply(QaThread thread, Profile teacher) {
+        notificationService.notify(
+                thread.getStudent().getId(),
+                "qa_teacher_reply",
+                "Giao vien da tra loi cau hoi",
+                displayName(teacher, "Giao vien") + " da tra loi cau hoi trong khoa "
+                        + thread.getCourse().getTitle() + ".",
+                "/student/qa");
+    }
+
+    private double ratio(long numerator, long denominator) {
+        if (denominator == 0) return 0.0;
+        return Math.round((numerator * 10000.0 / denominator)) / 100.0;
+    }
+
     private String displayName(Profile profile, String fallback) {
         return profile.getFullName() == null || profile.getFullName().isBlank()
                 ? fallback
@@ -251,5 +357,18 @@ public class QaService {
         throw new BusinessException("FORBIDDEN",
                 "Bạn không có quyền thực hiện thao tác này.",
                 HttpStatus.FORBIDDEN);
+    }
+
+    private String normalizeVisibility(String visibility) {
+        if (visibility == null || visibility.isBlank()) {
+            return "public";
+        }
+        String normalized = visibility.trim().toLowerCase();
+        if (!"public".equals(normalized) && !"private".equals(normalized)) {
+            throw new BusinessException("INVALID_QA_VISIBILITY",
+                    "Pham vi hien thi cau hoi chi chap nhan public hoac private.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        return normalized;
     }
 }

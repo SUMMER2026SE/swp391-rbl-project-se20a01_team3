@@ -45,6 +45,15 @@ public record ExamQuestionRandomRequest(
             Integer essayCount,
 
             @Min(0) @Max(200)
+            Integer multipleChoiceCount,
+
+            @Min(0) @Max(200)
+            Integer trueFalseCount,
+
+            @Min(0) @Max(200)
+            Integer fillInBlankCount,
+
+            @Min(0) @Max(200)
             Integer easyCount,
 
             @Min(0) @Max(200)

@@ -8,9 +8,11 @@ import com.beeacademy.backend.exception.ResourceNotFoundException;
 import com.beeacademy.backend.model.ApprovalHistory;
 import com.beeacademy.backend.model.Course;
 import com.beeacademy.backend.model.CourseStatus;
+import com.beeacademy.backend.model.CourseVersion;
 import com.beeacademy.backend.model.Profile;
 import com.beeacademy.backend.repository.ApprovalHistoryRepository;
 import com.beeacademy.backend.repository.CourseRepository;
+import com.beeacademy.backend.repository.CourseVersionRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +46,7 @@ public class ApprovalService {
 
     private final CourseRepository          courseRepository;
     private final ProfileRepository         profileRepository;
+    private final CourseVersionRepository   courseVersionRepository;
     private final ApprovalHistoryRepository historyRepository;
     private final UserNotificationService   notificationService;
 
@@ -75,8 +78,17 @@ public class ApprovalService {
         Course  course = loadPendingCourse(courseId);
         Profile admin  = loadProfile(adminUser.userId());
 
+        CourseVersion submittedVersion = courseVersionRepository
+                .findByCourseIdAndVersionNo(courseId, course.getSubmittedVersionNo())
+                .orElseThrow(() -> new BusinessException(
+                        "COURSE_VERSION_NOT_FOUND",
+                        "Không tìm thấy phiên bản khóa học đang chờ duyệt.",
+                        HttpStatus.CONFLICT));
+
         course.approve();
+        submittedVersion.markApproved(admin);
         courseRepository.save(course);
+        courseVersionRepository.save(submittedVersion);
 
         historyRepository.save(ApprovalHistory.create(course, admin, "approved", comment));
         notifyTeacherCourseReviewed(course, "course_approved",

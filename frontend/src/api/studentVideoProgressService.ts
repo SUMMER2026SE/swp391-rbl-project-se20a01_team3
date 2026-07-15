@@ -6,11 +6,20 @@ export interface StudentVideoProgress {
   positionSec: number;
   durationSec: number;
   updatedAt: string | null;
+  watchedSegments: VideoWatchedSegment[];
+  watchedDurationSec: number;
+  completed: boolean;
+}
+
+export interface VideoWatchedSegment {
+  startSec: number;
+  endSec: number;
 }
 
 export interface SaveStudentVideoProgressPayload {
   positionSec: number;
   durationSec: number;
+  watchedSegments: VideoWatchedSegment[];
 }
 
 function progressPath(courseId: string, lessonId: string): string {
@@ -23,6 +32,15 @@ export async function getStudentVideoProgress(
 ): Promise<StudentVideoProgress> {
   const response = await apiClient.get<ApiResponse<StudentVideoProgress>>(
     progressPath(courseId, lessonId),
+  );
+  return unwrap(response.data);
+}
+
+export async function getLatestStudentVideoProgress(
+  courseId: string,
+): Promise<StudentVideoProgress | null> {
+  const response = await apiClient.get<ApiResponse<StudentVideoProgress | null>>(
+    `/api/student/courses/${encodeURIComponent(courseId)}/video-progress/latest`,
   );
   return unwrap(response.data);
 }

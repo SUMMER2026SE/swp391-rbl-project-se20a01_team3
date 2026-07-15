@@ -14,6 +14,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 /**
@@ -77,6 +78,22 @@ public class Lesson {
     @Column(name = "video_url")
     private String videoUrl;
 
+    /** Nguồn/CDN dự phòng (thường là bản bitrate thấp hơn) khi video chính lỗi. */
+    @Column(name = "video_fallback_url")
+    private String videoFallbackUrl;
+
+    @Column(name = "hls_playlist_url")
+    private String hlsPlaylistUrl;
+
+    @Column(name = "video_processing_status", nullable = false)
+    private String videoProcessingStatus = "NOT_REQUIRED";
+
+    @Column(name = "video_uploaded_at")
+    private Instant videoUploadedAt;
+
+    @Column(name = "original_video_retention_until")
+    private Instant originalVideoRetentionUntil;
+
     /** Thời lượng tính bằng giây. Mặc định 0 trước khi upload xong. */
     @Column(name = "duration_sec", nullable = false)
     private Integer durationSec;
@@ -88,6 +105,19 @@ public class Lesson {
     /** Cho guest xem thử mà không cần mua khoá. */
     @Column(name = "is_free", nullable = false)
     private Boolean isFree;
+
+    @Column(name = "completion_rule")
+    private String completionRule;
+
+    @Column(name = "transcript", columnDefinition = "text")
+    private String transcript;
+
+    @Column(name = "subtitle_url")
+    private String subtitleUrl;
+
+    /** Các mốc giây, phân tách bằng dấu phẩy; mốc thứ n ứng với trang slide n + 1. */
+    @Column(name = "slide_cue_seconds")
+    private String slideCueSeconds;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -127,11 +157,28 @@ public class Lesson {
         this.isFree = isFree;
     }
 
+    public void updateLearningMetadata(String completionRule, String transcript, String subtitleUrl,
+                                       String slideCueSeconds, String videoFallbackUrl) {
+        this.completionRule = normalize(completionRule);
+        this.transcript = normalize(transcript);
+        this.subtitleUrl = normalize(subtitleUrl);
+        this.slideCueSeconds = normalize(slideCueSeconds);
+        this.videoFallbackUrl = normalize(videoFallbackUrl);
+    }
+
+    private String normalize(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     /** Chuyển bài học sang dùng video nhúng công khai. */
     public void setVideoEmbedUrl(String videoEmbedUrl) {
         this.videoEmbedUrl = videoEmbedUrl != null ? videoEmbedUrl.trim() : null;
         this.videoStoragePath = null;
         this.videoUrl = null;
+        this.hlsPlaylistUrl = null;
+        this.videoProcessingStatus = "EMBED";
+        this.videoUploadedAt = null;
+        this.originalVideoRetentionUntil = null;
         this.durationSec = 0;
     }
 
@@ -140,6 +187,10 @@ public class Lesson {
         this.videoEmbedUrl = null;
         this.videoStoragePath = null;
         this.videoUrl = null;
+        this.hlsPlaylistUrl = null;
+        this.videoProcessingStatus = "NOT_REQUIRED";
+        this.videoUploadedAt = null;
+        this.originalVideoRetentionUntil = null;
         this.durationSec = 0;
     }
 
@@ -152,5 +203,14 @@ public class Lesson {
         this.videoUrl         = null;   // xoá URL cũ nếu có, ưu tiên storage path
         this.videoEmbedUrl    = null;   // upload mới thay thế embed cũ
         this.durationSec      = durationSec;
+        this.hlsPlaylistUrl   = null;
+        this.videoProcessingStatus = "HLS_QUEUED";
+        this.videoUploadedAt = Instant.now();
+        this.originalVideoRetentionUntil = this.videoUploadedAt.plus(365, ChronoUnit.DAYS);
+    }
+
+    public void markHlsReady(String hlsPlaylistUrl) {
+        this.hlsPlaylistUrl = normalize(hlsPlaylistUrl);
+        this.videoProcessingStatus = this.hlsPlaylistUrl == null ? "HLS_QUEUED" : "HLS_READY";
     }
 }

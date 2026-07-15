@@ -1,5 +1,7 @@
 package com.beeacademy.backend.dto.response;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -31,9 +33,11 @@ public record TeacherExamAttemptResponse(
             String text,
             String type,
             List<String> options,
+            JsonNode metadata,
             List<Integer> studentAnswers,
             String textAnswer,
             List<String> imageUrls,
+            JsonNode answerData,
             List<Integer> correctAnswers,
             Boolean correct,
             Double points,

@@ -80,6 +80,14 @@ export async function getCourseDetailBySlug(slug: string): Promise<CourseDetail>
   return unwrap(res.data);
 }
 
+/** UC08: ghi nhận người dùng đã mở một bài học thử miễn phí. */
+export async function recordCoursePreview(courseId: string, lessonId: string): Promise<void> {
+  const res = await apiClient.post<ApiResponse<null>>(
+    `/api/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lessonId)}/preview-views`,
+  );
+  unwrap(res.data);
+}
+
 export async function getCourseReviews(courseId: string): Promise<CourseReviewSummary> {
   const res = await apiClient.get<ApiResponse<CourseReviewSummary>>(
     `/api/courses/${encodeURIComponent(courseId)}/reviews`,

@@ -15,6 +15,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
@@ -77,6 +78,13 @@ public class Profile {
     @Column(name = "bio")
     private String bio;
 
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    @Builder.Default
+    @Column(name = "parent_privacy_enabled", nullable = false)
+    private boolean parentPrivacyEnabled = true;
+
     @Column(name = "twitter_url")
     private String twitterUrl;
 
@@ -86,8 +94,13 @@ public class Profile {
     @Column(name = "linkedin_url")
     private String linkedinUrl;
 
+    @Builder.Default
     @Column(name = "is_blocked", nullable = false)
     private boolean isBlocked = false;
+
+    @Builder.Default
+    @Column(name = "teacher_approval_status", nullable = false, length = 24)
+    private String teacherApprovalStatus = TeacherApprovalStatus.APPROVED.toDbValue();
 
     /** Hibernate tự set khi INSERT - KHÔNG override. */
     @CreationTimestamp
@@ -160,6 +173,35 @@ public class Profile {
 
     public void block()   { this.isBlocked = true; }
     public void unblock() { this.isBlocked = false; }
-    public void changeRole(UserRole newRole) { this.role = newRole; }
+    public void changeRole(UserRole newRole) {
+        this.role = newRole;
+        if (newRole == UserRole.TEACHER) {
+            approveTeacher();
+        }
+    }
+
+    public boolean isApprovedTeacher() {
+        return role == UserRole.TEACHER
+                && !isBlocked
+                && TeacherApprovalStatus.APPROVED.toDbValue().equalsIgnoreCase(teacherApprovalStatus);
+    }
+
+    public void markTeacherPendingApproval() {
+        if (role != UserRole.TEACHER) {
+            throw new IllegalStateException("Chỉ tài khoản giáo viên mới có trạng thái duyệt.");
+        }
+        this.teacherApprovalStatus = TeacherApprovalStatus.PENDING.toDbValue();
+    }
+
+    public void approveTeacher() {
+        this.teacherApprovalStatus = TeacherApprovalStatus.APPROVED.toDbValue();
+    }
+
+    public void rejectTeacher() {
+        if (role != UserRole.TEACHER) {
+            throw new IllegalStateException("Chỉ tài khoản giáo viên mới có trạng thái duyệt.");
+        }
+        this.teacherApprovalStatus = TeacherApprovalStatus.REJECTED.toDbValue();
+    }
 }
 

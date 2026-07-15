@@ -43,7 +43,12 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
     /** Tất cả khóa học đã enroll của một học sinh. */
     List<Enrollment> findByStudentId(UUID studentId);
 
+    /** Enrollment mới mua trước để làm fallback khi khóa chưa có hoạt động học. */
+    List<Enrollment> findByStudentIdOrderByEnrolledAtDesc(UUID studentId);
+
     Optional<Enrollment> findByStudentIdAndCourseId(UUID studentId, UUID courseId);
+
+    List<Enrollment> findByCourseIdAndStudentIdIn(UUID courseId, List<UUID> studentIds);
 
     /** Tất cả enrollment thuộc một nhóm khóa học. */
     List<Enrollment> findByCourseIdIn(List<UUID> courseIds);

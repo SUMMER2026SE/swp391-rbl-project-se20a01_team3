@@ -28,7 +28,7 @@ public class ExamConfigSchemaMigration implements ApplicationRunner {
             return;
         }
 
-        log.info("Ensuring exam_configs table exists");
+        log.info("Ensuring exam_configs compatibility schema exists");
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS public.exam_configs (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -68,6 +68,10 @@ public class ExamConfigSchemaMigration implements ApplicationRunner {
                 ADD COLUMN IF NOT EXISTS placement_chapter_id UUID REFERENCES public.chapters(id) ON DELETE SET NULL
                 """);
         jdbcTemplate.execute("""
+                ALTER TABLE public.exam_configs
+                ADD COLUMN IF NOT EXISTS course_version_id UUID REFERENCES public.course_versions(id) ON DELETE SET NULL
+                """);
+        jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_exam_configs_scope_start_chapter
                 ON public.exam_configs (scope_start_chapter_id)
                 """);
@@ -75,6 +79,11 @@ public class ExamConfigSchemaMigration implements ApplicationRunner {
                 CREATE INDEX IF NOT EXISTS idx_exam_configs_placement_chapter
                 ON public.exam_configs (placement_chapter_id)
                 """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exam_configs_course_version
+                ON public.exam_configs (course_version_id)
+                """);
+        ensureUc34ExamSchema();
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS public.exam_attempts (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -114,6 +123,125 @@ public class ExamConfigSchemaMigration implements ApplicationRunner {
         jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_exam_attempts_submitted_at
                 ON public.exam_attempts (submitted_at)
+                """);
+        ensureExamRetakeRequestSchema();
+    }
+
+    private void ensureUc34ExamSchema() {
+        jdbcTemplate.execute("""
+                ALTER TABLE public.exam_configs
+                ADD COLUMN IF NOT EXISTS exam_type TEXT NOT NULL DEFAULT 'chapter_test'
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.exam_configs
+                ADD COLUMN IF NOT EXISTS require_fullscreen BOOLEAN NOT NULL DEFAULT FALSE
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.exam_configs
+                ADD COLUMN IF NOT EXISTS block_copy_paste BOOLEAN NOT NULL DEFAULT FALSE
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS public.exam_ai_audit_logs (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    prompt_id UUID NOT NULL,
+                    teacher_id UUID NOT NULL REFERENCES public.profiles(id),
+                    course_id UUID NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
+                    action TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    source_refs JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exam_ai_audit_logs_teacher_created
+                ON public.exam_ai_audit_logs (teacher_id, created_at DESC)
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exam_ai_audit_logs_course
+                ON public.exam_ai_audit_logs (course_id)
+                """);
+    }
+
+    private void ensureExamRetakeRequestSchema() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS public.exam_retake_requests (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+                    exam_config_id UUID NOT NULL REFERENCES public.exam_configs(id) ON DELETE CASCADE,
+                    status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+                    requested_reason TEXT NOT NULL,
+                    extra_attempts INTEGER,
+                    decided_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+                    decided_reason TEXT,
+                    retake_expire_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    decided_at TIMESTAMPTZ
+                )
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.exam_retake_requests
+                ADD COLUMN IF NOT EXISTS student_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+                ADD COLUMN IF NOT EXISTS exam_config_id UUID REFERENCES public.exam_configs(id) ON DELETE CASCADE,
+                ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+                ADD COLUMN IF NOT EXISTS requested_reason TEXT NOT NULL DEFAULT '',
+                ADD COLUMN IF NOT EXISTS extra_attempts INTEGER,
+                ADD COLUMN IF NOT EXISTS decided_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+                ADD COLUMN IF NOT EXISTS approver_role VARCHAR(16),
+                ADD COLUMN IF NOT EXISTS decided_reason TEXT,
+                ADD COLUMN IF NOT EXISTS retake_expire_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS request_count INTEGER NOT NULL DEFAULT 1,
+                ADD COLUMN IF NOT EXISTS approval_count INTEGER NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS cooldown_until TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ
+                """);
+        jdbcTemplate.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM information_schema.table_constraints
+                        WHERE table_schema = 'public'
+                          AND table_name = 'exam_retake_requests'
+                          AND constraint_name = 'chk_exam_retake_requests_status'
+                    ) THEN
+                        ALTER TABLE public.exam_retake_requests
+                            ADD CONSTRAINT chk_exam_retake_requests_status
+                            CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED'));
+                    END IF;
+                END$$
+                """);
+        jdbcTemplate.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uk_exam_retake_requests_pending
+                ON public.exam_retake_requests(student_id, exam_config_id)
+                WHERE status = 'PENDING'
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exam_retake_requests_student_exam
+                ON public.exam_retake_requests(student_id, exam_config_id)
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exam_retake_requests_exam_config
+                ON public.exam_retake_requests(exam_config_id)
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS public.exam_retake_audit_logs (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    approval_id UUID NOT NULL REFERENCES public.exam_retake_requests(id) ON DELETE CASCADE,
+                    event_type VARCHAR(32) NOT NULL,
+                    status_before VARCHAR(16),
+                    status_after VARCHAR(16) NOT NULL,
+                    actor_id UUID NOT NULL REFERENCES public.profiles(id),
+                    actor_role VARCHAR(16) NOT NULL,
+                    request_count INTEGER NOT NULL DEFAULT 1,
+                    approval_count INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exam_retake_audit_logs_approval_created
+                ON public.exam_retake_audit_logs(approval_id, created_at DESC)
                 """);
     }
 }
