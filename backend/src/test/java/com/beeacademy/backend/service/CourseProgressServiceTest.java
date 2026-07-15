@@ -6,6 +6,7 @@ import com.beeacademy.backend.model.Enrollment;
 import com.beeacademy.backend.repository.CourseProgressItemRepository;
 import com.beeacademy.backend.repository.CourseRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
+import com.beeacademy.backend.repository.ExamAttemptRepository;
 import com.beeacademy.backend.repository.LessonRepository;
 import com.beeacademy.backend.repository.QuizConfigRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
@@ -45,6 +46,12 @@ class CourseProgressServiceTest {
 
     @Mock
     private QuizConfigRepository quizConfigRepository;
+
+    @Mock
+    private ExamAttemptRepository examAttemptRepository;
+
+    @Mock
+    private CertificateService certificateService;
 
     @InjectMocks
     private CourseProgressService service;
@@ -105,6 +112,7 @@ class CourseProgressServiceTest {
                 new CompleteCourseProgressItemRequest(chapterId, "quiz"));
 
         verify(progressRepository, never()).save(any());
+        verify(certificateService).tryIssueAfterProgress(studentId, courseId);
         assertThat(enrollment.getProgressPct()).isEqualTo(100);
     }
 

@@ -13,6 +13,7 @@ export interface VideoPosition {
   positionSec: number;
   durationSec: number;
   updatedAt: string;
+  watchedSegments?: Array<{ startSec: number; endSec: number }>;
 }
 
 interface CourseState {
@@ -42,6 +43,7 @@ interface CourseState {
     positionSec: number,
     durationSec: number,
     updatedAt?: string,
+    watchedSegments?: Array<{ startSec: number; endSec: number }>,
   ) => void;
 
   // Điểm số kiểm tra: mapping từ courseId -> lessonId -> điểm số cao nhất (%)
@@ -143,7 +145,7 @@ export const useCourseStore = create<CourseState>()(
       }),
 
       videoPositions: {},
-      saveVideoPosition: (courseId, lessonId, positionSec, durationSec, updatedAt) => set((state) => {
+      saveVideoPosition: (courseId, lessonId, positionSec, durationSec, updatedAt, watchedSegments) => set((state) => {
         if (!Number.isFinite(positionSec) || !Number.isFinite(durationSec)) return state;
         const normalizedPosition = Math.max(0, Math.floor(positionSec));
         const normalizedDuration = Math.max(0, Math.floor(durationSec));
@@ -157,6 +159,7 @@ export const useCourseStore = create<CourseState>()(
                 positionSec: normalizedPosition,
                 durationSec: normalizedDuration,
                 updatedAt: updatedAt ?? new Date().toISOString(),
+                watchedSegments: watchedSegments ?? coursePositions[lessonId]?.watchedSegments ?? [],
               },
             },
           },

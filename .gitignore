@@ -92,3 +92,4 @@ frontend/.evn.local
 /gen_sheet.py
 /PHAN_CONG_NHIEM_VU.md
 /TEAM_TASK_DIVISION.md
+*.tsbuildinfo

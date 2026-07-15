@@ -4,10 +4,45 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ExamAttemptTest {
+
+    @Test
+    void saveDraftStoresAnswersBeforeSubmission() {
+        ExamAttempt attempt = new ExamAttempt();
+
+        attempt.saveDraft("{\"q1\":{\"selectedIndices\":[0]}}");
+
+        assertThat(attempt.getAnswers()).isEqualTo("{\"q1\":{\"selectedIndices\":[0]}}");
+        assertThat(attempt.getSubmittedAt()).isNull();
+    }
+
+    @Test
+    void submitStoresAnswersScorePassStatusAndSubmittedAt() {
+        ExamAttempt attempt = new ExamAttempt();
+
+        attempt.submit("{\"q1\":{\"selectedIndices\":[1]}}", 82.46, true);
+
+        assertThat(attempt.getAnswers()).isEqualTo("{\"q1\":{\"selectedIndices\":[1]}}");
+        assertThat(attempt.getScorePercent()).isEqualByComparingTo("82.5");
+        assertThat(attempt.getEffectiveScorePercent()).isEqualByComparingTo("82.5");
+        assertThat(attempt.getPassed()).isTrue();
+        assertThat(attempt.getSubmittedAt()).isNotNull();
+    }
+
+    @Test
+    void saveDraftDoesNotOverwriteSubmittedAttempt() {
+        ExamAttempt attempt = new ExamAttempt();
+        ReflectionTestUtils.setField(attempt, "answers", "{\"q1\":{\"selectedIndices\":[1]}}");
+        ReflectionTestUtils.setField(attempt, "submittedAt", Instant.now());
+
+        attempt.saveDraft("{\"q1\":{\"selectedIndices\":[0]}}");
+
+        assertThat(attempt.getAnswers()).isEqualTo("{\"q1\":{\"selectedIndices\":[1]}}");
+    }
 
     @Test
     void gradeStoresManualScoreAndMarksAttemptAsPassed() {

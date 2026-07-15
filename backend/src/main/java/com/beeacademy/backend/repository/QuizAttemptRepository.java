@@ -62,4 +62,30 @@ public interface QuizAttemptRepository extends JpaRepository<QuizAttempt, UUID> 
     List<QuizAttempt> findSubmittedByStudentAndCourseIds(
             @Param("studentId") UUID studentId,
             @Param("courseIds") Collection<UUID> courseIds);
+
+    @Query("""
+           SELECT config.chapter.course.id, MAX(COALESCE(attempt.submittedAt, attempt.startedAt))
+           FROM QuizAttempt attempt
+           JOIN attempt.quizConfig config
+           WHERE attempt.student.id = :studentId
+             AND config.chapter.course.id IN :courseIds
+           GROUP BY config.chapter.course.id
+           """)
+    List<Object[]> findLatestActivityByStudentAndCourseIds(
+            @Param("studentId") UUID studentId,
+            @Param("courseIds") Collection<UUID> courseIds);
+
+    @Query("""
+           SELECT attempt
+           FROM QuizAttempt attempt
+           JOIN FETCH attempt.quizConfig config
+           JOIN FETCH config.chapter chapter
+           WHERE attempt.student.id = :studentId
+             AND chapter.id = :chapterId
+             AND attempt.submittedAt IS NOT NULL
+           ORDER BY attempt.submittedAt DESC
+           """)
+    List<QuizAttempt> findSubmittedByStudentAndChapter(
+            @Param("studentId") UUID studentId,
+            @Param("chapterId") UUID chapterId);
 }

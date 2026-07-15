@@ -30,7 +30,7 @@ public class AiScanService {
     @Value("${app.gemini.api-key:}")
     private String geminiApiKey;
 
-    @Value("${app.gemini.model:gemini-2.0-flash}")
+    @Value("${app.gemini.model:gemini-2.5-flash}")
     private String geminiModel;
 
     private static final long MAX_PDF_SIZE_BYTES = 20L * 1024 * 1024; // 20 MB
@@ -153,6 +153,90 @@ public class AiScanService {
             throw new BusinessException("AI_SCAN_FAILED",
                     "Không thể xử lý PDF: " + e.getMessage(),
                     HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public String generateExamQuestions(String prompt, String material,
+                                        Integer questionCount, String questionType,
+                                        String difficulty) {
+        if (geminiApiKey == null || geminiApiKey.isBlank()) {
+            throw new BusinessException("GEMINI_NOT_CONFIGURED",
+                    "Tinh nang AI tao cau hoi chua duoc cau hinh tren server.",
+                    HttpStatus.SERVICE_UNAVAILABLE);
+        }
+        String safeMaterial = material == null || material.isBlank()
+                ? "(khong co tai lieu bo sung)"
+                : material.trim();
+        String examPrompt = """
+                Tao cau hoi cho bai kiem tra Bee Academy va chi tra ve JSON array thuan.
+                Schema moi phan tu:
+                {
+                  "text": "noi dung cau hoi",
+                  "type": "%s",
+                  "options": ["A", "B", "C", "D"],
+                  "correctIndices": [0],
+                  "metadata": {"acceptedAnswers": ["dap an"]},
+                  "explanation": "giai thich ngan",
+                  "difficulty": "%s",
+                  "sourceRefs": ["trich dan ngan tu tai lieu hoac prompt"]
+                }
+                Quy tac:
+                - Tao dung %d cau hoi.
+                - type phai dung "%s"; difficulty phai dung "%s".
+                - multiple_choice/true_false phai co options va correctIndices hop le.
+                - fill_in_blank phai co metadata.acceptedAnswers.
+                - essay phai co metadata.rubric hoac explanation lam barem cham.
+                - Moi cau phai co sourceRefs; neu khong co tai lieu, dung "teacher_prompt".
+                - Khong auto-publish; day la cau hoi DRAFT de giao vien review.
+                Yeu cau cua giao vien: %s
+                Tai lieu/pham vi: %s
+                """.formatted(questionType, difficulty, questionCount, questionType, difficulty,
+                prompt.trim(), safeMaterial);
+        return callGeminiText(examPrompt);
+    }
+
+    private String callGeminiText(String textPrompt) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            String requestBody = mapper.writeValueAsString(Map.of(
+                    "contents", List.of(Map.of(
+                            "role", "user",
+                            "parts", List.of(Map.of("text", textPrompt))
+                    ))
+            ));
+
+            String url = "https://generativelanguage.googleapis.com/v1beta/models/"
+                    + geminiModel + ":generateContent?key=" + geminiApiKey;
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build();
+            HttpResponse<String> response = HttpClient.newHttpClient().send(request,
+                    HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                log.error("Gemini API tra loi {}: {}", response.statusCode(), response.body());
+                throw new BusinessException("AI_GENERATION_FAILED",
+                        "AI Engine tra ve loi " + response.statusCode() + ".",
+                        HttpStatus.BAD_GATEWAY);
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> responseMap = mapper.readValue(response.body(), Map.class);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> candidates =
+                    (List<Map<String, Object>>) responseMap.get("candidates");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> content = (Map<String, Object>) candidates.get(0).get("content");
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> parts = (List<Map<String, Object>>) content.get("parts");
+            return (String) parts.get(0).get("text");
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Loi khi goi AI Engine", e);
+            throw new BusinessException("AI_GENERATION_FAILED",
+                    "Khong the tao cau hoi AI: " + e.getMessage(),
+                    HttpStatus.BAD_GATEWAY);
         }
     }
 }

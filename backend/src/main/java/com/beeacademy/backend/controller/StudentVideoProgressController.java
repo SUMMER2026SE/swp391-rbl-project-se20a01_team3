@@ -18,14 +18,21 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/student/courses/{courseId}/lessons/{lessonId}/video-progress")
+@RequestMapping("/api/student/courses/{courseId}")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('student')")
 public class StudentVideoProgressController {
 
     private final StudentVideoProgressService progressService;
 
-    @GetMapping
+    @GetMapping("/video-progress/latest")
+    public ApiResponse<StudentVideoProgressResponse> getLatestProgress(
+            @PathVariable UUID courseId) {
+        return ApiResponse.ok(
+                progressService.getLatestProgress(courseId, CurrentUser.required()));
+    }
+
+    @GetMapping("/lessons/{lessonId}/video-progress")
     public ApiResponse<StudentVideoProgressResponse> getProgress(
             @PathVariable UUID courseId,
             @PathVariable UUID lessonId) {
@@ -33,7 +40,7 @@ public class StudentVideoProgressController {
                 progressService.getProgress(courseId, lessonId, CurrentUser.required()));
     }
 
-    @PutMapping
+    @PutMapping("/lessons/{lessonId}/video-progress")
     public ApiResponse<StudentVideoProgressResponse> saveProgress(
             @PathVariable UUID courseId,
             @PathVariable UUID lessonId,

@@ -7,7 +7,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-/** Thông tin bài giảng phía GV — kèm đường dẫn storage để biết video đã upload chưa. */
+/** Teacher-facing lesson metadata, including slide cues and fallback video source. */
 public record TeacherLessonResponse(
         UUID id,
         String title,
@@ -15,10 +15,15 @@ public record TeacherLessonResponse(
         Integer position,
         Boolean isFree,
         String videoEmbedUrl,
-        String videoStoragePath,   // null = chưa upload video
-        String videoUrl,           // URL public (cũ) hoặc null
+        String videoStoragePath,
+        String videoUrl,
+        String videoFallbackUrl,
         Integer durationSec,
-        boolean hasVideo,          // convenience flag cho FE
+        boolean hasVideo,
+        String completionRule,
+        String transcript,
+        String subtitleUrl,
+        String slideCueSeconds,
         List<DocumentDto> documents
 ) {
     public record DocumentDto(UUID id, String name, String fileType, Integer position) {
@@ -29,21 +34,23 @@ public record TeacherLessonResponse(
         }
     }
 
-    public static TeacherLessonResponse fromEntity(Lesson l) {
-        return fromEntity(l, Collections.emptyList());
+    public static TeacherLessonResponse fromEntity(Lesson lesson) {
+        return fromEntity(lesson, Collections.emptyList());
     }
 
-    public static TeacherLessonResponse fromEntity(Lesson l, List<CourseDocument> documents) {
-        boolean hasVideo = l.getVideoStoragePath() != null || l.getVideoUrl() != null
-                           || l.getVideoEmbedUrl() != null;
+    public static TeacherLessonResponse fromEntity(Lesson lesson, List<CourseDocument> documents) {
+        boolean hasVideo = lesson.getVideoStoragePath() != null || lesson.getVideoUrl() != null
+                           || lesson.getVideoEmbedUrl() != null;
         List<DocumentDto> documentDtos = documents == null
                 ? Collections.emptyList()
                 : documents.stream().map(DocumentDto::fromEntity).toList();
         return new TeacherLessonResponse(
-                l.getId(), l.getTitle(), l.getDescription(),
-                l.getPosition(), l.getIsFree(),
-                l.getVideoEmbedUrl(), l.getVideoStoragePath(), l.getVideoUrl(),
-                l.getDurationSec(), hasVideo, documentDtos
+                lesson.getId(), lesson.getTitle(), lesson.getDescription(),
+                lesson.getPosition(), lesson.getIsFree(),
+                lesson.getVideoEmbedUrl(), lesson.getVideoStoragePath(), lesson.getVideoUrl(),
+                lesson.getVideoFallbackUrl(), lesson.getDurationSec(), hasVideo,
+                lesson.getCompletionRule(), lesson.getTranscript(), lesson.getSubtitleUrl(),
+                lesson.getSlideCueSeconds(), documentDtos
         );
     }
 }

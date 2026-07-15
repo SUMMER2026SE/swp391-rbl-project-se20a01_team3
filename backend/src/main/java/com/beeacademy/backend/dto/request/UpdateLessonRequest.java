@@ -10,5 +10,10 @@ public record UpdateLessonRequest(
         @Min(1) Integer position,
         Boolean isFree,
         String videoEmbedUrl,
-        String videoSource
+        String videoSource,
+        String completionRule,
+        String transcript,
+        String subtitleUrl,
+        String slideCueSeconds,
+        String videoFallbackUrl
 ) {}

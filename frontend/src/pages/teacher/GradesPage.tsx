@@ -23,11 +23,13 @@ import {
   Megaphone,
   Paperclip,
   PenSquare,
+  Plus,
   RefreshCw,
   RotateCcw,
   Save,
   Search,
   Star,
+  Trash2,
   UserCircle,
   Lock,
   X,
@@ -36,16 +38,27 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { notify } from '../../lib/toast';
 import { isApiError } from '../../api/client';
 import {
+  createAssignment,
+  deleteAssignment,
   gradeAssignmentSubmission,
+  listTeacherAssignments,
   listTeacherAssignmentSubmissions,
   type AssignmentSubmissionResponse,
   type AssignmentSubmissionStatus,
+  type TeacherAssignmentResponse,
 } from '../../api/assignmentService';
+import {
+  getCourseDetail,
+  listMyCourses,
+  type TeacherChapterResponse,
+  type TeacherCourseResponse,
+} from '../../api/teacherCourseService';
 import {
   gradeTeacherExamAttempt,
   listTeacherExamAttempts,
   type TeacherExamAttemptResponse,
 } from '../../api/examService';
+import RetakeRequestsPanel from '../../components/teacher/RetakeRequestsPanel';
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Tổng quan', path: '/teacher' },
@@ -89,6 +102,16 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
+function isManualExamQuestionType(type: string) {
+  return ['essay', 'essay_short', 'essay_long', 'file_upload'].includes(type);
+}
+
+function objectiveAnswerLabel(question: TeacherExamAttemptResponse['questions'][number]) {
+  return question.correctAnswers
+    .map(index => String.fromCharCode(65 + index))
+    .join(', ');
+}
+
 function studentName(submission: AssignmentSubmissionResponse): string {
   return submission.studentName?.trim() || 'Học sinh';
 }
@@ -120,6 +143,245 @@ function StatusBadge({ status }: { status: AssignmentSubmissionStatus }) {
   );
 }
 
+// Modal quản lý bài tập tự luận (UC16): GV tạo bài tập gắn vào chương,
+// xem danh sách bài đã giao và xóa khi cần. Học sinh nộp bài qua tab
+// "Bài tập" trong trang học của khóa.
+function AssignmentManagerModal({ onClose }: { onClose: () => void }) {
+  const [assignments, setAssignments] = useState<TeacherAssignmentResponse[]>([]);
+  const [courses, setCourses] = useState<TeacherCourseResponse[]>([]);
+  const [chapters, setChapters] = useState<TeacherChapterResponse[]>([]);
+  const [loadingList, setLoadingList] = useState(true);
+  const [loadingChapters, setLoadingChapters] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [courseId, setCourseId] = useState('');
+  const [chapterId, setChapterId] = useState('');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [maxScore, setMaxScore] = useState('10');
+  const [dueAt, setDueAt] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([listTeacherAssignments(), listMyCourses(0, 50)])
+      .then(([assignmentData, coursePage]) => {
+        if (cancelled) return;
+        setAssignments(assignmentData);
+        setCourses(coursePage.items);
+      })
+      .catch(err => {
+        if (!cancelled) {
+          notify.error(isApiError(err) ? err.message : 'Không tải được danh sách bài tập');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingList(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setChapterId('');
+    setChapters([]);
+    if (!courseId) return;
+    let cancelled = false;
+    setLoadingChapters(true);
+    getCourseDetail(courseId)
+      .then(detail => {
+        if (!cancelled) setChapters(detail.chapters);
+      })
+      .catch(err => {
+        if (!cancelled) {
+          notify.error(isApiError(err) ? err.message : 'Không tải được danh sách chương');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingChapters(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId]);
+
+  async function handleCreate() {
+    if (!chapterId) {
+      notify.error('Chọn chương cho bài tập');
+      return;
+    }
+    if (!title.trim()) {
+      notify.error('Nhập tiêu đề bài tập');
+      return;
+    }
+    const parsedMaxScore = Number(maxScore);
+    if (!Number.isInteger(parsedMaxScore) || parsedMaxScore < 1 || parsedMaxScore > 100) {
+      notify.error('Điểm tối đa phải là số nguyên từ 1 đến 100');
+      return;
+    }
+    setCreating(true);
+    try {
+      const created = await createAssignment({
+        chapterId,
+        title: title.trim(),
+        description: description.trim() || undefined,
+        maxScore: parsedMaxScore,
+        dueAt: dueAt ? new Date(dueAt).toISOString() : undefined,
+      });
+      setAssignments(prev => [created, ...prev]);
+      setTitle('');
+      setDescription('');
+      setDueAt('');
+      notify.success('Đã tạo bài tập');
+    } catch (err) {
+      notify.error(isApiError(err) ? err.message : 'Tạo bài tập thất bại');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleDelete(assignmentId: string) {
+    setDeletingId(assignmentId);
+    try {
+      await deleteAssignment(assignmentId);
+      setAssignments(prev => prev.filter(item => item.id !== assignmentId));
+      notify.success('Đã xóa bài tập');
+    } catch (err) {
+      notify.error(isApiError(err) ? err.message : 'Xóa bài tập thất bại');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div
+        className="bg-surface rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 space-y-6"
+        onClick={event => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-extrabold text-on-surface">Quản lý bài tập tự luận</h3>
+          <button onClick={onClose} className="p-2 text-on-surface-variant hover:text-on-surface">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="bg-surface-container rounded-2xl p-4 space-y-3">
+          <h4 className="font-bold text-sm text-on-surface">Giao bài tập mới</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <select
+              value={courseId}
+              onChange={event => setCourseId(event.target.value)}
+              className="px-3 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm outline-none focus:border-primary"
+            >
+              <option value="">— Chọn khóa học —</option>
+              {courses.map(course => (
+                <option key={course.id} value={course.id}>{course.title}</option>
+              ))}
+            </select>
+            <select
+              value={chapterId}
+              onChange={event => setChapterId(event.target.value)}
+              disabled={!courseId || loadingChapters}
+              className="px-3 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm outline-none focus:border-primary disabled:opacity-50"
+            >
+              <option value="">
+                {loadingChapters ? 'Đang tải chương...' : '— Chọn chương —'}
+              </option>
+              {chapters.map(chapter => (
+                <option key={chapter.id} value={chapter.id}>{chapter.title}</option>
+              ))}
+            </select>
+          </div>
+          <input
+            value={title}
+            onChange={event => setTitle(event.target.value)}
+            placeholder="Tiêu đề bài tập"
+            className="w-full px-3 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm outline-none focus:border-primary"
+          />
+          <textarea
+            value={description}
+            onChange={event => setDescription(event.target.value)}
+            rows={3}
+            placeholder="Đề bài / hướng dẫn làm bài (không bắt buộc)"
+            className="w-full px-3 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm outline-none focus:border-primary"
+          />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label className="text-sm font-semibold text-on-surface-variant">
+              Điểm tối đa
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={maxScore}
+                onChange={event => setMaxScore(event.target.value)}
+                className="mt-1 w-full px-3 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm outline-none focus:border-primary"
+              />
+            </label>
+            <label className="text-sm font-semibold text-on-surface-variant">
+              Hạn nộp (không bắt buộc)
+              <input
+                type="datetime-local"
+                value={dueAt}
+                onChange={event => setDueAt(event.target.value)}
+                className="mt-1 w-full px-3 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm outline-none focus:border-primary"
+              />
+            </label>
+          </div>
+          <button
+            onClick={handleCreate}
+            disabled={creating}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-on-primary text-sm font-bold hover:opacity-90 disabled:opacity-50"
+          >
+            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            {creating ? 'Đang tạo...' : 'Tạo bài tập'}
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          <h4 className="font-bold text-sm text-on-surface">Bài tập đã giao ({assignments.length})</h4>
+          {loadingList ? (
+            <div className="flex items-center gap-2 text-on-surface-variant py-6 justify-center">
+              <Loader2 className="w-5 h-5 animate-spin" /> Đang tải...
+            </div>
+          ) : assignments.length === 0 ? (
+            <p className="text-sm text-on-surface-variant py-4 text-center">
+              Chưa có bài tập nào. Tạo bài tập đầu tiên ở form phía trên.
+            </p>
+          ) : (
+            assignments.map(assignment => (
+              <div
+                key={assignment.id}
+                className="flex items-start justify-between gap-3 p-3 rounded-xl border border-outline-variant/40 bg-surface-container-lowest"
+              >
+                <div className="min-w-0">
+                  <p className="font-bold text-sm text-on-surface truncate">{assignment.title}</p>
+                  <p className="text-xs text-on-surface-variant mt-0.5">
+                    {assignment.courseTitle ?? 'Khóa học'}
+                    {assignment.chapterTitle && <> · {assignment.chapterTitle}</>}
+                    {' · '}Tối đa {assignment.maxScore} điểm
+                    {assignment.dueAt && <> · Hạn: {formatDateTime(assignment.dueAt)}</>}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleDelete(assignment.id)}
+                  disabled={deletingId === assignment.id}
+                  className="p-2 text-on-surface-variant hover:text-red-500 disabled:opacity-50 flex-shrink-0"
+                  title="Xóa bài tập"
+                >
+                  {deletingId === assignment.id
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <Trash2 className="w-4 h-4" />}
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TeacherGradesPage() {
   const [submissions, setSubmissions] = useState<AssignmentSubmissionResponse[]>([]);
   const [examAttempts, setExamAttempts] = useState<TeacherExamAttemptResponse[]>([]);
@@ -136,6 +398,7 @@ export default function TeacherGradesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isAssignmentManagerOpen, setIsAssignmentManagerOpen] = useState(false);
   const didLoadRef = useRef(false);
 
   const navigate = useNavigate();
@@ -151,7 +414,12 @@ export default function TeacherGradesPage() {
         listTeacherExamAttempts(),
       ]);
       setSubmissions(data);
-      setExamAttempts(examData);
+      setExamAttempts(
+        [...examData].sort((a, b) => {
+          if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;
+          return new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime();
+        }),
+      );
       if (showSuccess) notify.success('Đã làm mới danh sách bài tự luận.');
     } catch (err) {
       notify.error(isApiError(err) ? err.message : 'Không thể tải bài tự luận đã nộp.');
@@ -380,14 +648,27 @@ export default function TeacherGradesPage() {
                 Đọc nội dung bài làm, tải file đính kèm và gửi điểm cùng nhận xét cho học sinh.
               </p>
             </div>
-            <button
-              onClick={() => loadSubmissions(true)}
-              disabled={loading}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-outline-variant/50 bg-surface-container-lowest text-sm font-bold hover:text-primary disabled:opacity-60"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              Làm mới
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsAssignmentManagerOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-on-primary text-sm font-bold hover:opacity-90"
+              >
+                <Plus className="w-4 h-4" />
+                Quản lý bài tập
+              </button>
+              <button
+                onClick={() => loadSubmissions(true)}
+                disabled={loading}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-outline-variant/50 bg-surface-container-lowest text-sm font-bold hover:text-primary disabled:opacity-60"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                Làm mới
+              </button>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <RetakeRequestsPanel />
           </div>
 
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
@@ -470,7 +751,7 @@ export default function TeacherGradesPage() {
                       {selectedExam.questions.map((question, index) => (
                         <div key={question.id} className="rounded-xl border border-outline-variant/30 bg-surface-container/30 p-3">
                           <p className="text-sm font-bold">Câu {index + 1}: {question.text}</p>
-                          {question.type === 'essay' ? (
+                          {isManualExamQuestionType(question.type) ? (
                             <div className="mt-2 space-y-2">
                               <p className="text-sm whitespace-pre-wrap">
                                 {question.textAnswer || 'Học sinh không nhập văn bản.'}
@@ -484,11 +765,48 @@ export default function TeacherGradesPage() {
                                   ))}
                                 </div>
                               )}
+                              {question.type === 'file_upload' && question.answerData && (
+                                <p className="text-xs text-on-surface-variant">
+                                  Dạng bài nộp file đã được ghi nhận trong bài làm thủ công.
+                                </p>
+                              )}
+                            </div>
+                          ) : question.type === 'fill_in_blank' ? (
+                            <div className="mt-2 space-y-1 text-sm">
+                              <p><span className="font-bold">Học sinh trả lời:</span> {question.textAnswer || 'Không có'}</p>
+                              <p className="text-on-surface-variant">
+                                Đáp án chấp nhận: {(question.metadata?.acceptedAnswers ?? []).join(', ') || 'Không có'}
+                              </p>
+                              <p className="text-xs text-on-surface-variant">
+                                Tự chấm: {question.earnedPoints}/{question.points} điểm
+                              </p>
+                            </div>
+                          ) : question.type === 'matching' ? (
+                            <div className="mt-2 space-y-2">
+                              {(((question.answerData?.matchingPairs as Array<{ left: string; right: string }> | undefined) ?? []))
+                                .map((pair, pairIndex) => (
+                                  <div key={pairIndex} className="grid grid-cols-2 gap-2 text-sm">
+                                    <span className="rounded-lg bg-surface px-2 py-1">{pair.left}</span>
+                                    <span className="rounded-lg bg-surface px-2 py-1">{pair.right}</span>
+                                  </div>
+                                ))}
+                              {(question.metadata?.matchingPairs?.length ?? 0) > 0 && (
+                                <div className="rounded-lg bg-surface px-3 py-2 text-xs text-on-surface-variant">
+                                  Đáp án đúng:
+                                  {' '}
+                                  {question.metadata?.matchingPairs?.map(pair => `${pair.left} -> ${pair.right}`).join(' | ')}
+                                </div>
+                              )}
+                              <p className="text-xs text-on-surface-variant">
+                                Tự chấm: {question.earnedPoints}/{question.points} điểm
+                              </p>
                             </div>
                           ) : (
-                            <p className="mt-2 text-xs text-on-surface-variant">
-                              Trắc nghiệm: {question.earnedPoints}/{question.points} điểm
-                            </p>
+                            <div className="mt-2 space-y-1 text-xs text-on-surface-variant">
+                              <p>Trắc nghiệm: {question.earnedPoints}/{question.points} điểm</p>
+                              <p>Đáp án đúng: {objectiveAnswerLabel(question) || 'Không có'}</p>
+                              <p>Học sinh chọn: {question.studentAnswers.map(index => String.fromCharCode(65 + index)).join(', ') || 'Không chọn'}</p>
+                            </div>
                           )}
                         </div>
                       ))}
@@ -696,6 +1014,10 @@ export default function TeacherGradesPage() {
           )}
         </main>
       </div>
+
+      {isAssignmentManagerOpen && (
+        <AssignmentManagerModal onClose={() => setIsAssignmentManagerOpen(false)} />
+      )}
     </div>
   );
 }

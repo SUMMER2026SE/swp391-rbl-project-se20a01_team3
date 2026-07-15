@@ -1,14 +1,14 @@
 /**
- * StudentQuizPage — UC: Học sinh làm quiz theo chương
+ * StudentQuizPage - UC: Học sinh làm quiz theo chương
  * Route: /courses/:courseId/chapters/:chapterId/quiz
  *
  * Luồng:
- *   mount → startQuiz(chapterId) → hiển thị câu hỏi từng câu
- *   → nộp bài → submitQuiz(attemptId, answers) → màn hình kết quả
+ *   mount -> startQuiz(chapterId) -> hiển thị câu hỏi từng câu
+ *   -> nộp bài -> submitQuiz(attemptId, answers) -> màn hình kết quả
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Trophy, Award,
@@ -28,9 +28,9 @@ import type {
 } from '../../api/quizService';
 import type { ChapterDetail, LessonDetail } from '../../types/api';
 
-// ═══════════════════════════════════════════════════════════════════
-//  ScoreCircle — SVG vòng tròn điểm số (tái sử dụng từ CourseDetailPage)
-// ═══════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------
+//  ScoreCircle - SVG vòng tròn điểm số (tái sử dụng từ CourseDetailPage)
+// -------------------------------------------------------------------
 
 function ScoreCircle({ score }: { score: number }) {
   const circumference = 2 * Math.PI * 15.9;
@@ -69,9 +69,9 @@ function ScoreCircle({ score }: { score: number }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  CountdownTimer — đếm ngược, gọi onExpire khi hết giờ
-// ═══════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------
+//  CountdownTimer - đếm ngược, gọi onExpire khi hết giờ
+// -------------------------------------------------------------------
 
 function CountdownTimer({
   totalSeconds,
@@ -104,9 +104,9 @@ function CountdownTimer({
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  ResultDetail — review từng câu sau khi nộp bài
-// ═══════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------
+//  ResultDetail - review từng câu sau khi nộp bài
+// -------------------------------------------------------------------
 
 function ResultDetailItem({ detail, index }: { detail: QuizResultDetail; index: number }) {
   const [open, setOpen] = useState(false);
@@ -134,7 +134,7 @@ function ResultDetailItem({ detail, index }: { detail: QuizResultDetail; index: 
             Câu {index + 1}: <LatexText content={detail.content} />
           </p>
           {!open && !detail.isCorrect && (
-            <p className="text-xs text-red-500 mt-1">Bạn chọn sai — nhấn để xem đáp án</p>
+            <p className="text-xs text-red-500 mt-1">Bạn chọn sai - nhấn để xem đáp án</p>
           )}
         </div>
         <ChevronRight className={`w-4 h-4 flex-shrink-0 text-on-surface-variant transition-transform ${open ? 'rotate-90' : ''}`} />
@@ -153,13 +153,15 @@ function ResultDetailItem({ detail, index }: { detail: QuizResultDetail; index: 
               <div className="flex items-center gap-2 text-sm">
                 <span className="font-semibold text-on-surface-variant w-28 flex-shrink-0">Bạn chọn:</span>
                 <span className={`font-bold ${detail.isCorrect ? 'text-green-600' : 'text-red-500'}`}>
-                  <LatexText content={detail.studentAnswer ?? '(Không trả lời)'} />
+                  <LatexText content={detail.studentAnswerText ?? '(Không trả lời)'} />
                 </span>
               </div>
               {!detail.isCorrect && (
                 <div className="flex items-center gap-2 text-sm">
                   <span className="font-semibold text-on-surface-variant w-28 flex-shrink-0">Đáp án đúng:</span>
-                  <span className="font-bold text-green-600"><LatexText content={detail.correctAnswer} /></span>
+                  <span className="font-bold text-green-600">
+                    <LatexText content={detail.correctAnswerText ?? ''} />
+                  </span>
                 </div>
               )}
               {detail.explanation && (
@@ -176,9 +178,9 @@ function ResultDetailItem({ detail, index }: { detail: QuizResultDetail; index: 
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------
 //  MAIN PAGE
-// ═══════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------
 
 type PagePhase = 'loading' | 'error' | 'quiz' | 'submitting' | 'results';
 
@@ -197,6 +199,10 @@ function getChapterVideoProgress(
 
 export default function StudentQuizPage() {
   const { courseId, chapterId } = useParams<{ courseId: string; chapterId: string }>();
+  const [searchParams] = useSearchParams();
+  const resultAttemptId = searchParams.get('attemptId');
+  const returnTo = searchParams.get('returnTo');
+  const continueLearningUrl = returnTo || (courseId ? `/courses/${courseId}?learn=1` : '/courses');
   const navigate = useNavigate();
   const completedLessons = useCourseStore((state) => state.completedLessons);
   const hydrateCourseProgress = useCourseStore((state) => state.hydrateCourseProgress);
@@ -208,9 +214,10 @@ export default function StudentQuizPage() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [attempt, setAttempt] = useState<QuizAttemptStartResponse | null>(null);
   const [result, setResult] = useState<QuizResultResponse | null>(null);
+  const submittingRef = useRef(false);
 
-  // answers: questionId → choiceId
-  const [answers, setAnswers] = useState<Record<string, string | null>>({});
+  // answers: questionId ? choiceId
+  const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [currentIdx, setCurrentIdx] = useState(0);
 
   // Bắt đầu quiz
@@ -226,6 +233,15 @@ export default function StudentQuizPage() {
     async function loadQuiz() {
       setPhase('loading');
       try {
+        if (resultAttemptId) {
+          const savedResult = await quizSvc.getQuizResult(resultAttemptId);
+          if (cancelled) return;
+          setResult(savedResult);
+          setAttempt(null);
+          setPhase('results');
+          return;
+        }
+
         const detail = await getCourseDetail(courseId!);
         if (cancelled) return;
 
@@ -255,9 +271,10 @@ export default function StudentQuizPage() {
         const data = await quizSvc.startQuiz(chapterId!);
         if (cancelled) return;
         setAttempt(data);
-        const init: Record<string, null> = {};
-        data.questions.forEach(q => { init[q.id] = null; });
+        const init: Record<string, string[]> = {};
+        data.questions.forEach(q => { init[q.id] = []; });
         setAnswers(init);
+        submittingRef.current = false;
         setPhase('quiz');
       } catch (err) {
         if (cancelled) return;
@@ -272,11 +289,12 @@ export default function StudentQuizPage() {
     return () => {
       cancelled = true;
     };
-  }, [chapterId, courseId, hydrateCourseProgress]);
+  }, [chapterId, courseId, hydrateCourseProgress, resultAttemptId]);
 
-  // Nộp bài — được gọi cả khi user tự nộp lẫn khi hết giờ
+  // Nộp bài - được gọi cả khi user tự nộp lẫn khi hết giờ
   const handleSubmit = useCallback(async () => {
-    if (!attempt) return;
+    if (!attempt || submittingRef.current) return;
+    submittingRef.current = true;
     setPhase('submitting');
     try {
       const res = await quizSvc.submitQuiz(attempt.attemptId, answers);
@@ -296,17 +314,18 @@ export default function StudentQuizPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Nộp bài thất bại.';
       notify.error(msg);
+      submittingRef.current = false;
       setPhase('quiz');
     }
   }, [attempt, answers, chapterId, courseId, hydrateCourseProgress, markQuizCompleted, saveQuizScore]);
 
-  // Hết giờ → tự động nộp
+  // Hết giờ - tự động nộp
   const handleTimeExpire = useCallback(() => {
     notify.error('Hết giờ! Bài của bạn đã được nộp tự động.');
     handleSubmit();
   }, [handleSubmit]);
 
-  // Làm lại — gọi lại startQuiz
+  // Làm lại - gọi lại startQuiz
   async function handleRetry() {
     if (!courseId || !chapterId) return;
     setPhase('loading');
@@ -339,9 +358,10 @@ export default function StudentQuizPage() {
 
       const data = await quizSvc.startQuiz(chapterId);
       setAttempt(data);
-      const init: Record<string, null> = {};
-      data.questions.forEach(q => { init[q.id] = null; });
+      const init: Record<string, string[]> = {};
+      data.questions.forEach(q => { init[q.id] = []; });
       setAnswers(init);
+      submittingRef.current = false;
       setPhase('quiz');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Không thể bắt đầu quiz.';
@@ -350,27 +370,36 @@ export default function StudentQuizPage() {
     }
   }
 
-  // ── Derived state ──────────────────────────────────────────────
+  // -- Derived state ----------------------------------------------
 
   const questions = attempt?.questions ?? [];
   const currentQ = questions[currentIdx];
-  const answeredCount = Object.values(answers).filter(v => v !== null).length;
+  const answeredCount = Object.values(answers).filter(v => v.length > 0).length;
   const allAnswered = answeredCount === questions.length;
+
+  const requestSubmit = useCallback(() => {
+    if (!allAnswered || phase !== 'quiz') return;
+    const confirmed = window.confirm('Bạn chắc chắn muốn nộp bài quiz? Sau khi nộp, hệ thống sẽ chấm điểm lượt làm này.');
+    if (confirmed) {
+      handleSubmit();
+    }
+  }, [allAnswered, handleSubmit, phase]);
 
   // Grade label
   const score = result?.score ?? 0;
+  const scorePercent = Math.round(score * 10);
   const gradeLabel =
-    score >= 90 ? 'Xuất sắc!' :
-    score >= 70 ? 'Giỏi!' :
-    score >= 50 ? 'Khá!' :
+    score >= 9 ? 'Xuất sắc!' :
+    score >= 7 ? 'Giỏi!' :
+    score >= 5 ? 'Khá!' :
     'Cần cố gắng thêm!';
   const gradeColor =
-    score >= 90 ? 'text-green-500' :
-    score >= 70 ? 'text-blue-500' :
-    score >= 50 ? 'text-amber-500' :
+    score >= 9 ? 'text-green-500' :
+    score >= 7 ? 'text-blue-500' :
+    score >= 5 ? 'text-amber-500' :
     'text-red-500';
 
-  // ── PHASE: Loading ─────────────────────────────────────────────
+  // -- PHASE: Loading ---------------------------------------------
 
   if (phase === 'loading') {
     return (
@@ -383,7 +412,7 @@ export default function StudentQuizPage() {
     );
   }
 
-  // ── PHASE: Error ───────────────────────────────────────────────
+  // -- PHASE: Error -----------------------------------------------
 
   if (phase === 'error') {
     return (
@@ -411,7 +440,7 @@ export default function StudentQuizPage() {
     );
   }
 
-  // ── PHASE: Results ─────────────────────────────────────────────
+  // -- PHASE: Results ---------------------------------------------
 
   if (phase === 'results' && result) {
     const passed = result.passed;
@@ -443,7 +472,7 @@ export default function StudentQuizPage() {
               passed ? 'bg-green-500/5' : 'bg-red-500/5'
             }`}>
               <div className="flex justify-center mb-4">
-                <ScoreCircle score={score} />
+                <ScoreCircle score={scorePercent} />
               </div>
               <motion.h2
                 className={`text-2xl font-extrabold mt-2 ${gradeColor}`}
@@ -488,7 +517,7 @@ export default function StudentQuizPage() {
               >
                 {passed
                   ? <><CheckCircle2 className="w-4 h-4" /> Đạt yêu cầu</>
-                  : <><XCircle className="w-4 h-4" /> Chưa đạt — cần ôn lại</>
+                  : <><XCircle className="w-4 h-4" /> Chưa đạt - cần ôn lại</>
                 }
               </motion.div>
             </div>
@@ -516,7 +545,7 @@ export default function StudentQuizPage() {
                 Làm lại
               </button>
               <Link
-                to={courseId ? `/courses/${courseId}` : '/courses'}
+                to={continueLearningUrl}
                 className="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors"
               >
                 <BookOpen className="w-4 h-4" />
@@ -529,7 +558,7 @@ export default function StudentQuizPage() {
     );
   }
 
-  // ── PHASE: Quiz / Submitting ───────────────────────────────────
+  // -- PHASE: Quiz / Submitting -----------------------------------
 
   return (
     <div className="min-h-screen bg-surface font-sans flex flex-col">
@@ -598,12 +627,19 @@ export default function StudentQuizPage() {
                 <h2 className="text-xl font-bold text-on-surface leading-relaxed">
                   <LatexText content={currentQ.content} />
                 </h2>
+                {currentQ.type === 'multiple' && (
+                  <p className="mt-2 text-sm font-medium text-primary">
+                    CÃ¢u nÃ y cÃ³ thá»ƒ cÃ³ nhiá»u Ä‘Ã¡p Ã¡n Ä‘Ãºng.
+                  </p>
+                )}
               </div>
 
               {/* Choices */}
               <div className="space-y-3">
                 {currentQ.choices.map((choice, i) => {
-                  const isSelected = answers[currentQ.id] === choice.id;
+                  const selectedAnswers = answers[currentQ.id] ?? [];
+                  const isMultiple = currentQ.type === 'multiple';
+                  const isSelected = selectedAnswers.includes(choice.id);
                   const letter = ['A', 'B', 'C', 'D', 'E'][i] ?? String(i + 1);
                   return (
                     <motion.button
@@ -612,7 +648,15 @@ export default function StudentQuizPage() {
                       whileTap={{ scale: 0.99 }}
                       onClick={() => {
                         if (phase !== 'quiz') return;
-                        setAnswers(prev => ({ ...prev, [currentQ.id]: choice.id }));
+                        setAnswers(prev => {
+                          const currentAnswers = prev[currentQ.id] ?? [];
+                          const nextAnswers = isMultiple
+                            ? (currentAnswers.includes(choice.id)
+                              ? currentAnswers.filter(value => value !== choice.id)
+                              : [...currentAnswers, choice.id])
+                            : [choice.id];
+                          return { ...prev, [currentQ.id]: nextAnswers };
+                        });
                       }}
                       disabled={phase !== 'quiz'}
                       className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${
@@ -656,7 +700,7 @@ export default function StudentQuizPage() {
                 className={`rounded-full transition-all duration-200 ${
                   i === currentIdx
                     ? 'w-6 h-3 bg-primary'
-                    : answers[q.id] !== null
+                    : (answers[q.id] ?? []).length > 0
                     ? 'w-3 h-3 bg-primary/50 hover:bg-primary/70'
                     : 'w-3 h-3 bg-surface-container-high hover:bg-outline-variant'
                 }`}
@@ -686,7 +730,7 @@ export default function StudentQuizPage() {
               </button>
             ) : (
               <button
-                onClick={handleSubmit}
+                onClick={requestSubmit}
                 disabled={!allAnswered || phase === 'submitting'}
                 className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${
                   allAnswered && phase === 'quiz'
@@ -709,7 +753,7 @@ export default function StudentQuizPage() {
               animate={{ opacity: 1 }}
               className="text-center text-xs text-amber-500 font-semibold mt-3"
             >
-              Còn {questions.length - answeredCount} câu chưa trả lời — vui lòng trả lời hết trước khi nộp
+              Còn {questions.length - answeredCount} câu chưa trả lời - vui lòng trả lời hết trước khi nộp
             </motion.p>
           )}
         </div>

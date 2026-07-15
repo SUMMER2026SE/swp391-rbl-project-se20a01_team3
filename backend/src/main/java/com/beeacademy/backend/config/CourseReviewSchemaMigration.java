@@ -32,11 +32,20 @@ public class CourseReviewSchemaMigration implements ApplicationRunner {
                     student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
                     rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
                     comment TEXT NULL,
+                    moderation_status VARCHAR(32) NOT NULL DEFAULT 'PUBLISHED',
+                    moderation_reason VARCHAR(500) NULL,
+                    moderated_at TIMESTAMPTZ NULL,
+                    moderated_by UUID NULL,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     CONSTRAINT uq_course_reviews_course_student UNIQUE (course_id, student_id)
                 )
                 """);
+        jdbcTemplate.execute("ALTER TABLE public.course_reviews ADD COLUMN IF NOT EXISTS moderation_status VARCHAR(32) NOT NULL DEFAULT 'PUBLISHED'");
+        jdbcTemplate.execute("ALTER TABLE public.course_reviews ADD COLUMN IF NOT EXISTS moderation_reason VARCHAR(500)");
+        jdbcTemplate.execute("ALTER TABLE public.course_reviews ADD COLUMN IF NOT EXISTS moderated_at TIMESTAMPTZ");
+        jdbcTemplate.execute("ALTER TABLE public.course_reviews ADD COLUMN IF NOT EXISTS moderated_by UUID");
+        jdbcTemplate.execute("UPDATE public.course_reviews SET moderation_status = 'PUBLISHED' WHERE moderation_status IS NULL");
         jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_course_reviews_course_updated
                 ON public.course_reviews (course_id, updated_at DESC)
@@ -44,6 +53,10 @@ public class CourseReviewSchemaMigration implements ApplicationRunner {
         jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_course_reviews_student
                 ON public.course_reviews (student_id)
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_course_reviews_moderation
+                ON public.course_reviews (moderation_status, updated_at ASC)
                 """);
     }
 }

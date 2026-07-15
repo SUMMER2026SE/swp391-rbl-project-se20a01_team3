@@ -43,10 +43,12 @@ import { useCourseStore, type VideoPosition } from '../../store/useCourseStore';
 import {
   getCourseDetail as courseServiceGetDetail,
   getCourseReviews,
+  recordCoursePreview,
+  searchCourses,
   upsertCourseReview,
 } from '../../api/courseService';
-import { adaptCourseDetail, formatDurationSec } from '../../api/adapter';
-import { isApiError } from '../../api/client';
+import { adaptCourseDetail, adaptCourseSummary, formatDurationSec } from '../../api/adapter';
+import { apiClient, isApiError } from '../../api/client';
 import { listOrders, verifyPayment } from '../../api/orderService';
 import {
   addCourseDiscussionReply,
@@ -57,7 +59,6 @@ import {
   updateCourseDiscussionReply,
   updateCourseDiscussionThread,
 } from '../../api/courseDiscussionService';
-import { listStudentCourseExams } from '../../api/examService';
 import { uploadQaImage } from '../../api/qaService';
 import { completeCourseProgressItem, getCourseProgress } from '../../api/courseProgressService';
 import {
@@ -66,11 +67,26 @@ import {
   listStudentLessonNotes,
 } from '../../api/studentLessonNoteService';
 import {
+  getLatestStudentVideoProgress,
   getStudentVideoProgress,
   saveStudentVideoProgress,
 } from '../../api/studentVideoProgressService';
+import { listStudentExams, type StudentExam } from '../../api/studentExamService';
+import { getStudentDocumentDownload } from '../../api/studentDocumentService';
+import {
+  flushOfflineLearningSyncQueue,
+  queueCompletion,
+  queueVideoProgress,
+} from '../../lib/offlineLearningSyncQueue';
+import {
+  listCourseAssignments,
+  submitAssignment,
+  uploadSubmissionFile,
+  type StudentAssignmentResponse,
+  type SubmissionFile,
+} from '../../api/assignmentService';
+import type { StudentVideoProgress, VideoWatchedSegment } from '../../api/studentVideoProgressService';
 import type { CourseDiscussionThread } from '../../api/courseDiscussionService';
-import type { StudentExamSummaryResponse } from '../../api/examService';
 import type { StudentLessonNote } from '../../api/studentLessonNoteService';
 import type { ChapterDetail, CourseReviewSummary, LessonDetail } from '../../types/api';
 
@@ -549,6 +565,82 @@ function QuizModal({ lesson, prevScore, onClose, onComplete }: QuizModalProps) {
 //   'syllabus'   — Nội dung khóa học (danh sách bài học với icon type)
 //   'instructor' — Thông tin giảng viên (avatar + bio)
 // ═══════════════════════════════════════════════════════════════════════════════
+function RelatedCourses({
+  currentCourseId,
+  subjectSlug,
+}: {
+  currentCourseId?: string;
+  subjectSlug?: string;
+}) {
+  const [courses, setCourses] = useState<Course[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRelatedCourses() {
+      try {
+        const bySubject = await searchCourses({
+          subject: subjectSlug,
+          size: 8,
+          sort: 'rating',
+        });
+        let items = bySubject.items.filter((item) => item.id !== currentCourseId);
+
+        // Nếu cùng môn chưa đủ 4 khóa, bổ sung bằng các khóa PUBLISHED khác.
+        if (items.length < 4) {
+          const fallback = await searchCourses({ size: 8, sort: 'rating' });
+          const seen = new Set(items.map((item) => item.id));
+          items = [...items, ...fallback.items.filter((item) =>
+            item.id !== currentCourseId && !seen.has(item.id)
+          )];
+        }
+
+        if (!cancelled) setCourses(items.slice(0, 4).map((item) => adaptCourseSummary(item)));
+      } catch {
+        if (!cancelled) setCourses([]);
+      }
+    }
+
+    void loadRelatedCourses();
+    return () => { cancelled = true; };
+  }, [currentCourseId, subjectSlug]);
+
+  if (courses.length === 0) return null;
+
+  return (
+    <section className="max-w-[1200px] mx-auto w-full px-4 md:px-10 pb-20">
+      <div className="flex items-end justify-between gap-4 mb-6">
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-wider text-primary">Khám phá thêm</p>
+          <h2 className="mt-1 text-2xl font-extrabold text-on-surface">Khóa học liên quan</h2>
+        </div>
+        <Link to="/courses" className="text-sm font-bold text-primary hover:underline">Xem tất cả</Link>
+      </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {courses.map((related) => (
+          <Link
+            key={related.id}
+            to={`/courses/${related.id}`}
+            className="overflow-hidden rounded-3xl border border-outline-variant/40 bg-surface-container-lowest shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg"
+          >
+            <SafeCourseImage course={related} className="h-36 w-full object-cover" />
+            <div className="p-4">
+              <p className="line-clamp-2 font-extrabold text-on-surface">{related.title}</p>
+              <p className="mt-2 text-xs text-on-surface-variant">{related.instructor}</p>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-600">
+                  <Star className="h-3.5 w-3.5 fill-amber-500" /> {related.rating > 0 ? related.rating.toFixed(1) : 'Mới'}
+                </span>
+                <span className="text-sm font-extrabold text-primary">{related.price}</span>
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function MarketingView({
   course,
   rawChapters,
@@ -573,6 +665,7 @@ function MarketingView({
   const videoPositions = useCourseStore(state => state.videoPositions);
   const navigate = useNavigate();
   const [activating, setActivating] = useState(false);
+  const [openingLearning, setOpeningLearning] = useState(false);
   const syllabusSections = useMemo<MarketingSyllabusSection[]>(() => (
     rawChapters.length > 0
       ? [...rawChapters]
@@ -622,6 +715,10 @@ function MarketingView({
   const previewCtaLabel = primaryPreviewLesson?.type === 'video'
     ? 'Xem video học thử'
     : 'Xem nội dung học thử';
+  const orderedVideoLessons = useMemo(
+    () => getOrderedVideoLessons(syllabusSections),
+    [syllabusSections],
+  );
 
   const introVideoUrl = course.introVideoUrl?.trim();
   const introEmbedUrl = introVideoUrl ? toEmbeddableVideoUrl(introVideoUrl) : null;
@@ -641,6 +738,59 @@ function MarketingView({
       }
       return next;
     });
+  }
+
+  async function handleOpenLearning() {
+    if (!onOpenLearning || openingLearning) return;
+
+    setOpeningLearning(true);
+    let latestCompletedLessonIds = completedList;
+    const localCourseProgress = videoPositions[`${user?.id ?? 'guest'}:${course.id}`] ?? {};
+    let latestVideoProgress: StudentVideoProgress | null = Object.entries(localCourseProgress)
+      .map(([lessonId, progress]) => ({
+        lessonId,
+        ...progress,
+        watchedSegments: progress.watchedSegments ?? [],
+        watchedDurationSec: watchedDurationSec(progress.watchedSegments ?? []),
+        completed: false,
+      }))
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))[0]
+      ?? null;
+
+    if (user?.role === 'student' && course.isEnrolled) {
+      try {
+        const [courseProgress, remoteVideoProgress] = await Promise.all([
+          getCourseProgress(course.id),
+          getLatestStudentVideoProgress(course.id),
+        ]);
+        latestCompletedLessonIds = courseProgress.completedLessonIds;
+        hydrateCourseProgress(
+          course.id,
+          courseProgress.completedLessonIds,
+          courseProgress.completedQuizIds,
+        );
+
+        const localUpdatedAt = latestVideoProgress?.updatedAt
+          ? Date.parse(latestVideoProgress.updatedAt)
+          : 0;
+        const remoteUpdatedAt = remoteVideoProgress?.updatedAt
+          ? Date.parse(remoteVideoProgress.updatedAt)
+          : 0;
+        if (remoteVideoProgress && remoteUpdatedAt >= localUpdatedAt) {
+          latestVideoProgress = remoteVideoProgress;
+        }
+      } catch {
+        // Mất mạng không chặn việc học; dùng vị trí cục bộ gần nhất.
+      }
+    }
+
+    const continueLesson = getContinueLearningLesson(
+      orderedVideoLessons,
+      latestCompletedLessonIds,
+      latestVideoProgress,
+    );
+    onOpenLearning(continueLesson?.id);
+    setOpeningLearning(false);
   }
 
   function handleAddToCart() {
@@ -728,6 +878,18 @@ function MarketingView({
               <Users className="w-5 h-5" />
               <span>{course.students.toLocaleString('vi-VN')} học viên</span>
             </div>
+            {(course.totalChapters ?? 0) > 0 && (
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-5 h-5" />
+                <span>{course.totalChapters} chương</span>
+              </div>
+            )}
+            {(course.totalDurationSec ?? 0) > 0 && (
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5" />
+                <span>{formatDurationSec(course.totalDurationSec ?? 0)}</span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               Giảng viên: <strong className="text-on-surface">{course.instructor}</strong>
             </div>
@@ -845,6 +1007,7 @@ function MarketingView({
                       fallbackReviewCount={course.reviewCount ?? 0}
                       canSubmitReview={canSubmitReview}
                       isOwnedCourse={isOwnedCourse}
+                      progressPct={progressPercent}
                     />
                   </motion.div>
                 )}
@@ -918,7 +1081,9 @@ function MarketingView({
                     onClick={() => onOpenLearning?.(continueLesson?.id)}
                     className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-4 text-lg font-bold text-on-primary shadow-lg shadow-primary/30 transition-all hover:-translate-y-1 hover:shadow-primary/50"
                   >
-                    <PlayCircle className="h-6 w-6" />
+                    {openingLearning
+                      ? <Loader2 className="h-6 w-6 animate-spin" />
+                      : <PlayCircle className="h-6 w-6" />}
                     {progressPercent > 0 ? 'Tiếp tục học' : 'Vào học ngay'}
                   </button>
                   <div className="mb-6 rounded-2xl bg-surface-container p-4">
@@ -933,19 +1098,41 @@ function MarketingView({
                 </>
               ) : (
                 <>
-                  {/* Giá: hiển thị giá gốc + giá gạch ngang (giả lập 1.5x) */}
+                  {/* Giá lấy trực tiếp từ API; chỉ hiển thị giá gốc khi thật sự có khuyến mãi. */}
                   <div className="text-3xl font-extrabold text-primary mb-1 text-center">{course.price}</div>
-                  <div className="text-center text-sm text-on-surface-variant line-through mb-6">
-                    {(parseInt(course.price?.replace(/\D/g, '') ?? '0') * 1.5).toLocaleString('vi-VN')}đ
-                  </div>
-                  {/* CTA: handleAddToCart() — chỉ thêm vào giỏ khi đã đăng nhập */}
-                  <button
-                    onClick={handleAddToCart}
-                    className="w-full py-4 bg-primary text-on-primary rounded-xl font-bold text-lg shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1 transition-all flex items-center justify-center gap-2 mb-3"
-                  >
-                    <ShoppingCart className="w-6 h-6" />
-                    Thêm vào giỏ hàng
-                  </button>
+                  {course.isOnSale && course.originalPrice && (
+                    <div className="text-center text-sm text-on-surface-variant line-through mb-6">
+                      {course.originalPrice}
+                    </div>
+                  )}
+                  {!course.isOnSale && <div className="mb-6" />}
+                  {isLoggedIn ? (
+                    <button
+                      onClick={handleAddToCart}
+                      className="w-full py-4 bg-primary text-on-primary rounded-xl font-bold text-lg shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1 transition-all flex items-center justify-center gap-2 mb-3"
+                    >
+                      <ShoppingCart className="w-6 h-6" />
+                      Thêm vào giỏ hàng
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        disabled
+                        className="w-full py-4 bg-surface-container-high text-on-surface-variant rounded-xl font-bold text-lg flex items-center justify-center gap-2 mb-3 cursor-not-allowed"
+                      >
+                        <Lock className="w-6 h-6" />
+                        Đăng nhập để mua khóa học
+                      </button>
+                      <Link
+                        to="/login"
+                        state={{ from: `/courses/${course.id}` }}
+                        className="mb-3 flex w-full items-center justify-center rounded-xl border border-primary px-4 py-2.5 text-sm font-bold text-primary hover:bg-primary/5"
+                      >
+                        Đăng nhập để tiếp tục
+                      </Link>
+                    </>
+                  )}
                 </>
               )}
               {!isOwnedCourse && primaryPreviewLesson && onStartPreview && (
@@ -1012,6 +1199,7 @@ function MarketingView({
           </div>
         </div>
       </main>
+      <RelatedCourses currentCourseId={course.id} subjectSlug={course.categorySlug} />
     </div>
   );
 }
@@ -1138,7 +1326,7 @@ function SafeCourseImage({
 function adaptLearningLesson(lesson: LessonDetail): Lesson {
   const hasVideo = Boolean(lesson.videoUrl || lesson.videoEmbedUrl);
   const hasDocuments = (lesson.documents?.length ?? 0) > 0;
-  const type: Lesson['type'] = hasVideo || !hasDocuments ? 'video' : 'pdf';
+  const type: Lesson['type'] = hasVideo ? 'video' : 'pdf';
   return {
     id: lesson.id,
     title: lesson.title,
@@ -1149,8 +1337,50 @@ function adaptLearningLesson(lesson: LessonDetail): Lesson {
       : (lesson.documents?.[0]?.fileUrl ?? '#'),
     isFree: lesson.isFree,
     isCompleted: false,
+    completionRule: lesson.completionRule,
+    transcript: lesson.transcript,
+    subtitleUrl: lesson.subtitleUrl,
     documents: lesson.documents ?? [],
   };
+}
+
+function mergeWatchedSegments(
+  current: VideoWatchedSegment[],
+  incoming: VideoWatchedSegment[],
+  durationSec: number,
+): VideoWatchedSegment[] {
+  const max = Math.max(0, Math.floor(durationSec));
+  return [...current, ...incoming]
+    .map(segment => ({
+      startSec: Math.max(0, Math.min(Math.floor(segment.startSec), max)),
+      endSec: Math.max(0, Math.min(Math.floor(segment.endSec), max)),
+    }))
+    .filter(segment => segment.endSec > segment.startSec)
+    .sort((left, right) => left.startSec - right.startSec)
+    .reduce<VideoWatchedSegment[]>((merged, segment) => {
+      const previous = merged[merged.length - 1];
+      if (!previous || segment.startSec > previous.endSec) {
+        merged.push(segment);
+      } else {
+        previous.endSec = Math.max(previous.endSec, segment.endSec);
+      }
+      return merged;
+    }, []);
+}
+
+function watchedDurationSec(segments: VideoWatchedSegment[]): number {
+  return segments.reduce((total, segment) => total + segment.endSec - segment.startSec, 0);
+}
+
+function continuousWatchedEndSec(segments: VideoWatchedSegment[]): number {
+  let end = 0;
+  const tolerance = 1;
+  const orderedSegments = [...segments].sort((left, right) => left.startSec - right.startSec);
+  for (const segment of orderedSegments) {
+    if (segment.startSec > end + tolerance) break;
+    end = Math.max(end, segment.endSec);
+  }
+  return end;
 }
 
 function getOrderedVideoLessons(
@@ -1191,6 +1421,15 @@ function getLessonUnlockState(
       canOpen: false,
       reason: 'Bài học này cần mua khóa học để mở.',
       lockedByPurchase: true,
+      lockedByPrerequisite: false,
+    };
+  }
+
+  if (!course.isEnrolled && Boolean(lesson.isFree)) {
+    return {
+      canOpen: true,
+      reason: null,
+      lockedByPurchase: false,
       lockedByPrerequisite: false,
     };
   }
@@ -1390,18 +1629,23 @@ function CourseReviewsPanel({
   fallbackReviewCount,
   canSubmitReview,
   isOwnedCourse,
+  progressPct,
 }: {
   courseId: string;
   fallbackRating: number;
   fallbackReviewCount: number;
   canSubmitReview: boolean;
   isOwnedCourse: boolean;
+  progressPct: number;
 }) {
   const [reviewSummary, setReviewSummary] = useState<CourseReviewSummary | null>(null);
   const [loadingReviews, setLoadingReviews] = useState(true);
   const [savingReview, setSavingReview] = useState(false);
   const [draftRating, setDraftRating] = useState(0);
   const [draftComment, setDraftComment] = useState('');
+  const [serverProgressPct, setServerProgressPct] = useState<number | null>(null);
+  const effectiveProgressPct = serverProgressPct ?? progressPct;
+  const canWriteReview = canSubmitReview && (effectiveProgressPct >= 30 || Boolean(reviewSummary?.myReview));
 
   const visibleReviews = useMemo(() => {
     const myReviewId = reviewSummary?.myReview?.id;
@@ -1467,13 +1711,40 @@ function CourseReviewsPanel({
     };
   }, [courseId]);
 
+  useEffect(() => {
+    if (!canSubmitReview) {
+      setServerProgressPct(null);
+      return;
+    }
+    let cancelled = false;
+    getCourseProgress(courseId)
+      .then(progress => {
+        if (!cancelled) setServerProgressPct(progress.progressPct);
+      })
+      .catch(() => {
+        if (!cancelled) setServerProgressPct(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canSubmitReview, courseId]);
+
   async function handleSubmitReview() {
     if (!canSubmitReview) {
       notify.error('Chỉ học sinh đã mua khóa học mới có thể đánh giá.');
       return;
     }
+    if (effectiveProgressPct < 30 && !reviewSummary?.myReview) {
+      notify.error('Ban can hoan thanh it nhat 30% noi dung khoa hoc truoc khi danh gia.');
+      return;
+    }
     if (draftRating < 1 || draftRating > 5) {
       notify.error('Vui lòng chọn số sao đánh giá từ 1 đến 5.');
+      return;
+    }
+
+    if (draftComment.trim().length < 20) {
+      notify.error('Nhan xet can co it nhat 20 ky tu.');
       return;
     }
 
@@ -1523,7 +1794,7 @@ function CourseReviewsPanel({
         </div>
       </div>
 
-      {canSubmitReview && (
+      {canWriteReview && (
         <section className="rounded-3xl border border-primary/15 bg-primary/5 p-6">
           <div className="flex flex-col gap-4">
             <div>
@@ -1546,12 +1817,12 @@ function CourseReviewsPanel({
                 value={draftComment}
                 onChange={event => setDraftComment(event.target.value)}
                 rows={4}
-                maxLength={2000}
+                maxLength={1000}
                 placeholder="Điều bạn thích nhất ở khóa học là gì? Nội dung, cách giảng dạy hoặc phần nào cần cải thiện?"
                 className="w-full rounded-2xl border border-outline-variant/40 bg-surface px-4 py-3 text-sm text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/50 focus:border-primary"
               />
               <span className="mt-1 block text-right text-xs text-on-surface-variant">
-                {draftComment.length}/2000
+                {draftComment.length}/1000
               </span>
             </label>
 
@@ -1567,6 +1838,14 @@ function CourseReviewsPanel({
               </button>
             </div>
           </div>
+        </section>
+      )}
+
+      {canSubmitReview && !canWriteReview && isOwnedCourse && (
+        <section className="rounded-3xl border border-amber-400/30 bg-amber-50 p-5">
+          <p className="text-sm text-amber-900">
+            Hoan thanh it nhat 30% noi dung khoa hoc de viet danh gia. Tien do hien tai: {Math.max(0, Math.round(effectiveProgressPct))}%.
+          </p>
         </section>
       )}
 
@@ -1624,6 +1903,12 @@ function CourseReviewsPanel({
                         {reviewSummary.myReview.studentName ?? 'Bạn'}
                       </p>
                       <p className="text-xs font-semibold text-primary">Đánh giá của bạn</p>
+                      {reviewSummary.myReview.moderationStatus === 'PENDING_MODERATION' && (
+                        <p className="mt-1 text-xs font-semibold text-amber-700">Đang chờ Admin kiểm duyệt</p>
+                      )}
+                      {reviewSummary.myReview.moderationStatus === 'REJECTED' && (
+                        <p className="mt-1 text-xs font-semibold text-red-600">Chưa được hiển thị công khai</p>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
@@ -1851,6 +2136,276 @@ function MarketingSyllabusList({
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPONENT: CourseAssignmentsPanel (UC16 — Nộp bài tập)
+//
+// Tab "Bài tập" trong LearningView: liệt kê bài tập tự luận của khóa học,
+// cho học sinh nộp bài (text + tối đa 5 file) và xem điểm/nhận xét sau khi chấm.
+//
+// TRẠNG THÁI mỗi bài:
+//   chưa nộp   → form nộp bài
+//   pending    → đã nộp, chờ chấm (được nộp lại, ghi đè bài cũ)
+//   resubmit   → GV trả về yêu cầu nộp lại
+//   graded     → hiện điểm + nhận xét, khóa form
+// ═══════════════════════════════════════════════════════════════════════════════
+function CourseAssignmentsPanel({ courseId }: { courseId: string }) {
+  const [assignments, setAssignments] = useState<StudentAssignmentResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [openFormId, setOpenFormId] = useState<string | null>(null);
+  const [contentInput, setContentInput] = useState('');
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    listCourseAssignments(courseId)
+      .then(data => {
+        if (!cancelled) {
+          setAssignments(data);
+          setError(null);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(isApiError(err) ? err.message : 'Không tải được danh sách bài tập');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId]);
+
+  function openForm(assignment: StudentAssignmentResponse) {
+    setOpenFormId(assignment.id);
+    setContentInput(assignment.mySubmission?.content ?? '');
+    setPendingFiles([]);
+  }
+
+  async function handleSubmit(assignmentId: string) {
+    if (!contentInput.trim() && pendingFiles.length === 0) {
+      notify.error('Bài nộp phải có nội dung hoặc file đính kèm');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const uploadedFiles: SubmissionFile[] = [];
+      for (const file of pendingFiles) {
+        const uploaded = await uploadSubmissionFile(assignmentId, file);
+        uploadedFiles.push({
+          name: file.name,
+          url: uploaded.publicUrl ?? uploaded.storagePath,
+          type: uploaded.fileType,
+          sizeBytes: uploaded.fileSizeBytes,
+        });
+      }
+      const updated = await submitAssignment(assignmentId, contentInput.trim(), uploadedFiles);
+      setAssignments(prev => prev.map(item => (item.id === assignmentId ? updated : item)));
+      setOpenFormId(null);
+      setContentInput('');
+      setPendingFiles([]);
+      notify.success('Đã nộp bài tập');
+    } catch (err: unknown) {
+      notify.error(isApiError(err) ? err.message : 'Nộp bài thất bại, thử lại sau');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-on-surface-variant">
+        <Loader2 className="w-6 h-6 animate-spin mr-2" /> Đang tải bài tập...
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 p-4 rounded-2xl bg-error/10 text-error font-medium">
+        <AlertCircle className="w-5 h-5 flex-shrink-0" /> {error}
+      </div>
+    );
+  }
+  if (assignments.length === 0) {
+    return (
+      <div className="text-center py-12 text-on-surface-variant">
+        <ClipboardList className="w-10 h-10 mx-auto mb-3 opacity-50" />
+        <p className="font-medium">Khóa học này chưa có bài tập tự luận nào.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {assignments.map(assignment => {
+        const submission = assignment.mySubmission;
+        const isGraded = submission?.status === 'graded';
+        const needsResubmit = submission?.status === 'resubmit';
+        const dueLabel = assignment.dueAt
+          ? new Date(assignment.dueAt).toLocaleString('vi-VN', {
+            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+          })
+          : null;
+        const isFormOpen = openFormId === assignment.id;
+        return (
+          <div
+            key={assignment.id}
+            className="rounded-2xl border border-outline-variant/40 bg-surface-container overflow-hidden"
+          >
+            <div className="p-5 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h4 className="font-bold text-on-surface">{assignment.title}</h4>
+                  <p className="text-xs text-on-surface-variant mt-1 font-medium">
+                    {assignment.chapterTitle ?? assignment.lessonTitle ?? 'Khóa học'}
+                    {' · '}Điểm tối đa: {assignment.maxScore}
+                    {dueLabel && <> {' · '}Hạn nộp: {dueLabel}</>}
+                  </p>
+                </div>
+                <div className="flex-shrink-0">
+                  {!submission && (
+                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-surface-container-high text-on-surface-variant">
+                      <Clock className="w-3.5 h-3.5" /> Chưa nộp
+                    </span>
+                  )}
+                  {submission && submission.status === 'pending' && (
+                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Chờ chấm
+                    </span>
+                  )}
+                  {needsResubmit && (
+                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-error/10 text-error">
+                      <RotateCcw className="w-3.5 h-3.5" /> Cần nộp lại
+                    </span>
+                  )}
+                  {isGraded && (
+                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                      <Trophy className="w-3.5 h-3.5" /> {submission.score}/{assignment.maxScore} điểm
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {assignment.description && (
+                <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-line">
+                  {assignment.description}
+                </p>
+              )}
+
+              {submission && (
+                <div className="rounded-xl bg-surface-container-high p-4 space-y-2">
+                  <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide">
+                    Bài đã nộp {submission.late && <span className="text-error">(trễ hạn)</span>}
+                  </p>
+                  {submission.content && (
+                    <p className="text-sm text-on-surface whitespace-pre-line">{submission.content}</p>
+                  )}
+                  {submission.files.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {submission.files.map((file, idx) => (
+                        <a
+                          key={idx}
+                          href={file.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface text-xs font-semibold text-primary hover:underline"
+                        >
+                          <FileText className="w-3.5 h-3.5" /> {file.name ?? 'File đính kèm'}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {isGraded && submission.feedback && (
+                    <div className="pt-2 border-t border-outline-variant/30">
+                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1">
+                        Nhận xét của giáo viên
+                      </p>
+                      <p className="text-sm text-on-surface whitespace-pre-line">{submission.feedback}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!isGraded && !isFormOpen && (
+                <button
+                  onClick={() => openForm(assignment)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-on-primary text-sm font-bold hover:opacity-90 transition-opacity"
+                >
+                  <Send className="w-4 h-4" />
+                  {submission ? 'Nộp lại bài' : 'Nộp bài'}
+                </button>
+              )}
+
+              {!isGraded && isFormOpen && (
+                <div className="space-y-3 pt-2">
+                  <textarea
+                    value={contentInput}
+                    onChange={event => setContentInput(event.target.value)}
+                    rows={5}
+                    placeholder="Nhập nội dung bài làm của em..."
+                    className="w-full rounded-xl border border-outline-variant/50 bg-surface p-3 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <label className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-outline-variant/50 text-sm font-semibold text-on-surface-variant cursor-pointer hover:border-primary hover:text-primary transition-colors">
+                      <Plus className="w-4 h-4" /> Chọn file (tối đa 5)
+                      <input
+                        type="file"
+                        multiple
+                        accept=".pdf,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png,.webp"
+                        className="hidden"
+                        onChange={event => {
+                          const selected = Array.from(event.target.files ?? []);
+                          setPendingFiles(prev => [...prev, ...selected].slice(0, 5));
+                          event.target.value = '';
+                        }}
+                      />
+                    </label>
+                    {pendingFiles.map((file, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-high text-xs font-semibold text-on-surface"
+                      >
+                        <FileText className="w-3.5 h-3.5" /> {file.name}
+                        <button
+                          onClick={() => setPendingFiles(prev => prev.filter((_, i) => i !== idx))}
+                          className="text-on-surface-variant hover:text-error"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleSubmit(assignment.id)}
+                      disabled={submitting}
+                      className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-primary text-on-primary text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
+                    >
+                      {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      {submitting ? 'Đang nộp...' : 'Xác nhận nộp'}
+                    </button>
+                    <button
+                      onClick={() => setOpenFormId(null)}
+                      disabled={submitting}
+                      className="text-sm font-semibold text-on-surface-variant hover:text-on-surface"
+                    >
+                      Hủy
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPreview }: {
   course: Course;
   rawChapters: ChapterDetail[];
@@ -1869,9 +2424,14 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   // BUG FIX: state báo hiệu signed video URL đã hết hạn (sau 1 giờ)
   // — browser tự phát lỗi khi URL 403, <video onError> sẽ bắt và set flag này
   const [videoUrlExpired, setVideoUrlExpired] = useState(false);
+  const [usingVideoFallback, setUsingVideoFallback] = useState(false);
+  const [slidePreviewUrl, setSlidePreviewUrl] = useState<string | null>(null);
+  const [loadingSlidePreview, setLoadingSlidePreview] = useState(false);
 
   // activeQuiz: null = không hiện modal, Lesson = hiện QuizModal cho bài đó
   const [activeQuiz, setActiveQuiz] = useState<Lesson | null>(null);
+  const [studentExams, setStudentExams] = useState<StudentExam[]>([]);
+  const [loadingStudentExams, setLoadingStudentExams] = useState(false);
 
   // Lấy dữ liệu và actions từ Zustand store
   const completedLessons = useCourseStore((state) => state.completedLessons);
@@ -1913,13 +2473,16 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
   const [editingReplyText, setEditingReplyText] = useState('');
   const [savingDiscussionId, setSavingDiscussionId] = useState<string | null>(null);
-  const [studentExams, setStudentExams] = useState<StudentExamSummaryResponse[]>([]);
-  const watchedUntilRef = useRef(0);
+  const watchedSegmentsRef = useRef<VideoWatchedSegment[]>([]);
+  const lastObservedPositionRef = useRef<number | null>(null);
+  const lastObservedAtRef = useRef(0);
+  const completionRequestedRef = useRef<Set<string>>(new Set());
+  const playerContainerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const isResettingSeekRef = useRef(false);
-  const lastSeekWarningAtRef = useRef(0);
   const currentPositionRef = useRef(0);
   const currentDurationRef = useRef(0);
+  const maxSeekablePositionRef = useRef(0);
   const lastLocalProgressRef = useRef(-1);
   const lastRemoteSaveAtRef = useRef(0);
 
@@ -1942,6 +2505,20 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
         lessons: course.lessons ?? [],
       }]
   ), [rawChapters, course.lessons]);
+  const examsByPlacementChapterId = useMemo(() => (
+    studentExams.reduce<Record<string, StudentExam[]>>((acc, exam) => {
+      const savedPlacementExists = exam.placementChapterId
+        ? chapterSections.some(chapter => chapter.id === exam.placementChapterId)
+        : false;
+      const fallbackIndex = ((exam.slotIndex ?? 0) + 1) * 3 - 1;
+      const fallbackChapter = chapterSections[Math.max(0, Math.min(chapterSections.length - 1, fallbackIndex))];
+      const placementChapterId = savedPlacementExists ? exam.placementChapterId : fallbackChapter?.id;
+      if (!placementChapterId) return acc;
+      acc[placementChapterId] = [...(acc[placementChapterId] ?? []), exam]
+        .sort((a, b) => a.slotIndex - b.slotIndex);
+      return acc;
+    }, {})
+  ), [chapterSections, studentExams]);
   const orderedVideoLessons = useMemo(
     () => getOrderedVideoLessons(chapterSections),
     [chapterSections],
@@ -1971,20 +2548,82 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     () => new Set(chapterSections.slice(0, 1).map(chapter => chapter.id))
   );
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(firstLesson);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
   const [resumePositionSec, setResumePositionSec] = useState(0);
   const videoProgressStorageKey = `${user?.id ?? 'guest'}:${course.id}`;
-  const [activeTab, setActiveTab] = useState<'overview' | 'qa' | 'notes' | 'reviews'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'qa' | 'notes' | 'assignments' | 'reviews'>('overview');
+  const playableVideoUrl = usingVideoFallback && activeLesson?.videoFallbackUrl
+    ? activeLesson.videoFallbackUrl
+    : activeLesson?.url;
   const isDirectVideo = Boolean(
     activeLesson?.type === 'video' &&
-    activeLesson.url &&
-    activeLesson.url !== '#' &&
-    !activeLesson.url.includes('youtube.com') &&
-    !activeLesson.url.includes('youtu.be') &&
-    !activeLesson.url.includes('vimeo.com') &&
-    !activeLesson.url.includes('/embed/')
+    playableVideoUrl &&
+    playableVideoUrl !== '#' &&
+    !playableVideoUrl.includes('youtube.com') &&
+    !playableVideoUrl.includes('youtu.be') &&
+    !playableVideoUrl.includes('vimeo.com') &&
+    !playableVideoUrl.includes('/embed/')
   );
-  const canSubmitReview = course.isEnrolled && user?.role === 'student';
+  const synchronizedSlideDocument = useMemo(() => activeLesson?.documents?.find(document =>
+    document.position === 2 && document.fileType.toLowerCase() === 'pdf',
+  ) ?? null, [activeLesson]);
+  const slideCueSeconds = useMemo(() => (activeLesson?.slideCueSeconds ?? '')
+    .split(',')
+    .map(value => Number.parseInt(value.trim(), 10))
+    .filter(value => Number.isFinite(value) && value >= 0), [activeLesson?.slideCueSeconds]);
+  const synchronizedSlidePage = useMemo(() => {
+    if (slideCueSeconds.length === 0) return 1;
+    const currentCue = slideCueSeconds.reduce((page, cue, index) =>
+      currentVideoTime >= cue ? index + 1 : page, 1);
+    return currentCue;
+  }, [currentVideoTime, slideCueSeconds]);
 
+  useEffect(() => {
+    if (!course.isEnrolled || !activeLesson || !synchronizedSlideDocument?.id) {
+      setSlidePreviewUrl(null);
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setLoadingSlidePreview(true);
+    getStudentDocumentDownload(course.id, activeLesson.id, synchronizedSlideDocument.id)
+      .then(result => fetch(new URL(result.downloadUrl, apiClient.defaults.baseURL).toString(), {
+        cache: 'no-store',
+      }))
+      .then(async response => {
+        if (!response.ok) throw new Error('Không thể tải slide để xem.');
+        return response.blob();
+      })
+      .then(blob => {
+        objectUrl = URL.createObjectURL(blob);
+        if (!cancelled) setSlidePreviewUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setSlidePreviewUrl(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSlidePreview(false);
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [activeLesson?.id, course.id, course.isEnrolled, synchronizedSlideDocument?.id]);
+
+  useEffect(() => {
+    if (!course.isEnrolled || user?.role !== 'student') return;
+    const flush = () => {
+      void flushOfflineLearningSyncQueue().then(count => {
+        if (count > 0) notify.success(`Đã đồng bộ ${count} cập nhật học tập đang chờ.`);
+      });
+    };
+    flush();
+    window.addEventListener('online', flush);
+    return () => window.removeEventListener('online', flush);
+  }, [course.isEnrolled, user?.role]);
+  const canSubmitReview = course.isEnrolled && user?.role === 'student';
   useEffect(() => {
     setActiveLesson(firstLesson);
     setActiveQuiz(null);
@@ -1994,17 +2633,50 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   }, [chapterSections, course.id, firstLesson]);
 
   useEffect(() => {
+    if (!course.isEnrolled || !accessToken) {
+      setStudentExams([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingStudentExams(true);
+    listStudentExams(course.id)
+      .then(exams => {
+        if (!cancelled) setStudentExams(exams);
+      })
+      .catch(error => {
+        if (!cancelled) {
+          console.warn('Không tải được danh sách bài kiểm tra:', error);
+          setStudentExams([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingStudentExams(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, course.id, course.isEnrolled]);
+
+  useEffect(() => {
     const localProgress = activeLesson
       ? videoPositions[videoProgressStorageKey]?.[activeLesson.id]
       : undefined;
     const localPosition = localProgress?.positionSec ?? 0;
-    watchedUntilRef.current = localPosition;
+    watchedSegmentsRef.current = localProgress?.watchedSegments ?? [];
+    const localMaxSeekablePosition = Math.max(
+      localPosition,
+      continuousWatchedEndSec(watchedSegmentsRef.current),
+    );
+    lastObservedPositionRef.current = null;
+    lastObservedAtRef.current = 0;
     currentPositionRef.current = localPosition;
     currentDurationRef.current = localProgress?.durationSec ?? 0;
+    maxSeekablePositionRef.current = localMaxSeekablePosition;
     lastLocalProgressRef.current = localPosition;
     lastRemoteSaveAtRef.current = 0;
     isResettingSeekRef.current = false;
-    lastSeekWarningAtRef.current = 0;
     setCurrentVideoTime(localPosition);
     setCurrentVideoDuration(localProgress?.durationSec ?? 0);
     setIsVideoPlaying(false);
@@ -2034,7 +2706,12 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
 
         currentPositionRef.current = remoteProgress.positionSec;
         currentDurationRef.current = remoteProgress.durationSec;
-        watchedUntilRef.current = Math.max(watchedUntilRef.current, remoteProgress.positionSec);
+        watchedSegmentsRef.current = remoteProgress.watchedSegments ?? [];
+        const remoteMaxSeekablePosition = Math.max(
+          remoteProgress.positionSec,
+          continuousWatchedEndSec(remoteProgress.watchedSegments ?? []),
+        );
+        maxSeekablePositionRef.current = remoteMaxSeekablePosition;
         setCurrentVideoTime(remoteProgress.positionSec);
         setCurrentVideoDuration(remoteProgress.durationSec);
         setResumePositionSec(remoteProgress.positionSec);
@@ -2044,6 +2721,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
           remoteProgress.positionSec,
           remoteProgress.durationSec,
           remoteProgress.updatedAt ?? undefined,
+          remoteProgress.watchedSegments ?? [],
         );
       })
       .catch(() => {
@@ -2061,7 +2739,6 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     if (video.duration - resumePositionSec <= 5) return;
     isResettingSeekRef.current = true;
     video.currentTime = Math.min(resumePositionSec, video.duration);
-    watchedUntilRef.current = Math.max(watchedUntilRef.current, video.currentTime);
     window.setTimeout(() => {
       isResettingSeekRef.current = false;
     }, 0);
@@ -2135,21 +2812,6 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   }, [activeTab, course.id]);
 
   useEffect(() => {
-    let cancelled = false;
-    listStudentCourseExams(course.id)
-      .then(items => {
-        if (!cancelled) setStudentExams(items);
-      })
-      .catch(() => {
-        if (!cancelled) setStudentExams([]);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [course.id]);
-
-  useEffect(() => {
     if (!course.isEnrolled || !accessToken) return;
 
     let cancelled = false;
@@ -2215,6 +2877,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     } else {
       setActiveLesson(lesson);
       setVideoUrlExpired(false); // reset lỗi URL cũ khi chuyển sang bài mới
+      setUsingVideoFallback(false);
     }
   }
 
@@ -2236,16 +2899,56 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     if (!activeLesson || activeLesson.type !== 'video') return;
     const position = Math.max(0, Math.floor(positionOverride ?? currentPositionRef.current));
     const duration = Math.max(0, Math.floor(currentDurationRef.current));
-    saveVideoPosition(videoProgressStorageKey, activeLesson.id, position, duration);
+    const lessonId = activeLesson.id;
+    const watchedSegments = watchedSegmentsRef.current;
+    saveVideoPosition(videoProgressStorageKey, lessonId, position, duration, undefined, watchedSegments);
 
     if (user?.role !== 'student' || !course.isEnrolled) return;
+    const payload = { positionSec: position, durationSec: duration, watchedSegments };
+    if (!navigator.onLine) {
+      queueVideoProgress(course.id, lessonId, payload);
+      return;
+    }
     lastRemoteSaveAtRef.current = Date.now();
-    void saveStudentVideoProgress(course.id, activeLesson.id, {
-      positionSec: position,
-      durationSec: duration,
+    void saveStudentVideoProgress(course.id, activeLesson.id, payload).then(progress => {
+      if (!progress.completed) return;
+      markLessonCompleted(course.id, lessonId);
+      void getCourseProgress(course.id)
+        .then(latest => hydrateCourseProgress(course.id, latest.completedLessonIds, latest.completedQuizIds))
+        .catch(() => undefined);
+      notify.success('Đã hoàn thành video bài học!');
     }).catch(() => {
-      // Bản cục bộ đã được lưu; lần cập nhật tiếp theo sẽ thử đồng bộ lại.
+      completionRequestedRef.current.delete(lessonId);
+      queueVideoProgress(course.id, lessonId, payload);
     });
+  }
+
+  function updateMaxSeekablePosition(positionSec: number) {
+    if (!Number.isFinite(positionSec)) return;
+    const normalizedPosition = Math.max(0, positionSec);
+    if (normalizedPosition <= maxSeekablePositionRef.current) return;
+    maxSeekablePositionRef.current = normalizedPosition;
+    setMaxSeekablePosition(normalizedPosition);
+  }
+
+  function clampForwardSeek(video: HTMLVideoElement) {
+    const maxAllowed = Math.min(
+      Math.max(0, video.duration || maxSeekablePositionRef.current),
+      maxSeekablePositionRef.current,
+    );
+    if (video.currentTime <= maxAllowed + 1) return false;
+
+    isResettingSeekRef.current = true;
+    video.currentTime = maxAllowed;
+    currentPositionRef.current = maxAllowed;
+    lastObservedPositionRef.current = maxAllowed;
+    lastObservedAtRef.current = Date.now();
+    setCurrentVideoTime(maxAllowed);
+    window.setTimeout(() => {
+      isResettingSeekRef.current = false;
+    }, 0);
+    notify.error('KhÃ´ng thá»ƒ tua tá»›i pháº§n chÆ°a xem.');
+    return true;
   }
 
   function recordVideoProgress(positionSec: number, durationSec: number) {
@@ -2254,7 +2957,6 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     const normalizedDuration = Math.max(0, durationSec);
     currentPositionRef.current = normalizedPosition;
     currentDurationRef.current = normalizedDuration;
-    watchedUntilRef.current = Math.max(watchedUntilRef.current, normalizedPosition);
     setCurrentVideoTime(normalizedPosition);
     setCurrentVideoDuration(normalizedDuration);
 
@@ -2262,10 +2964,16 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     if (Math.abs(wholeSecond - lastLocalProgressRef.current) >= 2) {
       lastLocalProgressRef.current = wholeSecond;
       if (activeLesson) {
-        saveVideoPosition(videoProgressStorageKey, activeLesson.id, wholeSecond, normalizedDuration);
+        saveVideoPosition(videoProgressStorageKey, activeLesson.id, wholeSecond, normalizedDuration, undefined, watchedSegmentsRef.current);
       }
     }
-    if (Date.now() - lastRemoteSaveAtRef.current >= 10_000) {
+    const watched = watchedDurationSec(watchedSegmentsRef.current);
+    const reachedCompletionThreshold = normalizedDuration > 0
+      && watched >= Math.ceil(normalizedDuration * 0.9);
+    if (reachedCompletionThreshold && activeLesson && !completionRequestedRef.current.has(activeLesson.id)) {
+      completionRequestedRef.current.add(activeLesson.id);
+      persistCurrentVideoProgress();
+    } else if (Date.now() - lastRemoteSaveAtRef.current >= 10_000) {
       persistCurrentVideoProgress();
     }
   }
@@ -2289,7 +2997,41 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       const progress = await completeCourseProgressItem(course.id, { itemId, itemType });
       hydrateCourseProgress(course.id, progress.completedLessonIds, progress.completedQuizIds);
     } catch (error) {
+      queueCompletion(course.id, itemId, itemType);
       console.error('Không lưu được tiến độ khóa học:', error);
+    }
+  }
+
+  useEffect(() => {
+    if (!course.isEnrolled || !activeLesson || activeLesson.type === 'video') return;
+    if (activeLesson.completionRule === 'DOCUMENT_OPENED') {
+      void syncCompletedProgressItem(activeLesson.id, 'lesson');
+    }
+  }, [activeLesson?.id, activeLesson?.completionRule, course.isEnrolled]);
+
+  function markNonVideoLessonComplete() {
+    if (!activeLesson || activeLesson.type === 'video') return;
+    if (activeLesson.completionRule !== 'MARK_AS_COMPLETE') {
+      notify.error('Bài học chưa cho phép đánh dấu hoàn thành thủ công.');
+      return;
+    }
+    void syncCompletedProgressItem(activeLesson.id, 'lesson');
+  }
+
+  async function handleDownloadDocument(documentId: string) {
+    if (!activeLesson || isPreviewMode) return;
+    setDownloadingDocumentId(documentId);
+    try {
+      const result = await getStudentDocumentDownload(course.id, activeLesson.id, documentId);
+      const link = document.createElement('a');
+      link.href = new URL(result.downloadUrl, apiClient.defaults.baseURL).toString();
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.click();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : 'Khong the tai tai lieu.');
+    } finally {
+      setDownloadingDocumentId(null);
     }
   }
 
@@ -2297,11 +3039,6 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     currentPositionRef.current = 0;
     setIsVideoPlaying(false);
     persistCurrentVideoProgress(0);
-    if (activeLesson && !completedList.includes(activeLesson.id)) {
-      markLessonCompleted(course.id, activeLesson.id);
-      void syncCompletedProgressItem(activeLesson.id, 'lesson');
-      notify.success('Đã hoàn thành video bài học!');
-    }
   }
 
   function handleVideoMetadataLoaded(event: SyntheticEvent<HTMLVideoElement>) {
@@ -2315,7 +3052,6 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     if (resumePositionSec > 0 && video.duration - resumePositionSec > 5) {
       isResettingSeekRef.current = true;
       video.currentTime = Math.min(resumePositionSec, video.duration);
-      watchedUntilRef.current = Math.max(watchedUntilRef.current, video.currentTime);
       window.setTimeout(() => {
         isResettingSeekRef.current = false;
       }, 0);
@@ -2331,10 +3067,19 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       return;
     }
 
-    watchedUntilRef.current = Math.max(
-      watchedUntilRef.current,
-      event.currentTarget.currentTime,
-    );
+    recordVideoProgress(event.currentTarget.currentTime, event.currentTarget.duration);
+
+  }
+
+  function handleVideoPlaybackError() {
+    if (!usingVideoFallback && activeLesson?.videoFallbackUrl
+        && activeLesson.videoFallbackUrl !== activeLesson.url) {
+      setUsingVideoFallback(true);
+      setVideoUrlExpired(false);
+      notify.info('Nguồn chính gặp sự cố. Đang chuyển sang nguồn video dự phòng.');
+      return;
+    }
+    setVideoUrlExpired(true);
   }
 
   function handleVideoSeeking(event: SyntheticEvent<HTMLVideoElement>) {
@@ -2355,10 +3100,27 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       isResettingSeekRef.current = false;
     }, 0);
 
-    const now = Date.now();
-    if (now - lastSeekWarningAtRef.current > 1500) {
-      lastSeekWarningAtRef.current = now;
-      notify.error('Không thể tua video bài giảng.');
+  function toggleDirectVideoPlayback() {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      void video.play();
+    } else {
+      video.pause();
+    }
+  }
+
+  function toggleDirectVideoMuted() {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+    setIsVideoMuted(video.muted);
+  }
+
+  function openDirectVideoFullscreen() {
+    const container = playerContainerRef.current;
+    if (container?.requestFullscreen) {
+      void container.requestFullscreen();
     }
   }
 
@@ -2700,15 +3462,18 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
         <div className={`flex flex-col flex-grow transition-all duration-300 overflow-y-auto ${isSidebarOpen ? 'lg:pr-[380px]' : ''}`}>
 
           {/* Video / PDF player (giả lập) */}
-          <div className="w-full bg-black aspect-video relative group flex-shrink-0 overflow-hidden">
-            {/* Hiển thị thông báo khi signed URL hết hạn (sau 1 giờ) */}
+          <div
+            ref={playerContainerRef}
+            className="w-full bg-black aspect-video relative group flex-shrink-0 overflow-hidden"
+          >
+            {/* Lỗi tải/phát video, bao gồm signed URL đã hết hạn. */}
             {videoUrlExpired ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-3 px-8 text-center">
                 <SafeCourseImage course={course} alt="" className="absolute inset-0 w-full h-full object-cover opacity-20" />
                 <AlertCircle className="w-14 h-14 text-orange-400 relative z-10" />
-                <p className="text-base font-semibold relative z-10">Link video đã hết hạn</p>
+                <p className="text-base font-semibold relative z-10">Không thể phát video, vui lòng thử lại</p>
                 <p className="text-sm text-white/60 relative z-10 max-w-xs">
-                  Signed URL chỉ có hiệu lực 1 giờ. Tải lại trang để lấy link mới.
+                  Liên kết video có thể đã hết hạn hoặc kết nối gặp sự cố. Tải lại trang để thử lại.
                 </p>
                 <button
                   onClick={() => window.location.reload()}
@@ -2717,21 +3482,39 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                   Tải lại trang
                 </button>
               </div>
-            ) : activeLesson?.type === 'video' && activeLesson?.url && activeLesson.url !== '#' ? (
+            ) : activeLesson?.type === 'video' && playableVideoUrl && playableVideoUrl !== '#' ? (
               // Kiểm tra embed URL (YouTube/Vimeo) hay direct video
-              activeLesson.url.includes('youtube.com') ||
-              activeLesson.url.includes('youtu.be') ||
-              activeLesson.url.includes('vimeo.com') ||
-              activeLesson.url.includes('/embed/') ? (
-                <EmbeddedVideoPlayer
-                  key={activeLesson.id}
-                  url={activeLesson.url}
-                  title={activeLesson.title}
-                  initialPositionSec={resumePositionSec}
-                  onProgress={recordVideoProgress}
-                  onPause={() => persistCurrentVideoProgress()}
-                  onEnded={handleVideoEnded}
-                />
+              playableVideoUrl.includes('youtube.com') ||
+              playableVideoUrl.includes('youtu.be') ||
+              playableVideoUrl.includes('vimeo.com') ||
+              playableVideoUrl.includes('/embed/') ? (
+                <div className="absolute inset-0">
+                  <EmbeddedVideoPlayer
+                    key={`${activeLesson.id}-${playbackRate}-${usingVideoFallback ? 'fallback' : 'primary'}`}
+                    url={playableVideoUrl}
+                    title={activeLesson.title}
+                    initialPositionSec={resumePositionSec}
+                    maxAllowedPositionSec={maxSeekablePosition}
+                    playbackRate={playbackRate}
+                    onProgress={recordVideoProgress}
+                    onPause={() => persistCurrentVideoProgress()}
+                    onEnded={handleVideoEnded}
+                    onError={handleVideoPlaybackError}
+                  />
+                  <label className="absolute bottom-3 right-3 z-10 flex items-center gap-1 rounded bg-black/70 px-2 py-1 text-xs font-semibold text-white">
+                    Tốc độ
+                    <select
+                      value={playbackRate}
+                      onChange={(event) => setPlaybackRate(Number(event.target.value))}
+                      className="bg-transparent text-white outline-none"
+                      aria-label="Tốc độ phát video"
+                    >
+                      {[0.75, 1, 1.25, 1.5, 2].map(rate => (
+                        <option key={rate} value={rate} className="text-black">{rate}x</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
               ) : (
                 // <video> cho file upload (signed URL từ Supabase Storage, TTL 1 giờ)
                 <video
@@ -2757,12 +3540,10 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
               <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-3 px-8 text-center">
                 <SafeCourseImage course={course} alt="" className="absolute inset-0 w-full h-full object-cover opacity-20" />
                 <AlertCircle className="w-14 h-14 text-yellow-400 relative z-10" />
-                <p className="text-base font-semibold relative z-10">
-                  {activeLesson.isFree ? 'Bài học thử chưa có video' : 'Video chưa sẵn sàng'}
-                </p>
+                <p className="text-base font-semibold relative z-10">Không thể phát video, vui lòng thử lại</p>
                 <p className="text-sm text-white/60 relative z-10 max-w-xs">
                   {activeLesson.isFree
-                    ? 'Giáo viên cần upload video hoặc gắn link YouTube/Vimeo cho bài học thử này.'
+                    ? 'Bài học thử chưa có video khả dụng. Vui lòng thử lại sau.'
                     : 'Nội dung đang được tải lên hoặc xử lý. Vui lòng tải lại trang sau ít phút.'}
                 </p>
                 <button
@@ -2779,14 +3560,22 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                 <FileText className="w-16 h-16 mb-4 opacity-80 text-blue-400 relative z-10" />
                 <h3 className="text-2xl font-bold relative z-10">Tài liệu PDF</h3>
                 {activeLesson?.url && activeLesson.url !== '#' ? (
-                  <a
-                    href={activeLesson.url}
-                    target="_blank"
-                    rel="noreferrer"
+                  isPreviewMode ? (
+                    <iframe
+                      src={activeLesson.url}
+                      title={`Tài liệu học thử ${activeLesson.title}`}
+                      className="absolute inset-0 h-full w-full bg-white"
+                    />
+                  ) : (
+                  <button
+                    type="button"
+                    onClick={() => activeLesson.documents?.[0]?.id && handleDownloadDocument(activeLesson.documents[0].id)}
+                    disabled={!activeLesson.documents?.[0]?.id || downloadingDocumentId === activeLesson.documents[0].id}
                     className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold transition-colors relative z-10"
                   >
                     Mở tài liệu
-                  </a>
+                  </button>
+                  )
                 ) : (
                   <p className="mt-4 text-sm text-white/60 relative z-10">Tài liệu đang được chuẩn bị</p>
                 )}
@@ -2949,13 +3738,9 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                         <div className="space-y-2">
                           {activeTimedNotes.map(note => (
                             <div key={note.id} className="flex items-start gap-2 rounded-xl bg-white/8 p-2.5">
-                              <button
-                                type="button"
-                                onClick={() => handleSeekToNote(note.timeSec)}
-                                className="shrink-0 rounded-lg bg-amber-400/15 px-2 py-1 font-mono text-[10px] font-extrabold text-amber-200 hover:bg-amber-400/25"
-                              >
+                              <span className="shrink-0 rounded-lg bg-amber-400/15 px-2 py-1 font-mono text-[10px] font-extrabold text-amber-200">
                                 {formatDurationSec(note.timeSec)}
-                              </button>
+                              </span>
                               <p className="min-w-0 flex-1 whitespace-pre-wrap text-xs leading-relaxed text-white/90">
                                 {note.content}
                               </p>
@@ -3003,9 +3788,12 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                 { id: 'overview', label: 'Tổng quan' },
                 { id: 'qa', label: 'Hỏi đáp (Q&A)' },
                 { id: 'notes', label: 'Ghi chú của tôi' },
+                { id: 'assignments', label: 'Bài tập' },
                 { id: 'reviews', label: 'Đánh giá khóa học' },
               ] as const)
                 .filter(tab => tab.id !== 'notes' || user?.role === 'student')
+                .filter(tab => tab.id !== 'assignments'
+                  || (user?.role === 'student' && course.isEnrolled))
                 .map(tab => (
                 <button
                   key={tab.id}
@@ -3028,6 +3816,39 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                     <p className="text-on-surface-variant leading-relaxed text-lg">
                       Nội dung chi tiết của {activeLesson?.title}. Chú ý theo dõi kỹ các ví dụ thực hành trong bài. Sau khi học xong, hãy làm bài kiểm tra cuối chương để củng cố kiến thức.
                     </p>
+                    {activeLesson?.type === 'pdf' && (
+                      <div className="rounded-2xl border border-outline-variant/30 bg-surface-container p-4 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <h4 className="font-bold text-on-surface">Trạng thái bài học</h4>
+                            <p className="text-sm text-on-surface-variant mt-1">
+                              {activeLesson.completionRule === 'DOCUMENT_OPENED'
+                                ? 'Bài học được hoàn thành khi tài liệu được mở.'
+                                : activeLesson.completionRule === 'MARK_AS_COMPLETE'
+                                ? 'Hãy đánh dấu hoàn thành sau khi học xong nội dung.'
+                                : activeLesson.completionRule
+                                ? 'Bài học được hoàn thành sau khi bài tập đạt điều kiện.'
+                                : 'Bài học chưa được cấu hình điều kiện hoàn thành.'}
+                            </p>
+                          </div>
+                          {activeLesson.completionRule === 'MARK_AS_COMPLETE' && !completedList.includes(activeLesson.id) && (
+                            <button
+                              type="button"
+                              onClick={markNonVideoLessonComplete}
+                              className="shrink-0 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-on-primary hover:opacity-90"
+                            >
+                              Đánh dấu hoàn thành
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {activeLesson?.transcript && (
+                      <details className="rounded-2xl border border-outline-variant/30 bg-surface-container p-4">
+                        <summary className="cursor-pointer font-bold text-on-surface">Transcript / nội dung lời thoại</summary>
+                        <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-on-surface-variant">{activeLesson.transcript}</p>
+                      </details>
+                    )}
                     {activeLesson?.documents && activeLesson.documents.length > 0 && (
                       <div>
                         <h4 className="font-bold text-on-surface mb-3 flex items-center gap-2">
@@ -3038,12 +3859,37 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                           {activeLesson.documents.map((doc, idx) => {
                             const ext = doc.fileType?.toUpperCase() ?? 'FILE';
                             const sizeKb = doc.fileSizeBytes ? Math.round(doc.fileSizeBytes / 1024) : null;
+                            if (isPreviewMode) {
+                              return (
+                                <div
+                                  key={doc.id ?? idx}
+                                  className="overflow-hidden rounded-xl border border-outline-variant/40 bg-surface-container"
+                                >
+                                  <div className="flex items-center gap-3 px-3 py-2">
+                                    <FileText className="h-4 w-4 text-primary" />
+                                    <p className="min-w-0 flex-1 truncate text-sm font-semibold text-on-surface">{doc.name}</p>
+                                    <span className="text-[11px] font-bold text-on-surface-variant">Chỉ xem trực tuyến</span>
+                                  </div>
+                                  {doc.fileUrl ? (
+                                    <iframe
+                                      src={doc.fileUrl}
+                                      title={`Tài liệu học thử ${doc.name}`}
+                                      className="h-80 w-full bg-white"
+                                    />
+                                  ) : (
+                                    <p className="px-3 pb-3 text-xs text-on-surface-variant">
+                                      Tài liệu chưa được công khai trong bài học thử. Hãy đăng ký khóa học để tải bản cá nhân hóa.
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            }
                             return (
-                              <a
-                                key={idx}
-                                href={doc.fileUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <button
+                                type="button"
+                                key={doc.id ?? idx}
+                                onClick={() => doc.id && handleDownloadDocument(doc.id)}
+                                disabled={!doc.id || downloadingDocumentId === doc.id}
                                 className="flex items-center gap-3 p-3 rounded-xl border border-outline-variant/40 bg-surface-container hover:border-primary hover:bg-surface-container-high transition-all group"
                               >
                                 <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -3057,8 +3903,12 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                                     {ext}{sizeKb != null ? ` · ${sizeKb} KB` : ''}
                                   </p>
                                 </div>
-                                <ArrowLeft className="w-4 h-4 text-on-surface-variant group-hover:text-primary rotate-180 flex-shrink-0 transition-colors" />
-                              </a>
+                                {downloadingDocumentId === doc.id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
+                                ) : (
+                                  <ArrowLeft className="w-4 h-4 text-on-surface-variant group-hover:text-primary rotate-180 flex-shrink-0 transition-colors" />
+                                )}
+                              </button>
                             );
                           })}
                         </div>
@@ -3372,14 +4222,9 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                         <div className="space-y-2 pt-1">
                           {activeTimedNotes.map(note => (
                             <div key={note.id} className="flex items-start gap-3 rounded-xl bg-surface px-3 py-2.5 border border-outline-variant/30">
-                              <button
-                                type="button"
-                                onClick={() => handleSeekToNote(note.timeSec)}
-                                className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-extrabold text-primary hover:bg-primary/20"
-                                title="Tua video đến mốc này"
-                              >
+                              <span className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-extrabold text-primary">
                                 {formatDurationSec(note.timeSec)}
-                              </button>
+                              </span>
                               <p className="flex-1 text-sm text-on-surface whitespace-pre-wrap">{note.content}</p>
                               <button
                                 type="button"
@@ -3402,6 +4247,11 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
 
                   </motion.div>
                 )}
+                {activeTab === 'assignments' && user?.role === 'student' && course.isEnrolled && (
+                  <motion.div key="assignments" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                    <CourseAssignmentsPanel courseId={courseId} />
+                  </motion.div>
+                )}
                 {activeTab === 'reviews' && (
                   <motion.div key="reviews" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                     <CourseReviewsPanel
@@ -3410,6 +4260,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                       fallbackReviewCount={course.reviewCount ?? 0}
                       canSubmitReview={canSubmitReview}
                       isOwnedCourse={course.isEnrolled}
+                      progressPct={course.progress ?? 0}
                     />
                   </motion.div>
                 )}
@@ -3439,8 +4290,6 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
               <div className="flex-grow overflow-y-auto px-3 py-4 space-y-4">
                 {chapterSections.map((chapter, chapterIndex) => {
                   const isExpanded = expandedChapterIds.has(chapter.id);
-                  const examsAfterChapter = studentExams.filter(item => item.placementChapterId === chapter.id);
-                  const shouldShowExam = examsAfterChapter.length > 0;
                   const videoLessonsInChapter = chapter.lessons.filter(lesson => lesson.type === 'video');
                   const completedVideoCount = videoLessonsInChapter.filter(lesson =>
                     completedList.includes(lesson.id)
@@ -3448,6 +4297,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                   const isChapterVideoCompleted = videoLessonsInChapter.length === 0 ||
                     completedVideoCount === videoLessonsInChapter.length;
                   const isChapterQuizCompleted = completedQuizList.includes(chapter.id);
+                  const examsAfterChapter = examsByPlacementChapterId[chapter.id] ?? [];
 
                   return (
                     <div key={chapter.id} className="space-y-2">
@@ -3546,7 +4396,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                                 {chapter.hasQuizConfig && chapter.id !== 'flat-lessons' && (
                                   course.isEnrolled && isChapterVideoCompleted ? (
                                     <Link
-                                      to={`/courses/${courseId}/chapters/${chapter.id}/quiz`}
+                                      to={`/courses/${courseId}/chapters/${chapter.id}/quiz?returnTo=${encodeURIComponent(`/courses/${courseId}?learn=1${activeLesson ? `&lesson=${activeLesson.id}` : ''}`)}`}
                                       className="w-full text-left rounded-xl border border-transparent px-3 py-2.5 flex items-center gap-3 bg-surface hover:bg-amber-500/5 hover:border-amber-500/20 transition-all group"
                                     >
                                       <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isChapterQuizCompleted
@@ -3581,57 +4431,38 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                                     </div>
                                   )
                                 )}
+
+                                {examsAfterChapter.map(exam => (
+                                  <Link
+                                    key={exam.id}
+                                    to={`/courses/${courseId}/exams/${exam.slotIndex}?returnTo=${encodeURIComponent(`/courses/${courseId}?learn=1${activeLesson ? `&lesson=${activeLesson.id}` : ''}`)}`}
+                                    className="w-full text-left rounded-xl border border-transparent px-3 py-2.5 flex items-center gap-3 bg-surface hover:bg-primary/5 hover:border-primary/20 transition-all group"
+                                  >
+                                    <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15 flex items-center justify-center flex-shrink-0">
+                                      <GraduationCap className="w-4 h-4" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-semibold text-on-surface line-clamp-1">
+                                        {exam.name}
+                                      </p>
+                                      <p className="text-xs font-medium text-primary">
+                                        {exam.questionCount} câu · {exam.durationMinutes} phút · Mở bài kiểm tra
+                                      </p>
+                                    </div>
+                                  </Link>
+                                ))}
+
+                                {loadingStudentExams && chapterIndex === 0 && (
+                                  <div className="w-full rounded-xl border border-transparent bg-surface-container/40 px-3 py-2.5 text-xs font-semibold text-on-surface-variant">
+                                    Đang tải bài kiểm tra...
+                                  </div>
+                                )}
+
                               </div>
                             </motion.div>
                           )}
                         </AnimatePresence>
                       </section>
-
-                      {shouldShowExam && examsAfterChapter.map(exam => (
-                        exam.unlocked ? (
-                          <Link
-                            key={exam.slotIndex}
-                            to={`/courses/${courseId}/exams/${exam.slotIndex}`}
-                            className={`w-full text-left rounded-2xl border px-3 py-3 flex items-start gap-3 transition-all ${exam.passed
-                                ? 'bg-green-500/5 border-green-500/25 hover:bg-green-500/10'
-                                : 'bg-primary/5 border-primary/25 hover:bg-primary/10'
-                              }`}
-                          >
-                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${exam.passed ? 'bg-green-500/15 text-green-600' : 'bg-primary/15 text-primary'
-                              }`}>
-                              {exam.passed ? <CheckCircle2 className="w-4.5 h-4.5" /> : <ClipboardList className="w-4.5 h-4.5" />}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className={`text-sm font-extrabold line-clamp-2 ${exam.passed ? 'text-green-700' : 'text-primary'}`}>
-                                {exam.name}
-                              </p>
-                              <p className="mt-0.5 text-xs font-medium text-on-surface-variant">
-                                {exam.passed
-                                  ? `Đã đạt ${exam.latestScorePercent ?? 0}%`
-                                  : `Mở khóa sau ${exam.passedQuizCount}/${exam.requiredQuizCount} quiz · Làm bài ngay`}
-                              </p>
-                            </div>
-                          </Link>
-                        ) : (
-                          <div
-                            key={exam.slotIndex}
-                            className="w-full rounded-2xl border border-outline-variant/40 bg-surface-container/50 px-3 py-3 flex items-start gap-3 opacity-90"
-                          >
-                            <div className="w-8 h-8 rounded-xl bg-surface-container-high text-on-surface-variant flex items-center justify-center flex-shrink-0">
-                              <Lock className="w-4.5 h-4.5" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-extrabold text-on-surface line-clamp-2">{exam.name}</p>
-                              <p className="mt-0.5 text-xs font-medium text-on-surface-variant">
-                                {exam.lockedReason ?? `Cần pass ${exam.requiredQuizCount} quiz chương`}
-                              </p>
-                              <p className="mt-1 text-[11px] font-bold text-on-surface-variant">
-                                Đã pass {exam.passedQuizCount}/{exam.requiredQuizCount} quiz
-                              </p>
-                            </div>
-                          </div>
-                        )
-                      ))}
                     </div>
                   );
                 })}
@@ -3784,11 +4615,15 @@ export default function CourseDetailPage() {
   // ── Not found state ─────────────────────────────────────────────────────
   if (notFound || !course) {
     return (
-      <div className="min-h-screen bg-surface flex flex-col items-center justify-center">
-        <h1 className="text-2xl font-bold text-on-surface mb-4">Không tìm thấy khóa học</h1>
-        <Link to="/courses" className="text-primary hover:underline font-bold">
-          Quay lại danh sách
-        </Link>
+      <div className="min-h-screen bg-surface">
+        <div className="flex min-h-[48vh] flex-col items-center justify-center px-4 text-center">
+          <h1 className="text-2xl font-bold text-on-surface mb-4">Không tìm thấy khóa học</h1>
+          <p className="mb-5 text-on-surface-variant">Khóa học có thể đã bị gỡ hoặc chưa được xuất bản.</p>
+          <Link to="/courses" className="text-primary hover:underline font-bold">
+            Quay lại danh sách
+          </Link>
+        </div>
+        <RelatedCourses />
       </div>
     );
   }
@@ -3804,6 +4639,11 @@ export default function CourseDetailPage() {
   const requestedLessonId = searchParams.get('lesson');
 
   function openPreview(lessonId?: string) {
+    if (lessonId) {
+      void recordCoursePreview(course.id, lessonId).catch(() => {
+        // Tracking Marketing không được chặn người dùng học thử.
+      });
+    }
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete('learn');

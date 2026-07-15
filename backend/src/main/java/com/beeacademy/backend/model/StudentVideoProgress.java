@@ -13,6 +13,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -47,6 +49,11 @@ public class StudentVideoProgress {
     @Column(name = "duration_sec", nullable = false)
     private Integer durationSec;
 
+    /** JSONB các đoạn đã xem duy nhất, format [{"startSec":0,"endSec":12}]. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "watched_segments", nullable = false, columnDefinition = "jsonb")
+    private String watchedSegmentsJson = "[]";
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -56,13 +63,20 @@ public class StudentVideoProgress {
     private Instant updatedAt;
 
     public static StudentVideoProgress create(Profile student, Lesson lesson,
-                                              int positionSec, int durationSec) {
+                                              int positionSec, int durationSec,
+                                              String watchedSegmentsJson) {
         StudentVideoProgress progress = new StudentVideoProgress();
         progress.id = UUID.randomUUID();
         progress.student = student;
         progress.lesson = lesson;
         progress.update(positionSec, durationSec);
+        progress.watchedSegmentsJson = watchedSegmentsJson == null ? "[]" : watchedSegmentsJson;
         return progress;
+    }
+
+    public static StudentVideoProgress create(Profile student, Lesson lesson,
+                                              int positionSec, int durationSec) {
+        return create(student, lesson, positionSec, durationSec, "[]");
     }
 
     public void update(int positionSec, int durationSec) {
@@ -71,5 +85,9 @@ public class StudentVideoProgress {
         }
         this.durationSec = durationSec;
         this.positionSec = durationSec > 0 ? Math.min(positionSec, durationSec) : positionSec;
+    }
+
+    public void updateWatchedSegments(String watchedSegmentsJson) {
+        this.watchedSegmentsJson = watchedSegmentsJson == null ? "[]" : watchedSegmentsJson;
     }
 }

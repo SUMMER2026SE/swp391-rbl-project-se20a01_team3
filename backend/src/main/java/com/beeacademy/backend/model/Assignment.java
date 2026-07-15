@@ -56,4 +56,18 @@ public class Assignment {
         }
         return null;
     }
+
+    public static Assignment create(Chapter chapter, Lesson lesson, String title,
+                                    String description, Integer maxScore, Instant dueAt) {
+        Assignment assignment = new Assignment();
+        assignment.id = UUID.randomUUID();
+        assignment.chapter = chapter;
+        assignment.lesson = lesson;
+        assignment.title = title.trim();
+        assignment.description = description == null || description.isBlank()
+                ? null : description.trim();
+        assignment.maxScore = maxScore;
+        assignment.dueAt = dueAt;
+        return assignment;
+    }
 }

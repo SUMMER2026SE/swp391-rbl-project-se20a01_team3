@@ -4,15 +4,19 @@ interface EmbeddedVideoPlayerProps {
   url: string;
   title: string;
   initialPositionSec: number;
+  maxAllowedPositionSec?: number;
+  playbackRate?: number;
   onProgress: (positionSec: number, durationSec: number) => void;
   onPause: () => void;
   onEnded: () => void;
+  onError?: () => void;
 }
 
 interface YouTubePlayerInstance {
   getCurrentTime(): number;
   getDuration(): number;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
+  setPlaybackRate(rate: number): void;
   destroy(): void;
 }
 
@@ -25,6 +29,7 @@ interface YouTubeNamespace {
       events: {
         onReady: (event: { target: YouTubePlayerInstance }) => void;
         onStateChange: (event: { data: number }) => void;
+        onError?: () => void;
       };
     },
   ) => YouTubePlayerInstance;
@@ -116,6 +121,7 @@ function VimeoPlayer(props: EmbeddedVideoPlayerProps) {
       }
       if (message?.event === 'ready') {
         send('addEventListener', 'timeupdate');
+        send('addEventListener', 'play');
         send('addEventListener', 'pause');
         send('addEventListener', 'ended');
         if (props.initialPositionSec > 0) allowProgrammaticSeek(props.initialPositionSec);
@@ -133,6 +139,8 @@ function VimeoPlayer(props: EmbeddedVideoPlayerProps) {
         callbackRef.current.onPause();
       } else if (message?.event === 'ended') {
         callbackRef.current.onEnded();
+      } else if (message?.event === 'error') {
+        callbackRef.current.onError?.();
       }
     }
     window.addEventListener('message', handleMessage);
@@ -147,6 +155,7 @@ function VimeoPlayer(props: EmbeddedVideoPlayerProps) {
       allow="autoplay; fullscreen; picture-in-picture"
       allowFullScreen
       title={props.title}
+      onError={() => props.onError?.()}
     />
   );
 }
@@ -182,6 +191,7 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
         events: {
           onReady: ({ target }) => {
             playerRef.current = target;
+            target.setPlaybackRate(props.playbackRate ?? 1);
             const resumeAt = callbackRef.current.initialPositionSec;
             if (resumeAt > 0) {
               isProgrammaticSeekRef.current = true;
@@ -207,9 +217,11 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
                 lastAllowedTimeRef.current = Math.max(0, position);
                 callbackRef.current.onProgress(position, duration);
               }
-            }, 1000);
+            }, 500);
           },
           onStateChange: ({ data }) => {
+            if (data === 1) {
+            }
             if (data === 0) {
               if (progressTimer !== null) {
                 window.clearInterval(progressTimer);
@@ -217,8 +229,11 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
               }
               callbackRef.current.onEnded();
             }
-            if (data === 2) callbackRef.current.onPause();
+            if (data === 2) {
+              callbackRef.current.onPause();
+            }
           },
+          onError: () => callbackRef.current.onError?.(),
         },
       });
     });
@@ -257,6 +272,7 @@ export default function EmbeddedVideoPlayer(props: EmbeddedVideoPlayerProps) {
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
       allowFullScreen
       title={props.title}
+      onError={() => props.onError?.()}
     />
   );
 }

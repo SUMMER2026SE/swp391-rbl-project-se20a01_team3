@@ -1,6 +1,7 @@
 package com.beeacademy.backend.dto.response;
 
 import com.beeacademy.backend.model.CourseReview;
+import com.beeacademy.backend.model.CourseReviewModerationStatus;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -13,6 +14,7 @@ public record CourseReviewResponse(
         String studentAvatarUrl,
         int rating,
         String comment,
+        CourseReviewModerationStatus moderationStatus,
         Instant createdAt,
         Instant updatedAt
 ) {
@@ -26,6 +28,7 @@ public record CourseReviewResponse(
                 review.getStudent().getAvatarUrl(),
                 review.getRating(),
                 review.getComment(),
+                review.getModerationStatus(),
                 review.getCreatedAt(),
                 review.getUpdatedAt()
         );
