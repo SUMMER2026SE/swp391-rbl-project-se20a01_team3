@@ -12,6 +12,7 @@ import java.util.UUID;
 public record ExamConfigResponse(
         UUID id,
         UUID courseId,
+        UUID courseVersionId,
         Integer slotIndex,
         UUID scopeStartChapterId,
         String scopeStartChapterTitle,
@@ -48,6 +49,7 @@ public record ExamConfigResponse(
         return new ExamConfigResponse(
                 config.getId(),
                 config.getCourse().getId(),
+                config.getCourseVersionId(),
                 config.getSlotIndex(),
                 config.getScopeStartChapter() != null ? config.getScopeStartChapter().getId() : null,
                 config.getScopeStartChapter() != null ? config.getScopeStartChapter().getTitle() : null,

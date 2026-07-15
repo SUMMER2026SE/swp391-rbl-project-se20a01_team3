@@ -2,8 +2,10 @@ package com.beeacademy.backend.controller;
 
 import com.beeacademy.backend.dto.request.CreateQaMessageRequest;
 import com.beeacademy.backend.dto.request.CreateQaThreadRequest;
+import com.beeacademy.backend.dto.request.MarkQaThreadDuplicateRequest;
 import com.beeacademy.backend.dto.request.UpdateQaThreadStatusRequest;
 import com.beeacademy.backend.dto.response.ApiResponse;
+import com.beeacademy.backend.dto.response.QaKpiReportResponse;
 import com.beeacademy.backend.dto.response.QaThreadResponse;
 import com.beeacademy.backend.dto.response.UploadResponse;
 import com.beeacademy.backend.security.CurrentUser;
@@ -78,6 +80,33 @@ public class QaController {
         return ApiResponse.ok(
                 qaService.addTeacherMessage(threadId, CurrentUser.required(), req),
                 "Đã gửi câu trả lời");
+    }
+
+    @PutMapping("/teacher/qa/{threadId}/messages/{messageId}")
+    @PreAuthorize("hasRole('teacher')")
+    public ApiResponse<QaThreadResponse> editTeacherMessage(
+            @PathVariable UUID threadId,
+            @PathVariable UUID messageId,
+            @Valid @RequestBody CreateQaMessageRequest req) {
+        return ApiResponse.ok(
+                qaService.editTeacherMessage(threadId, messageId, CurrentUser.required(), req),
+                "Da cap nhat cau tra loi");
+    }
+
+    @PostMapping("/teacher/qa/{threadId}/duplicate")
+    @PreAuthorize("hasRole('teacher')")
+    public ApiResponse<QaThreadResponse> markDuplicate(
+            @PathVariable UUID threadId,
+            @Valid @RequestBody MarkQaThreadDuplicateRequest req) {
+        return ApiResponse.ok(
+                qaService.markDuplicate(threadId, req.duplicateOfThreadId(), CurrentUser.required()),
+                "Da danh dau cau hoi trung lap");
+    }
+
+    @GetMapping("/teacher/qa/report")
+    @PreAuthorize("hasRole('teacher')")
+    public ApiResponse<QaKpiReportResponse> getTeacherQaReport() {
+        return ApiResponse.ok(qaService.getTeacherKpiReport(CurrentUser.required()));
     }
 
     @PutMapping("/teacher/qa/{threadId}/status")

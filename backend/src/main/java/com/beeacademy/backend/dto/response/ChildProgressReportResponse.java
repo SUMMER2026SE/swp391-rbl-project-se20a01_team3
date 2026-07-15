@@ -9,11 +9,25 @@ public record ChildProgressReportResponse(
         String studentName,
         String gradeLabel,
         Instant generatedAt,
+        boolean detailAccessAllowed,
+        boolean sensitiveDataMasked,
+        String detailAccessReason,
+        WeeklySummary weeklySummary,
         List<CourseProgressItem> courses,
         List<AssessmentRecord> assessments
 ) {
+    public record WeeklySummary(
+            String progressTrend,
+            Double averageScore,
+            Integer completedAssessments,
+            Integer incompleteCourses,
+            Integer inactiveDays,
+            String actionSuggestion
+    ) {}
+
     public record CourseProgressItem(
             UUID courseId,
+            UUID courseVersionId,
             String courseTitle,
             String teacherName,
             String status,
@@ -25,7 +39,19 @@ public record ChildProgressReportResponse(
             Double averageQuizScore,
             Double latestQuizScore,
             Double latestExamScore,
-            Double latestAssignmentScore
+            Double latestAssignmentScore,
+            List<RequiredExamResult> requiredExams
+    ) {}
+
+    public record RequiredExamResult(
+            Integer slotIndex,
+            String label,
+            String status,
+            UUID examConfigId,
+            Double scorePercent,
+            Double normalizedScore,
+            Boolean passed,
+            Instant submittedAt
     ) {}
 
     public record AssessmentRecord(

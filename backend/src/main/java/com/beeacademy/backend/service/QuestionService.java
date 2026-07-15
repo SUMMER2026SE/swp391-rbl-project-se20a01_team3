@@ -16,6 +16,7 @@ import com.beeacademy.backend.repository.CategoryRepository;
 import com.beeacademy.backend.repository.ChapterRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
 import com.beeacademy.backend.repository.QuestionRepository;
+import com.beeacademy.backend.repository.QuestionVersionRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -62,8 +63,10 @@ public class QuestionService {
     private final CategoryRepository categoryRepository;
     private final ProfileRepository profileRepository;
     private final ChapterRepository chapterRepository;
+    private final QuestionVersionRepository questionVersionRepository;
     private final ObjectMapper objectMapper;
     private final QuestionBankService questionBankService;
+    private final TeacherAccessService teacherAccessService;
 
     @Lazy
     @Autowired
@@ -73,7 +76,7 @@ public class QuestionService {
     public QuestionResponse createQuestion(AuthenticatedUser me, CreateQuestionRequest req) {
         validateQuestionRequest(req);
 
-        Profile teacher = loadProfile(me.userId());
+        Profile teacher = teacherAccessService.requireApprovedTeacher(me);
         Category category = loadCategory(req.categoryId());
         Chapter chapter = req.chapterId() != null ? loadChapter(req.chapterId()) : null;
         QuestionBank questionBank = resolveQuestionBank(req.questionBankId(), me.userId(), req.categoryId(), req.grade());
@@ -95,9 +98,10 @@ public class QuestionService {
 
         addChoices(question, req.choices());
 
+        boolean duplicate = hasDuplicateContent(me.userId(), req.content(), null);
         Question saved = questionRepository.save(question);
         log.info("Teacher {} created question {} type={}", me.userId(), saved.getId(), saved.getType());
-        return QuestionResponse.fromEntity(saved, objectMapper);
+        return withDuplicateWarning(QuestionResponse.fromEntity(saved, objectMapper), duplicate);
     }
 
     @Transactional(readOnly = true)
@@ -110,6 +114,7 @@ public class QuestionService {
             String difficulty,
             String status,
             Pageable pageable) {
+        teacherAccessService.requireApprovedTeacher(me);
         String resolvedStatus = status != null ? status : "active";
         Specification<Question> spec = (root, query, cb) ->
                 cb.equal(root.get("teacher").get("id"), me.userId());
@@ -138,6 +143,7 @@ public class QuestionService {
 
     @Transactional(readOnly = true)
     public QuestionResponse getQuestion(UUID questionId, AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
         Question q = loadAndVerifyOwner(questionId, me.userId());
         return QuestionResponse.fromEntity(q, objectMapper);
     }
@@ -145,8 +151,16 @@ public class QuestionService {
     @Transactional
     public QuestionResponse updateQuestion(UUID questionId, AuthenticatedUser me, CreateQuestionRequest req) {
         validateQuestionRequest(req);
+        teacherAccessService.requireApprovedTeacher(me);
 
         Question question = loadAndVerifyOwner(questionId, me.userId());
+        if (question.getUsageCount() != null && question.getUsageCount() > 0) {
+            questionVersionRepository.save(com.beeacademy.backend.model.QuestionVersion.snapshot(
+                    question,
+                    (int) questionVersionRepository.countByQuestionId(questionId) + 1,
+                    serializeChoices(question),
+                    "Teacher updated question after it had been used."));
+        }
         Category category = loadCategory(req.categoryId());
         Chapter chapter = req.chapterId() != null ? loadChapter(req.chapterId()) : null;
         QuestionBank questionBank = resolveQuestionBank(req.questionBankId(), me.userId(), req.categoryId(), req.grade());
@@ -168,13 +182,15 @@ public class QuestionService {
         question.clearChoices();
         addChoices(question, req.choices());
 
+        boolean duplicate = hasDuplicateContent(me.userId(), req.content(), questionId);
         Question saved = questionRepository.save(question);
         log.info("Teacher {} updated question {} type={}", me.userId(), questionId, saved.getType());
-        return QuestionResponse.fromEntity(saved, objectMapper);
+        return withDuplicateWarning(QuestionResponse.fromEntity(saved, objectMapper), duplicate);
     }
 
     @Transactional
     public void deleteQuestion(UUID questionId, AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
         Question question = loadAndVerifyOwner(questionId, me.userId());
 
         if (question.getUsageCount() > 0) {
@@ -188,6 +204,7 @@ public class QuestionService {
     }
 
     public BulkImportResult bulkCreateQuestions(AuthenticatedUser me, List<CreateQuestionRequest> requests) {
+        teacherAccessService.requireApprovedTeacher(me);
         int created = 0;
         int failed = 0;
         List<BulkImportError> errors = new ArrayList<>();
@@ -219,6 +236,7 @@ public class QuestionService {
 
     @Transactional(readOnly = true)
     public QuestionStatsResponse getStatsForChapter(AuthenticatedUser me, UUID chapterId) {
+        teacherAccessService.requireApprovedTeacher(me);
         loadChapter(chapterId);
         List<Object[]> rows = questionRepository.countActiveByDifficultyForTeacherAndChapter(me.userId(), chapterId);
         List<Object[]> typeRows = questionRepository.countActiveByTypeForTeacherAndChapter(me.userId(), chapterId);
@@ -273,6 +291,34 @@ public class QuestionService {
             QuestionChoice choice = QuestionChoice.create(question, choiceRequest.content(), choiceRequest.isCorrect(), i + 1);
             question.addChoice(choice);
         }
+    }
+
+    private String serializeChoices(Question question) {
+        try {
+            List<QuestionResponse.ChoiceResponse> choices = question.getChoices().stream()
+                    .map(c -> new QuestionResponse.ChoiceResponse(
+                            c.getId(), c.getContent(), c.getIsCorrect(), c.getPosition()))
+                    .toList();
+            return objectMapper.writeValueAsString(choices);
+        } catch (Exception ex) {
+            throw new BusinessException("QUESTION_VERSION_FAILED",
+                    "Khong the luu phien ban cau hoi cu.");
+        }
+    }
+
+    private boolean hasDuplicateContent(UUID teacherId, String content, UUID excludeQuestionId) {
+        if (content == null || content.isBlank()) {
+            return false;
+        }
+        return questionRepository.existsActiveDuplicateContent(teacherId, content, excludeQuestionId);
+    }
+
+    private QuestionResponse withDuplicateWarning(QuestionResponse response, boolean duplicate) {
+        if (!duplicate) {
+            return response;
+        }
+        return response.withDuplicateWarning(
+                "Noi dung cau hoi trung voi mot cau hoi dang active trong ngan hang cua giao vien.");
     }
 
     private Question loadAndVerifyOwner(UUID questionId, UUID teacherId) {

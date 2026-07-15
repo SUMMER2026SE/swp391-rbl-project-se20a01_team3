@@ -15,6 +15,7 @@ public record StudentLearningProgressResponse(
 ) {
     public record CourseProgressDetail(
             UUID courseId,
+            UUID courseVersionId,
             String slug,
             String title,
             String thumbnailUrl,

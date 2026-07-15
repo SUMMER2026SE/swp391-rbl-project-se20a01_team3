@@ -3,13 +3,17 @@ package com.beeacademy.backend.repository;
 import com.beeacademy.backend.model.ParentStudentLink;
 import com.beeacademy.backend.model.ParentStudentLinkStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import jakarta.persistence.LockModeType;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
 
 /**
  * Repository truy vấn bảng liên kết phụ huynh và học sinh {@code parent_student_links}.
@@ -56,6 +60,17 @@ public interface ParentStudentLinkRepository extends JpaRepository<ParentStudent
      */
     Optional<ParentStudentLink> findByIdParentIdAndIdStudentId(UUID parentId, UUID studentId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT link
+            FROM ParentStudentLink link
+            WHERE link.id.parentId = :parentId
+              AND link.id.studentId = :studentId
+            """)
+    Optional<ParentStudentLink> findForUpdate(
+            @Param("parentId") UUID parentId,
+            @Param("studentId") UUID studentId);
+
     /**
      * Kiểm tra xem mối liên kết giữa phụ huynh và học sinh này đã tồn tại trong DB chưa.
      * 
@@ -78,4 +93,6 @@ public interface ParentStudentLinkRepository extends JpaRepository<ParentStudent
             @Param("parentId") UUID parentId,
             @Param("studentId") UUID studentId,
             @Param("status") String status);
+
+    long countByIdParentIdAndInvitedAtAfter(UUID parentId, Instant invitedAfter);
 }

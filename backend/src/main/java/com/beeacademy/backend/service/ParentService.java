@@ -2,6 +2,7 @@ package com.beeacademy.backend.service;
 
 import com.beeacademy.backend.dto.request.SendParentLinkInvitationRequest;
 import com.beeacademy.backend.dto.request.SendParentTeacherMessageRequest;
+import com.beeacademy.backend.dto.request.RevokeParentStudentLinkRequest;
 import com.beeacademy.backend.dto.response.ChildOverviewResponse;
 import com.beeacademy.backend.dto.response.ChildProgressReportResponse;
 import com.beeacademy.backend.dto.response.LinkedStudentResponse;
@@ -18,9 +19,12 @@ import com.beeacademy.backend.model.AssignmentSubmission;
 import com.beeacademy.backend.model.Course;
 import com.beeacademy.backend.model.Enrollment;
 import com.beeacademy.backend.model.ExamAttempt;
+import com.beeacademy.backend.model.ExamConfig;
 import com.beeacademy.backend.model.Order;
 import com.beeacademy.backend.model.OrderItem;
 import com.beeacademy.backend.model.OrderStatus;
+import com.beeacademy.backend.model.ParentLinkAuditLog;
+import com.beeacademy.backend.model.ParentProgressAccessAudit;
 import com.beeacademy.backend.model.ParentStudentLink;
 import com.beeacademy.backend.model.ParentStudentLinkStatus;
 import com.beeacademy.backend.model.Profile;
@@ -33,7 +37,10 @@ import com.beeacademy.backend.repository.AssignmentSubmissionRepository;
 import com.beeacademy.backend.repository.CourseRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
 import com.beeacademy.backend.repository.ExamAttemptRepository;
+import com.beeacademy.backend.repository.ExamConfigRepository;
 import com.beeacademy.backend.repository.OrderRepository;
+import com.beeacademy.backend.repository.ParentLinkAuditLogRepository;
+import com.beeacademy.backend.repository.ParentProgressAccessAuditRepository;
 import com.beeacademy.backend.repository.ParentStudentLinkRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
 import com.beeacademy.backend.repository.QaThreadRepository;
@@ -53,6 +60,7 @@ import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.Period;
 import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -86,17 +94,31 @@ public class ParentService {
     );
     private static final Duration LINK_INVITATION_TTL = Duration.ofDays(7);
     private static final int MAX_ACTIVE_OR_PENDING_CHILDREN = 5;
+    private static final int MAX_INVITATION_ATTEMPTS_PER_DAY = 5;
+    private static final int PRIVACY_CONSENT_AGE = 16;
+    private static final String NEUTRAL_INVITATION_MESSAGE =
+            "Nếu tài khoản học sinh hợp lệ, hệ thống đã gửi yêu cầu liên kết.";
+    private static final String INVOICE_SELLER_NAME = "Bee Academy";
+    private static final String INVOICE_SELLER_TAX_CODE = "N/A";
+    private static final List<String> REQUIRED_EXAM_LABELS = List.of(
+            "Giữa kỳ 1",
+            "Cuối kỳ 1",
+            "Giữa kỳ 2",
+            "Cuối kỳ 2");
 
     private final ProfileRepository profileRepository;
     private final ParentStudentLinkRepository linkRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final CourseRepository courseRepository;
     private final QuizConfigRepository quizConfigRepository;
+    private final ExamConfigRepository examConfigRepository;
     private final QuizAttemptRepository quizAttemptRepository;
     private final ExamAttemptRepository examAttemptRepository;
     private final AssignmentSubmissionRepository assignmentSubmissionRepository;
     private final QaThreadRepository qaThreadRepository;
     private final OrderRepository orderRepository;
+    private final ParentProgressAccessAuditRepository progressAccessAuditRepository;
+    private final ParentLinkAuditLogRepository parentLinkAuditLogRepository;
     private final ParentLinkInvitationEmailService parentLinkInvitationEmailService;
     private final SupabaseStorageClient storageClient;
     private final UserNotificationService notificationService;
@@ -114,7 +136,7 @@ public class ParentService {
                 .collect(Collectors.toList());
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<ParentLinkInvitationResponse> getLinkInvitations(AuthenticatedUser me) {
         log.info("Parent {} requested pending link invitations", me.userId());
 
@@ -122,6 +144,8 @@ public class ParentService {
                         me.userId(),
                         ParentStudentLinkStatus.PENDING.toDbValue())
                 .stream()
+                .map(link -> expireIfPending(link, me.userId(), UserRole.PARENT, "expire_link_invitation"))
+                .filter(link -> link.getStatus() == ParentStudentLinkStatus.PENDING)
                 .map(this::toParentLinkInvitationResponse)
                 .toList();
     }
@@ -133,23 +157,32 @@ public class ParentService {
         String normalizedEmail = request.studentEmail().trim().toLowerCase();
         log.info("Parent {} requested link invitation for {}", me.userId(), normalizedEmail);
 
-        UUID studentId = profileRepository.findUserIdByEmail(normalizedEmail)
-                .orElseThrow(() -> new BusinessException(
-                        "STUDENT_EMAIL_NOT_FOUND",
-                        "Không tìm thấy tài khoản học sinh với email này.",
-                        HttpStatus.NOT_FOUND));
+        auditParentLinkAttempt(me.userId(), "send_link_invitation_attempt");
+        if (recentInvitationAttemptCount(me.userId()) > MAX_INVITATION_ATTEMPTS_PER_DAY) {
+            auditParentLinkAttempt(me.userId(), "send_link_invitation_rate_limited");
+            return ParentLinkInvitationResponse.neutral(normalizedEmail, NEUTRAL_INVITATION_MESSAGE);
+        }
+
+        Optional<UUID> maybeStudentId = profileRepository.findUserIdByEmail(normalizedEmail);
+        if (maybeStudentId.isEmpty()) {
+            auditParentLinkAttempt(me.userId(), "send_link_invitation_neutral_not_found");
+            return ParentLinkInvitationResponse.neutral(normalizedEmail, NEUTRAL_INVITATION_MESSAGE);
+        }
+
+        UUID studentId = maybeStudentId.get();
 
         Profile student = profileRepository.findById(studentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Profile", studentId));
         if (student.getRole() != UserRole.STUDENT) {
-            throw new BusinessException(
-                    "INVALID_STUDENT_ACCOUNT",
-                    "Email này không thuộc tài khoản học sinh.",
-                    HttpStatus.BAD_REQUEST);
+            auditParentLinkAttempt(me.userId(), "send_link_invitation_neutral_wrong_role");
+            return ParentLinkInvitationResponse.neutral(normalizedEmail, NEUTRAL_INVITATION_MESSAGE);
         }
 
         ParentStudentLink existingLink = linkRepository.findByIdParentIdAndIdStudentId(me.userId(), studentId)
                 .orElse(null);
+        if (existingLink != null && existingLink.getStatus() == ParentStudentLinkStatus.PENDING) {
+            existingLink = expireIfPending(existingLink, me.userId(), UserRole.PARENT, "expire_link_invitation");
+        }
         if (existingLink != null
                 && (existingLink.getStatus() == ParentStudentLinkStatus.ACCEPTED
                 || existingLink.getStatus() == ParentStudentLinkStatus.PENDING)) {
@@ -160,14 +193,18 @@ public class ParentService {
         }
 
         Profile parent = requireParentProfile(me.userId());
+        List<ParentStudentLink> pendingChildren = linkRepository.findByIdParentIdAndStatusOrderByInvitedAtDesc(
+                        me.userId(),
+                        ParentStudentLinkStatus.PENDING.toDbValue())
+                .stream()
+                .map(link -> expireIfPending(link, me.userId(), UserRole.PARENT, "expire_link_invitation"))
+                .filter(link -> link.getStatus() == ParentStudentLinkStatus.PENDING)
+                .toList();
         long activeOrPendingChildren = linkRepository.findByIdParentIdAndStatusOrderByInvitedAtDesc(
                         me.userId(),
                         ParentStudentLinkStatus.ACCEPTED.toDbValue())
                 .size()
-                + linkRepository.findByIdParentIdAndStatusOrderByInvitedAtDesc(
-                        me.userId(),
-                        ParentStudentLinkStatus.PENDING.toDbValue())
-                .size();
+                + pendingChildren.size();
         if (activeOrPendingChildren >= MAX_ACTIVE_OR_PENDING_CHILDREN) {
             throw new BusinessException(
                     "PARENT_CHILD_LIMIT_EXCEEDED",
@@ -180,12 +217,16 @@ public class ParentService {
         ParentStudentLink link = existingLink == null
                 ? ParentStudentLink.createPendingInvitation(parent, student, relationship, note)
                 : existingLink;
+        ParentStudentLinkStatus oldStatus = link.getStatus();
 
         if (existingLink != null) {
             existingLink.markPending(relationship, note);
         }
 
         ParentStudentLink savedLink = linkRepository.saveAndFlush(link);
+        auditStatusChange(savedLink, me.userId(), UserRole.PARENT,
+                existingLink == null ? "send_link_invitation" : "resend_link_invitation",
+                oldStatus, savedLink.getStatus());
         parentLinkInvitationEmailService.sendInvitation(
                 normalizedEmail,
                 displayName(student),
@@ -216,61 +257,56 @@ public class ParentService {
                     HttpStatus.CONFLICT);
         }
 
-        link.reject();
-        linkRepository.saveAndFlush(link);
-    }
-
-    @Transactional
-    public LinkedStudentResponse unlinkStudent(AuthenticatedUser me, UUID studentId) {
-        log.info("Parent {} requested unlink approval flow for student {}", me.userId(), studentId);
-
-        ParentStudentLink link = requireActiveLink(me.userId(), studentId);
-        if (link.hasPendingUnlinkRequest()) {
-            if (link.isUnlinkRequestedBy(me.userId())) {
-                return toLinkedStudentResponse(link);
-            }
-
-            link.revoke();
-            ParentStudentLink savedLink = linkRepository.saveAndFlush(link);
-            log.info("Parent {} confirmed unlink requested by student {}", me.userId(), studentId);
-            return toLinkedStudentResponse(savedLink);
-        }
-
-        link.requestUnlink(me.userId());
-        ParentStudentLink savedLink = linkRepository.saveAndFlush(link);
-        log.info("Parent {} sent unlink request to student {}", me.userId(), studentId);
-        return toLinkedStudentResponse(savedLink);
-    }
-
-    @Transactional
-    public LinkedStudentResponse confirmUnlinkStudent(AuthenticatedUser me, UUID studentId) {
-        log.info("Parent {} confirmed unlink for student {}", me.userId(), studentId);
-
-        ParentStudentLink link = requireActiveLink(me.userId(), studentId);
-        if (!link.hasPendingUnlinkRequest()) {
-            throw new BusinessException(
-                    "UNLINK_REQUEST_NOT_FOUND",
-                    "Chưa có yêu cầu hủy liên kết nào cần xác nhận.",
-                    HttpStatus.CONFLICT);
-        }
-        if (link.isUnlinkRequestedBy(me.userId())) {
-            throw new BusinessException(
-                    "UNLINK_REQUEST_OWNED_BY_PARENT",
-                    "Bạn đã gửi yêu cầu hủy. Cần học sinh đồng ý để hoàn tất.",
-                    HttpStatus.CONFLICT);
-        }
-
+        ParentStudentLinkStatus oldStatus = link.getStatus();
         link.revoke();
         ParentStudentLink savedLink = linkRepository.saveAndFlush(link);
-        log.info("Parent {} completed unlink for student {}", me.userId(), studentId);
+        auditStatusChange(savedLink, me.userId(), UserRole.PARENT,
+                "cancel_link_invitation", oldStatus, savedLink.getStatus());
+    }
+
+    @Transactional
+    public LinkedStudentResponse revokeStudentLink(
+            AuthenticatedUser me,
+            UUID studentId,
+            RevokeParentStudentLinkRequest request) {
+        log.info("Parent {} is revoking active link with student {}", me.userId(), studentId);
+
+        ParentStudentLink link = linkRepository.findForUpdate(me.userId(), studentId)
+                .orElseThrow(() -> new BusinessException(
+                        "PARENT_LINK_NOT_FOUND",
+                        "Không tìm thấy liên kết với học sinh này.",
+                        HttpStatus.NOT_FOUND));
+
+        if (isIdempotentRevocationRetry(link, me.userId(), request.operationId())) {
+            return toLinkedStudentResponse(link);
+        }
+        requireRevocableStatus(link);
+
+        ParentStudentLinkStatus oldStatus = link.getStatus();
+        link.revoke();
+        ParentStudentLink savedLink = linkRepository.saveAndFlush(link);
+        parentLinkAuditLogRepository.save(ParentLinkAuditLog.create(
+                savedLink,
+                me.userId(),
+                UserRole.PARENT,
+                "revoke_link",
+                oldStatus,
+                savedLink.getStatus(),
+                request.operationId(),
+                request.reason()));
+        notifyStudentAboutUnlink(savedLink);
+        log.info("Parent {} revoked link with student {}", me.userId(), studentId);
         return toLinkedStudentResponse(savedLink);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ChildOverviewResponse getChildOverview(AuthenticatedUser me, UUID studentId) {
         log.info("Parent {} requested overview for student {}", me.userId(), studentId);
 
-        Profile student = requireLinkedStudent(me, studentId);
+        ParentStudentLink link = requireActiveLink(me.userId(), studentId);
+        Profile student = link.getStudent();
+        ProgressAccessDecision accessDecision = decideProgressAccess(link);
+        auditProgressAccess(me.userId(), studentId, "view_child_overview", accessDecision);
         List<Enrollment> enrollments = enrollmentRepository.findByStudentId(studentId);
         List<UUID> courseIds = enrollments.stream()
                 .map(Enrollment::getCourseId)
@@ -320,14 +356,30 @@ public class ParentService {
                 .latestQuizScore(latestQuizScore)
                 .latestExamScore(latestExamScore)
                 .weeklyActivityHours(buildWeeklyActivityHours(quizAttempts, examAttempts))
+                .detailAccessAllowed(accessDecision.detailAllowed())
+                .sensitiveDataMasked(!accessDecision.detailAllowed())
+                .detailAccessReason(accessDecision.reason())
                 .build();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ChildProgressReportResponse getChildProgressReport(AuthenticatedUser me, UUID studentId) {
+        return getChildProgressReport(me, studentId, null, null, null);
+    }
+
+    @Transactional
+    public ChildProgressReportResponse getChildProgressReport(
+            AuthenticatedUser me,
+            UUID studentId,
+            UUID courseFilterId,
+            LocalDate from,
+            LocalDate to) {
         log.info("Parent {} requested detailed progress report for student {}", me.userId(), studentId);
 
-        Profile student = requireLinkedStudent(me, studentId);
+        ParentStudentLink link = requireActiveLink(me.userId(), studentId);
+        Profile student = link.getStudent();
+        ProgressAccessDecision accessDecision = decideProgressAccess(link);
+        auditProgressAccess(me.userId(), studentId, "view_child_progress_report", accessDecision);
         List<Enrollment> enrollments = enrollmentRepository.findByStudentId(studentId);
 
         if (enrollments.isEmpty()) {
@@ -336,6 +388,10 @@ public class ParentService {
                     displayName(student),
                     "",
                     Instant.now(),
+                    accessDecision.detailAllowed(),
+                    !accessDecision.detailAllowed(),
+                    accessDecision.reason(),
+                    emptyWeeklySummary(),
                     List.of(),
                     List.of());
         }
@@ -344,6 +400,27 @@ public class ParentService {
                 .map(Enrollment::getCourseId)
                 .distinct()
                 .toList();
+        if (courseFilterId != null) {
+            courseIds = courseIds.stream()
+                    .filter(courseFilterId::equals)
+                    .toList();
+            enrollments = enrollments.stream()
+                    .filter(enrollment -> courseFilterId.equals(enrollment.getCourseId()))
+                    .toList();
+        }
+        if (courseIds.isEmpty()) {
+            return new ChildProgressReportResponse(
+                    studentId,
+                    displayName(student),
+                    "",
+                    Instant.now(),
+                    accessDecision.detailAllowed(),
+                    !accessDecision.detailAllowed(),
+                    accessDecision.reason(),
+                    emptyWeeklySummary(),
+                    List.of(),
+                    List.of());
+        }
         Map<UUID, Enrollment> enrollmentByCourseId = enrollments.stream()
                 .collect(Collectors.toMap(
                         Enrollment::getCourseId,
@@ -358,9 +435,13 @@ public class ParentService {
         List<QuizConfig> quizConfigs = quizConfigRepository.findByCourseIds(courseIds);
         Map<UUID, List<QuizConfig>> quizConfigsByCourseId = quizConfigs.stream()
                 .collect(Collectors.groupingBy(config -> config.getChapter().getCourse().getId()));
+        List<ExamConfig> examConfigs = examConfigRepository.findByCourseIds(courseIds);
+        Map<UUID, List<ExamConfig>> examConfigsByCourseId = examConfigs.stream()
+                .collect(Collectors.groupingBy(config -> config.getCourse().getId()));
 
         List<QuizAttempt> quizAttempts = quizAttemptRepository.findSubmittedByStudentAndCourseIds(studentId, courseIds);
         List<ExamAttempt> examAttempts = examAttemptRepository.findSubmittedByStudentAndCourseIds(studentId, courseIds);
+        List<ExamAttempt> allExamAttempts = examAttemptRepository.findByStudentAndCourseIds(studentId, courseIds);
         List<AssignmentSubmission> assignmentSubmissions =
                 assignmentSubmissionRepository.findSubmittedByStudentAndCourseIds(studentId, courseIds);
 
@@ -379,8 +460,10 @@ public class ParentService {
                         enrollment,
                         courseById.get(enrollment.getCourseId()),
                         quizConfigsByCourseId.getOrDefault(enrollment.getCourseId(), List.of()),
+                        examConfigsByCourseId.getOrDefault(enrollment.getCourseId(), List.of()),
                         quizAttempts,
                         examAttempts,
+                        allExamAttempts,
                         assignmentSubmissions))
                 .flatMap(Optional::stream)
                 .toList();
@@ -390,24 +473,46 @@ public class ParentService {
                 examAttempts,
                 assignmentSubmissions,
                 courseById,
-                courseStatusById);
+                courseStatusById,
+                accessDecision.detailAllowed()).stream()
+                .filter(record -> isWithinDateRange(record.submittedAt(), from, to))
+                .toList();
 
         return new ChildProgressReportResponse(
                 studentId,
                 displayName(student),
                 resolveGradeLabel(courses),
                 Instant.now(),
+                accessDecision.detailAllowed(),
+                !accessDecision.detailAllowed(),
+                accessDecision.reason(),
+                buildWeeklySummary(courseItems, assessments),
                 courseItems,
                 assessments);
     }
 
     @Transactional(readOnly = true)
     public ParentPaymentHistoryResponse getChildPaymentHistory(AuthenticatedUser me, UUID studentId) {
+        return getChildPaymentHistory(me, studentId, null, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public ParentPaymentHistoryResponse getChildPaymentHistory(
+            AuthenticatedUser me,
+            UUID studentId,
+            UUID courseFilterId,
+            LocalDate from,
+            LocalDate to) {
         log.info("Parent {} requested payment history for student {}", me.userId(), studentId);
 
         Profile student = requireLinkedStudent(me, studentId);
         Profile parent = requireParentProfile(me.userId());
         List<Enrollment> enrollments = enrollmentRepository.findByStudentId(studentId);
+        if (courseFilterId != null) {
+            enrollments = enrollments.stream()
+                    .filter(enrollment -> courseFilterId.equals(enrollment.getCourseId()))
+                    .toList();
+        }
 
         if (enrollments.isEmpty()) {
             return new ParentPaymentHistoryResponse(
@@ -445,6 +550,7 @@ public class ParentService {
                                 student,
                                 courseById.get(item.getCourseId()),
                                 enrollmentByCourseId.get(item.getCourseId()))))
+                .filter(transaction -> isWithinDateRange(transaction.createdAt(), from, to))
                 .sorted(Comparator.comparing(
                         ParentPaymentHistoryResponse.Transaction::createdAt,
                         Comparator.nullsLast(Comparator.reverseOrder())))
@@ -550,7 +656,8 @@ public class ParentService {
                     request.attachmentUrl(),
                     request.attachmentName(),
                     request.attachmentType(),
-                    request.attachmentSizeBytes());
+                    request.attachmentSizeBytes(),
+                    "private");
         } else {
             thread = existingThreads.get(0);
             thread.addParentMessage(
@@ -691,6 +798,9 @@ public class ParentService {
                 thread != null ? thread.getLastActivityAt() : null,
                 latestMessage != null ? latestMessage.getContent() : null,
                 messages.size(),
+                (int) messages.stream()
+                        .filter(message -> "pending_review".equals(message.moderationStatus()))
+                        .count(),
                 messages);
     }
 
@@ -717,6 +827,7 @@ public class ParentService {
                 displayName(payer, "parent".equals(payerRole) ? "Phụ huynh" : "Học sinh"),
                 payerRole,
                 item.getCourseId(),
+                enrollment != null ? enrollment.getCourseVersionId() : null,
                 course != null ? course.getTitle() : "Khóa học",
                 course != null && course.getTeacher() != null ? displayName(course.getTeacher(), "Giáo viên") : null,
                 course != null && course.getCategory() != null ? course.getCategory().getName() : null,
@@ -727,7 +838,14 @@ public class ParentService {
                 order.getCreatedAt(),
                 order.getPaidAt(),
                 progressPct,
-                order.getPaymentRef() + "-" + courseSuffix);
+                order.getPaymentRef() + "-" + courseSuffix,
+                new ParentPaymentHistoryResponse.InvoiceInfo(
+                        INVOICE_SELLER_NAME,
+                        INVOICE_SELLER_TAX_CODE,
+                        displayName(payer, "parent".equals(payerRole) ? "Phu huynh" : "Hoc sinh"),
+                        "Hoc phi khoa hoc " + (course != null ? course.getTitle() : courseSuffix),
+                        "VND",
+                        order.getPaidAt() != null ? order.getPaidAt() : order.getCreatedAt()));
     }
 
     private Profile requireLinkedStudent(AuthenticatedUser me, UUID studentId) {
@@ -746,6 +864,213 @@ public class ParentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Profile", studentId));
     }
 
+    private ProgressAccessDecision decideProgressAccess(ParentStudentLink link) {
+        Profile student = link.getStudent();
+        if (link.isSensitiveDataConsentGranted()) {
+            return new ProgressAccessDecision(true, "CONSENT_GRANTED");
+        }
+
+        LocalDate dateOfBirth = student.getDateOfBirth();
+        if (dateOfBirth == null) {
+            return new ProgressAccessDecision(false, "DOB_MISSING_REQUIRE_CONSENT");
+        }
+
+        int age = Period.between(dateOfBirth, LocalDate.now()).getYears();
+        if (age >= PRIVACY_CONSENT_AGE && student.isParentPrivacyEnabled()) {
+            return new ProgressAccessDecision(false, "STUDENT_16_PLUS_PRIVACY_ENABLED_REQUIRE_CONSENT");
+        }
+
+        return new ProgressAccessDecision(true, "CONSENT_NOT_REQUIRED");
+    }
+
+    private void auditProgressAccess(
+            UUID parentId,
+            UUID studentId,
+            String action,
+            ProgressAccessDecision accessDecision) {
+        progressAccessAuditRepository.save(ParentProgressAccessAudit.create(
+                parentId,
+                studentId,
+                action,
+                true,
+                accessDecision.detailAllowed(),
+                accessDecision.reason()));
+    }
+
+    private void auditParentLinkAttempt(UUID parentId, String action) {
+        parentLinkAuditLogRepository.save(ParentLinkAuditLog.createAttempt(
+                parentId,
+                parentId,
+                UserRole.PARENT,
+                action));
+    }
+
+    private long recentInvitationAttemptCount(UUID parentId) {
+        return parentLinkAuditLogRepository.countRecentActions(
+                parentId,
+                List.of("send_link_invitation_attempt"),
+                Instant.now().minus(Duration.ofDays(1)));
+    }
+
+    private void auditStatusChange(
+            ParentStudentLink link,
+            UUID actorId,
+            UserRole actorRole,
+            String action,
+            ParentStudentLinkStatus oldStatus,
+            ParentStudentLinkStatus newStatus) {
+        parentLinkAuditLogRepository.save(ParentLinkAuditLog.create(
+                link,
+                actorId,
+                actorRole,
+                action,
+                oldStatus,
+                newStatus));
+    }
+
+    private ParentStudentLink expireIfPending(
+            ParentStudentLink link,
+            UUID actorId,
+            UserRole actorRole,
+            String action) {
+        if (link.getStatus() != ParentStudentLinkStatus.PENDING || !isExpired(link)) {
+            return link;
+        }
+
+        ParentStudentLinkStatus oldStatus = link.getStatus();
+        link.expire();
+        ParentStudentLink savedLink = linkRepository.saveAndFlush(link);
+        auditStatusChange(savedLink, actorId, actorRole, action, oldStatus, savedLink.getStatus());
+        return savedLink;
+    }
+
+    private ChildProgressReportResponse.WeeklySummary emptyWeeklySummary() {
+        return new ChildProgressReportResponse.WeeklySummary(
+                "no_data",
+                null,
+                0,
+                0,
+                7,
+                "Chua co du lieu hoc tap trong khoang thoi gian nay.");
+    }
+
+    private ChildProgressReportResponse.WeeklySummary buildWeeklySummary(
+            List<ChildProgressReportResponse.CourseProgressItem> courseItems,
+            List<ChildProgressReportResponse.AssessmentRecord> assessments) {
+        LocalDate today = LocalDate.now();
+        LocalDate weekStart = today.minusDays(6);
+        List<ChildProgressReportResponse.AssessmentRecord> weeklyAssessments = assessments.stream()
+                .filter(record -> record.submittedAt() != null)
+                .filter(record -> !record.submittedAt().atZone(ZoneId.systemDefault()).toLocalDate().isBefore(weekStart))
+                .toList();
+
+        Double averageScore = weeklyAssessments.stream()
+                .map(ChildProgressReportResponse.AssessmentRecord::normalizedScore)
+                .filter(java.util.Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .stream()
+                .map(this::round1)
+                .boxed()
+                .findFirst()
+                .orElse(null);
+        int incompleteCourses = (int) courseItems.stream()
+                .filter(course -> course.progressPct() == null || course.progressPct() < 100)
+                .count();
+        int activeDays = (int) weeklyAssessments.stream()
+                .map(record -> record.submittedAt().atZone(ZoneId.systemDefault()).toLocalDate())
+                .distinct()
+                .count();
+        int inactiveDays = Math.max(0, 7 - activeDays);
+        double averageProgress = courseItems.isEmpty()
+                ? 0.0
+                : courseItems.stream()
+                .mapToInt(course -> course.progressPct() != null ? course.progressPct() : 0)
+                .average()
+                .orElse(0.0);
+
+        String trend;
+        String suggestion;
+        if (courseItems.isEmpty() && weeklyAssessments.isEmpty()) {
+            trend = "no_data";
+            suggestion = "Chua co du lieu hoc tap trong khoang thoi gian nay.";
+        } else if (inactiveDays >= 5 && averageProgress < 50) {
+            trend = "inactive";
+            suggestion = "Nen nhac hoc sinh quay lai hoc va hoan thanh cac bai danh gia con thieu.";
+        } else if (averageScore != null && averageScore < 5.0) {
+            trend = "needs_support";
+            suggestion = "Nen trao doi voi giao vien de ho tro cac noi dung co diem thap.";
+        } else {
+            trend = "on_track";
+            suggestion = "Tiep tuc duy tri tien do hoc tap hien tai.";
+        }
+
+        return new ChildProgressReportResponse.WeeklySummary(
+                trend,
+                averageScore,
+                weeklyAssessments.size(),
+                incompleteCourses,
+                inactiveDays,
+                suggestion);
+    }
+
+    private boolean isWithinDateRange(Instant value, LocalDate from, LocalDate to) {
+        if (from == null && to == null) {
+            return true;
+        }
+        if (value == null) {
+            return false;
+        }
+        LocalDate localDate = value.atZone(ZoneId.systemDefault()).toLocalDate();
+        if (from != null && localDate.isBefore(from)) {
+            return false;
+        }
+        return to == null || !localDate.isAfter(to);
+    }
+
+    private void notifyStudentAboutUnlink(ParentStudentLink link) {
+        notificationService.notify(
+                link.getStudent().getId(),
+                "parent_link_revoked",
+                "Lien ket phu huynh da bi huy",
+                "Lien ket voi " + displayName(link.getParent(), "phu huynh") + " da bi huy.",
+                "/student/notifications");
+    }
+
+    private boolean isIdempotentRevocationRetry(
+            ParentStudentLink link,
+            UUID actorId,
+            UUID operationId) {
+        return link.getStatus() == ParentStudentLinkStatus.REVOKED
+                && parentLinkAuditLogRepository
+                .existsByParentIdAndStudentIdAndActorIdAndActionAndOperationId(
+                        link.getParent().getId(),
+                        link.getStudent().getId(),
+                        actorId,
+                        "revoke_link",
+                        operationId);
+    }
+
+    private void requireRevocableStatus(ParentStudentLink link) {
+        if (link.getStatus() == ParentStudentLinkStatus.ACCEPTED) {
+            return;
+        }
+
+        String code = switch (link.getStatus()) {
+            case REVOKED -> "PARENT_LINK_ALREADY_REVOKED";
+            case REJECTED -> "PARENT_LINK_REJECTED";
+            case EXPIRED -> "PARENT_LINK_EXPIRED";
+            default -> "PARENT_LINK_NOT_ACTIVE";
+        };
+        String message = switch (link.getStatus()) {
+            case REVOKED -> "Liên kết này đã được hủy trước đó.";
+            case REJECTED -> "Lời mời liên kết này đã bị từ chối.";
+            case EXPIRED -> "Lời mời liên kết này đã hết hạn.";
+            default -> "Chỉ có thể hủy liên kết đang hoạt động.";
+        };
+        throw new BusinessException(code, message, HttpStatus.CONFLICT);
+    }
+
     private ParentStudentLink requireActiveLink(UUID parentId, UUID studentId) {
         ParentStudentLink link = linkRepository.findByIdParentIdAndIdStudentId(parentId, studentId)
                 .orElseThrow(() -> new BusinessException(
@@ -762,6 +1087,8 @@ public class ParentService {
 
         return link;
     }
+
+    private record ProgressAccessDecision(boolean detailAllowed, String reason) {}
 
     private Profile requireParentProfile(UUID parentId) {
         return profileRepository.findById(parentId)
@@ -805,7 +1132,9 @@ public class ParentService {
                 link.getRespondedAt(),
                 link.getUnlinkRequestedBy(),
                 resolveUnlinkRequestedByRole(link),
-                link.getUnlinkRequestedAt());
+                link.getUnlinkRequestedAt(),
+                true,
+                null);
     }
 
     private Instant expiresAt(ParentStudentLink link) {
@@ -874,19 +1203,33 @@ public class ParentService {
             Enrollment enrollment,
             Course course,
             List<QuizConfig> quizConfigs,
+            List<ExamConfig> examConfigs,
             List<QuizAttempt> quizAttempts,
             List<ExamAttempt> examAttempts,
+            List<ExamAttempt> allExamAttempts,
             List<AssignmentSubmission> assignmentSubmissions) {
         if (course == null) {
             return Optional.empty();
         }
 
         UUID courseId = course.getId();
+        UUID courseVersionId = enrollment.getCourseVersionId();
+        List<ExamConfig> versionExamConfigs = examConfigs.stream()
+                .filter(config -> courseVersionId == null
+                        || courseVersionId.equals(config.getCourseVersionId()))
+                .toList();
         List<QuizAttempt> courseQuizAttempts = quizAttempts.stream()
                 .filter(attempt -> attempt.getQuizConfig().getChapter().getCourse().getId().equals(courseId))
                 .toList();
         List<ExamAttempt> courseExamAttempts = examAttempts.stream()
                 .filter(attempt -> attempt.getExamConfig().getCourse().getId().equals(courseId))
+                .filter(attempt -> courseVersionId == null
+                        || courseVersionId.equals(attempt.getExamConfig().getCourseVersionId()))
+                .toList();
+        List<ExamAttempt> courseAllExamAttempts = allExamAttempts.stream()
+                .filter(attempt -> attempt.getExamConfig().getCourse().getId().equals(courseId))
+                .filter(attempt -> courseVersionId == null
+                        || courseVersionId.equals(attempt.getExamConfig().getCourseVersionId()))
                 .toList();
         List<AssignmentSubmission> courseAssignmentSubmissions = assignmentSubmissions.stream()
                 .filter(submission -> courseId.equals(resolveAssignmentCourseId(submission)))
@@ -923,9 +1266,12 @@ public class ParentService {
                 .findFirst()
                 .map(this::toNormalizedAssignmentScore)
                 .orElse(null);
+        List<ChildProgressReportResponse.RequiredExamResult> requiredExams =
+                buildRequiredExamResults(versionExamConfigs, courseAllExamAttempts);
 
         return Optional.of(new ChildProgressReportResponse.CourseProgressItem(
                 courseId,
+                courseVersionId,
                 course.getTitle(),
                 course.getTeacher() != null ? displayName(course.getTeacher()) : null,
                 toCourseStatus(enrollment),
@@ -937,7 +1283,8 @@ public class ParentService {
                 averageQuizScore,
                 latestQuizScore,
                 latestExamScore,
-                latestAssignmentScore));
+                latestAssignmentScore,
+                requiredExams));
     }
 
     private List<ChildProgressReportResponse.AssessmentRecord> buildAssessmentRecords(
@@ -945,17 +1292,22 @@ public class ParentService {
             List<ExamAttempt> examAttempts,
             List<AssignmentSubmission> assignmentSubmissions,
             Map<UUID, Course> courseById,
-            Map<UUID, String> courseStatusById) {
+            Map<UUID, String> courseStatusById,
+            boolean detailAccessAllowed) {
         List<ChildProgressReportResponse.AssessmentRecord> records = quizAttempts.stream()
                 .map(attempt -> toQuizAssessmentRecord(attempt, courseStatusById))
                 .collect(Collectors.toList());
 
         records.addAll(examAttempts.stream()
-                .map(attempt -> toExamAssessmentRecord(attempt, courseStatusById))
+                .map(attempt -> toExamAssessmentRecord(attempt, courseStatusById, detailAccessAllowed))
                 .toList());
 
         records.addAll(assignmentSubmissions.stream()
-                .map(submission -> toAssignmentAssessmentRecord(submission, courseById, courseStatusById))
+                .map(submission -> toAssignmentAssessmentRecord(
+                        submission,
+                        courseById,
+                        courseStatusById,
+                        detailAccessAllowed))
                 .toList());
 
         return records.stream()
@@ -988,7 +1340,8 @@ public class ParentService {
 
     private ChildProgressReportResponse.AssessmentRecord toExamAssessmentRecord(
             ExamAttempt attempt,
-            Map<UUID, String> courseStatusById) {
+            Map<UUID, String> courseStatusById,
+            boolean detailAccessAllowed) {
         Course course = attempt.getExamConfig().getCourse();
         Double rawScore = attempt.getEffectiveScorePercent() == null
                 ? null
@@ -1004,14 +1357,15 @@ public class ParentService {
                 rawScore,
                 100.0,
                 rawScore == null ? null : round1(rawScore / 10.0),
-                attempt.getTeacherFeedback(),
+                detailAccessAllowed ? attempt.getTeacherFeedback() : null,
                 attempt.getSubmittedAt());
     }
 
     private ChildProgressReportResponse.AssessmentRecord toAssignmentAssessmentRecord(
             AssignmentSubmission submission,
             Map<UUID, Course> courseById,
-            Map<UUID, String> courseStatusById) {
+            Map<UUID, String> courseStatusById,
+            boolean detailAccessAllowed) {
         Assignment assignment = submission.getAssignment();
         UUID courseId = resolveAssignmentCourseId(submission);
         Course course = courseById.get(courseId);
@@ -1028,8 +1382,83 @@ public class ParentService {
                 rawScore,
                 maxScore,
                 toNormalizedAssignmentScore(submission),
-                submission.getFeedback(),
+                detailAccessAllowed ? submission.getFeedback() : null,
                 submission.getSubmittedAt());
+    }
+
+    private List<ChildProgressReportResponse.RequiredExamResult> buildRequiredExamResults(
+            List<ExamConfig> examConfigs,
+            List<ExamAttempt> examAttempts) {
+        Map<Integer, ExamConfig> configBySlot = examConfigs.stream()
+                .filter(config -> config.getSlotIndex() != null)
+                .filter(config -> config.getSlotIndex() >= 0 && config.getSlotIndex() < REQUIRED_EXAM_LABELS.size())
+                .collect(Collectors.toMap(
+                        ExamConfig::getSlotIndex,
+                        Function.identity(),
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        Map<UUID, ExamAttempt> latestAttemptByConfigId = new LinkedHashMap<>();
+        for (ExamAttempt attempt : examAttempts) {
+            UUID configId = attempt.getExamConfig().getId();
+            latestAttemptByConfigId.putIfAbsent(configId, attempt);
+        }
+
+        return java.util.stream.IntStream.range(0, REQUIRED_EXAM_LABELS.size())
+                .mapToObj(slot -> toRequiredExamResult(slot, configBySlot.get(slot), latestAttemptByConfigId))
+                .toList();
+    }
+
+    private ChildProgressReportResponse.RequiredExamResult toRequiredExamResult(
+            int slot,
+            ExamConfig config,
+            Map<UUID, ExamAttempt> latestAttemptByConfigId) {
+        if (config == null) {
+            return new ChildProgressReportResponse.RequiredExamResult(
+                    slot,
+                    REQUIRED_EXAM_LABELS.get(slot),
+                    "not_configured",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
+        }
+
+        ExamAttempt attempt = latestAttemptByConfigId.get(config.getId());
+        if (attempt == null) {
+            return new ChildProgressReportResponse.RequiredExamResult(
+                    slot,
+                    REQUIRED_EXAM_LABELS.get(slot),
+                    "not_submitted",
+                    config.getId(),
+                    null,
+                    null,
+                    null,
+                    null);
+        }
+
+        Double scorePercent = attempt.getEffectiveScorePercent() == null
+                ? null
+                : round1(attempt.getEffectiveScorePercent().doubleValue());
+        return new ChildProgressReportResponse.RequiredExamResult(
+                slot,
+                REQUIRED_EXAM_LABELS.get(slot),
+                requiredExamStatus(attempt),
+                config.getId(),
+                scorePercent,
+                scorePercent == null ? null : round1(scorePercent / 10.0),
+                attempt.getPassed(),
+                attempt.getSubmittedAt());
+    }
+
+    private String requiredExamStatus(ExamAttempt attempt) {
+        if (attempt.getSubmittedAt() == null) {
+            return "in_progress";
+        }
+        if (attempt.getPassed() == null) {
+            return "pending_grading";
+        }
+        return Boolean.TRUE.equals(attempt.getPassed()) ? "passed" : "failed";
     }
 
     private List<Double> buildWeeklyActivityHours(List<QuizAttempt> quizAttempts, List<ExamAttempt> examAttempts) {

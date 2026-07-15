@@ -53,6 +53,9 @@ class CourseProgressServiceTest {
     @Mock
     private CertificateService certificateService;
 
+    @Mock
+    private CourseVersionSnapshotService courseVersionSnapshotService;
+
     @InjectMocks
     private CourseProgressService service;
 
@@ -61,7 +64,7 @@ class CourseProgressServiceTest {
         UUID studentId = UUID.randomUUID();
         UUID courseId = UUID.randomUUID();
         UUID lessonId = UUID.randomUUID();
-        Enrollment enrollment = Enrollment.create(studentId, courseId);
+        Enrollment enrollment = Enrollment.create(studentId, courseId, UUID.randomUUID());
 
         when(courseRepository.existsById(courseId)).thenReturn(true);
         when(enrollmentRepository.existsByStudentIdAndCourseId(studentId, courseId)).thenReturn(true);
@@ -94,7 +97,7 @@ class CourseProgressServiceTest {
         UUID studentId = UUID.randomUUID();
         UUID courseId = UUID.randomUUID();
         UUID chapterId = UUID.randomUUID();
-        Enrollment enrollment = Enrollment.create(studentId, courseId);
+        Enrollment enrollment = Enrollment.create(studentId, courseId, UUID.randomUUID());
 
         when(courseRepository.existsById(courseId)).thenReturn(true);
         when(enrollmentRepository.existsByStudentIdAndCourseId(studentId, courseId)).thenReturn(true);

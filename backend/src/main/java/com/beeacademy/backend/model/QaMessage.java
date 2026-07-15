@@ -13,6 +13,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -55,9 +56,22 @@ public class QaMessage {
     @Column(name = "attachment_size_bytes")
     private Long attachmentSizeBytes;
 
+    @Column(name = "moderation_status", nullable = false, length = 30)
+    private String moderationStatus;
+
+    @Column(name = "moderation_reason")
+    private String moderationReason;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private Instant updatedAt;
+
+    @Column(name = "edited_at")
+    private Instant editedAt;
 
     static QaMessage create(QaThread thread, Profile author, String content) {
         return create(thread, author, content, null, null, null, null);
@@ -76,7 +90,31 @@ public class QaMessage {
         message.attachmentName = blankToNull(attachmentName);
         message.attachmentType = blankToNull(attachmentType);
         message.attachmentSizeBytes = attachmentSizeBytes;
+        message.moderationStatus = moderationStatusFor(content);
+        message.moderationReason = "pending_review".equals(message.moderationStatus)
+                ? "Message matched safety moderation keyword."
+                : null;
         return message;
+    }
+
+    public void updateContent(String content) {
+        this.content = content.trim();
+        this.moderationStatus = moderationStatusFor(content);
+        this.moderationReason = "pending_review".equals(this.moderationStatus)
+                ? "Message matched safety moderation keyword."
+                : null;
+        this.editedAt = Instant.now();
+    }
+
+    private static String moderationStatusFor(String content) {
+        String normalized = content == null ? "" : content.toLowerCase();
+        return (normalized.contains("spam")
+                || normalized.contains("lừa đảo")
+                || normalized.contains("lua dao")
+                || normalized.contains("chửi")
+                || normalized.contains("chui"))
+                ? "pending_review"
+                : "approved";
     }
 
     private static String blankToNull(String value) {

@@ -42,10 +42,11 @@ export async function gradeAssignmentSubmission(
   submissionId: string,
   score: number,
   feedback: string,
+  revisionReason?: string,
 ): Promise<AssignmentSubmissionResponse> {
   const response = await apiClient.put<ApiResponse<AssignmentSubmissionResponse>>(
     `/api/teacher/assignment-submissions/${submissionId}/grade`,
-    { score, feedback },
+    { score, feedback, revisionReason },
   );
   return unwrap(response.data);
 }

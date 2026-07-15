@@ -25,6 +25,7 @@ public record QuestionResponse(
         UUID chapterId,
         String chapterTitle,
         Instant createdAt,
+        String duplicateWarning,
         List<ChoiceResponse> choices
 ) {
     public record ChoiceResponse(UUID id, String content, Boolean isCorrect, Integer position) {}
@@ -50,8 +51,31 @@ public record QuestionResponse(
                 q.getChapter() != null ? q.getChapter().getId() : null,
                 q.getChapter() != null ? q.getChapter().getTitle() : null,
                 q.getCreatedAt(),
+                null,
                 choices
         );
+    }
+
+    public QuestionResponse withDuplicateWarning(String warning) {
+        return new QuestionResponse(
+                id,
+                content,
+                explanation,
+                metadata,
+                difficulty,
+                type,
+                status,
+                usageCount,
+                questionBankId,
+                questionBankTitle,
+                categoryId,
+                categoryName,
+                grade,
+                chapterId,
+                chapterTitle,
+                createdAt,
+                warning,
+                choices);
     }
 
     public static QuestionResponse forStudent(Question q, ObjectMapper mapper) {
@@ -67,6 +91,7 @@ public record QuestionResponse(
                 q.getType(),
                 q.getStatus(),
                 q.getUsageCount(),
+                null,
                 null,
                 null,
                 null,

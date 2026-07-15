@@ -43,6 +43,9 @@ public class ExamConfig {
     @JoinColumn(name = "teacher_id", nullable = false)
     private Profile teacher;
 
+    @Column(name = "course_version_id")
+    private UUID courseVersionId;
+
     @Column(name = "slot_index", nullable = false)
     private Integer slotIndex;
 
@@ -119,6 +122,10 @@ public class ExamConfig {
                 shuffleQuestions, shuffleOptions, showAnswerAfterSubmit,
                 examType, requireFullscreen, blockCopyPaste, questionsJson);
         return config;
+    }
+
+    public void assignCourseVersion(UUID courseVersionId) {
+        this.courseVersionId = courseVersionId;
     }
 
     public void update(Chapter scopeStartChapter, Chapter placementChapter,

@@ -1,4 +1,9 @@
-import type { ChildProgressReportResponse, ParentAssessmentRecord } from '../types/api';
+import type {
+  ChildProgressReportResponse,
+  ParentAssessmentRecord,
+  ParentCourseProgressItem,
+  ParentRequiredExamStatus,
+} from '../types/api';
 
 interface PrintOptions {
   filterSummary?: string;
@@ -26,6 +31,49 @@ function formatDateTime(value: string | null | undefined): string {
 
 function courseStatusLabel(status: string): string {
   return status === 'completed' ? 'Da hoan thanh' : 'Dang hoc';
+}
+
+function requiredExamStatusLabel(status: ParentRequiredExamStatus): string {
+  switch (status) {
+    case 'not_configured':
+      return 'Chua cau hinh';
+    case 'not_submitted':
+      return 'Chua nop';
+    case 'in_progress':
+      return 'Dang lam';
+    case 'pending_grading':
+      return 'Cho cham';
+    case 'passed':
+      return 'Dat';
+    case 'failed':
+      return 'Chua dat';
+    default:
+      return status;
+  }
+}
+
+function requiredExamSummary(course: ParentCourseProgressItem): string {
+  const requiredExams = course.requiredExams ?? [];
+  if (requiredExams.length === 0) {
+    return 'Chua co cau hinh';
+  }
+  return requiredExams
+    .map(exam => {
+      const score = exam.normalizedScore != null ? `${exam.normalizedScore.toFixed(1)}/10` : requiredExamStatusLabel(exam.status);
+      return `${exam.label}: ${score}`;
+    })
+    .join('; ');
+}
+
+function progressAccessReasonLabel(reason: string | null | undefined): string {
+  switch (reason) {
+    case 'DOB_MISSING_REQUIRE_CONSENT':
+      return 'Thieu ngay sinh hoc sinh, can xac nhan dong y de xem du lieu nhay cam.';
+    case 'STUDENT_16_PLUS_PRIVACY_ENABLED_REQUIRE_CONSENT':
+      return 'Hoc sinh tu 16 tuoi dang bat quyen rieng tu, can dong y truoc khi hien thi chi tiet nhay cam.';
+    default:
+      return 'Mot so nhan xet va chi tiet bai lam dang duoc an theo thiet lap quyen rieng tu.';
+  }
 }
 
 function formatScore(record: ParentAssessmentRecord): string {
@@ -63,11 +111,14 @@ export function printParentProgressReport(
   const totalQuizCompleted = report.courses.reduce((sum, item) => sum + item.quizCompletedCount, 0);
   const totalQuizCount = report.courses.reduce((sum, item) => sum + item.quizTotalCount, 0);
   const filterSummary = options.filterSummary?.trim() || 'Tat ca du lieu hien co';
+  const privacyNote = report.sensitiveDataMasked
+    ? `<section class="privacy-note"><strong>Du lieu nhay cam dang duoc an.</strong><br />${escapeHtml(progressAccessReasonLabel(report.detailAccessReason))}</section>`
+    : '';
 
   const courseRows = report.courses.length === 0
     ? `
       <tr>
-        <td colspan="6" class="empty">Khong co khoa hoc phu hop voi bo loc.</td>
+        <td colspan="7" class="empty">Khong co khoa hoc phu hop voi bo loc.</td>
       </tr>
     `
     : report.courses.map(course => `
@@ -77,6 +128,7 @@ export function printParentProgressReport(
         <td>${escapeHtml(course.grades.length > 0 ? `Lop ${course.grades.join(', ')}` : report.gradeLabel || '—')}</td>
         <td>${course.progressPct}%</td>
         <td>${course.quizCompletedCount}/${course.quizTotalCount}</td>
+        <td>${escapeHtml(requiredExamSummary(course))}</td>
         <td>${escapeHtml(courseStatusLabel(course.status))}</td>
       </tr>
     `).join('');
@@ -216,6 +268,16 @@ export function printParentProgressReport(
           color: var(--muted);
           padding: 20px;
         }
+        .privacy-note {
+          border: 1px solid #f1c56d;
+          background: #fff8e5;
+          color: #7a4b00;
+          border-radius: 14px;
+          padding: 14px 16px;
+          margin: 20px 0 0;
+          font-size: 13px;
+          line-height: 1.45;
+        }
         .footer {
           margin-top: 24px;
           font-size: 12px;
@@ -238,6 +300,7 @@ export function printParentProgressReport(
           <p>Bo loc: ${escapeHtml(filterSummary)}</p>
           <p>Tao luc: ${escapeHtml(formatDateTime(report.generatedAt))}</p>
         </section>
+        ${privacyNote}
 
         <section class="meta">
           <div class="meta-card">
@@ -269,6 +332,7 @@ export function printParentProgressReport(
                 <th>Khoi lop</th>
                 <th>Tien do</th>
                 <th>Quiz</th>
+                <th>4 bai kiem tra</th>
                 <th>Trang thai</th>
               </tr>
             </thead>

@@ -1,5 +1,6 @@
 package com.beeacademy.backend.service;
 
+import com.beeacademy.backend.dto.request.RevokeParentStudentLinkRequest;
 import com.beeacademy.backend.exception.BusinessException;
 import com.beeacademy.backend.model.ParentLinkAuditLog;
 import com.beeacademy.backend.model.ParentStudentLink;
@@ -56,6 +57,7 @@ class StudentParentLinkServiceTest {
         ReflectionTestUtils.setField(link, "invitedAt", Instant.now().minusSeconds(8 * 24 * 60 * 60));
         when(linkRepository.findByIdParentIdAndIdStudentId(parentId, studentId))
                 .thenReturn(Optional.of(link));
+        when(linkRepository.saveAndFlush(link)).thenReturn(link);
 
         assertThatThrownBy(() -> service.acceptInvitation(studentUser(studentId), parentId))
                 .isInstanceOfSatisfying(BusinessException.class, ex -> {
@@ -64,8 +66,8 @@ class StudentParentLinkServiceTest {
                     assertThat(businessException.getStatus()).isEqualTo(HttpStatus.GONE);
                 });
 
-        verify(linkRepository, never()).saveAndFlush(any());
-        verify(auditLogRepository, never()).save(any());
+        verify(linkRepository).saveAndFlush(link);
+        verify(auditLogRepository).save(any());
         verify(notificationService, never()).notify(any(), any(), any(), any(), any());
     }
 
@@ -91,7 +93,7 @@ class StudentParentLinkServiceTest {
         assertThat(auditCaptor.getValue().getStudentId()).isEqualTo(studentId);
         assertThat(auditCaptor.getValue().getAction()).isEqualTo("accept_invitation");
         assertThat(auditCaptor.getValue().getOldStatus()).isEqualTo("pending");
-        assertThat(auditCaptor.getValue().getNewStatus()).isEqualTo("accepted");
+        assertThat(auditCaptor.getValue().getNewStatus()).isEqualTo("active");
 
         verify(notificationService).notify(
                 parentId,
@@ -101,10 +103,92 @@ class StudentParentLinkServiceTest {
                 "/parent/link");
     }
 
+    @Test
+    void studentCanImmediatelyRevokeActiveLinkWithOptionalReason() {
+        UUID parentId = UUID.randomUUID();
+        UUID studentId = UUID.randomUUID();
+        UUID operationId = UUID.randomUUID();
+        ParentStudentLink link = activeLink(parentId, studentId);
+        when(linkRepository.findForUpdate(parentId, studentId)).thenReturn(Optional.of(link));
+        when(linkRepository.saveAndFlush(link)).thenReturn(link);
+        when(profileRepository.findEmailByUserId(parentId)).thenReturn(Optional.of("parent@example.com"));
+
+        var response = service.revokeParentLink(
+                studentUser(studentId),
+                parentId,
+                new RevokeParentStudentLinkRequest(operationId, "  Không còn nhu cầu liên kết.  "));
+
+        assertThat(response.status()).isEqualTo("revoked");
+        ArgumentCaptor<ParentLinkAuditLog> auditCaptor = ArgumentCaptor.forClass(ParentLinkAuditLog.class);
+        verify(auditLogRepository).save(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().getAction()).isEqualTo("revoke_link");
+        assertThat(auditCaptor.getValue().getOldStatus()).isEqualTo("active");
+        assertThat(auditCaptor.getValue().getNewStatus()).isEqualTo("revoked");
+        assertThat(auditCaptor.getValue().getOperationId()).isEqualTo(operationId);
+        assertThat(auditCaptor.getValue().getReason()).isEqualTo("Không còn nhu cầu liên kết.");
+        verify(notificationService).notify(
+                parentId,
+                "parent_link_revoked",
+                "Lien ket da bi huy",
+                "Lien ket voi Student One da bi huy.",
+                "/parent/link");
+    }
+
+    @Test
+    void automaticRetryDoesNotDuplicateStudentRevocationSideEffects() {
+        UUID parentId = UUID.randomUUID();
+        UUID studentId = UUID.randomUUID();
+        UUID operationId = UUID.randomUUID();
+        ParentStudentLink link = activeLink(parentId, studentId);
+        link.revoke();
+        when(linkRepository.findForUpdate(parentId, studentId)).thenReturn(Optional.of(link));
+        when(auditLogRepository.existsByParentIdAndStudentIdAndActorIdAndActionAndOperationId(
+                parentId, studentId, studentId, "revoke_link", operationId)).thenReturn(true);
+        when(profileRepository.findEmailByUserId(parentId)).thenReturn(Optional.of("parent@example.com"));
+
+        var response = service.revokeParentLink(
+                studentUser(studentId),
+                parentId,
+                new RevokeParentStudentLinkRequest(operationId, null));
+
+        assertThat(response.status()).isEqualTo("revoked");
+        verify(linkRepository, never()).saveAndFlush(any());
+        verify(auditLogRepository, never()).save(any());
+        verify(notificationService, never()).notify(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void newOperationCannotRevokeAnAlreadyRevokedLink() {
+        UUID parentId = UUID.randomUUID();
+        UUID studentId = UUID.randomUUID();
+        ParentStudentLink link = activeLink(parentId, studentId);
+        link.revoke();
+        when(linkRepository.findForUpdate(parentId, studentId)).thenReturn(Optional.of(link));
+
+        assertThatThrownBy(() -> service.revokeParentLink(
+                studentUser(studentId),
+                parentId,
+                new RevokeParentStudentLinkRequest(UUID.randomUUID(), null)))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    BusinessException businessException = (BusinessException) ex;
+                    assertThat(businessException.getCode()).isEqualTo("PARENT_LINK_ALREADY_REVOKED");
+                    assertThat(businessException.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+                });
+
+        verify(linkRepository, never()).saveAndFlush(any());
+        verify(notificationService, never()).notify(any(), any(), any(), any(), any());
+    }
+
     private ParentStudentLink pendingLink(UUID parentId, UUID studentId) {
         Profile parent = Profile.createNew(parentId, UserRole.PARENT, "Parent One");
         Profile student = Profile.createNew(studentId, UserRole.STUDENT, "Student One");
         return ParentStudentLink.createPendingInvitation(parent, student);
+    }
+
+    private ParentStudentLink activeLink(UUID parentId, UUID studentId) {
+        Profile parent = Profile.createNew(parentId, UserRole.PARENT, "Parent One");
+        Profile student = Profile.createNew(studentId, UserRole.STUDENT, "Student One");
+        return ParentStudentLink.createAcceptedLink(parent, student);
     }
 
     private AuthenticatedUser studentUser(UUID studentId) {

@@ -29,12 +29,14 @@ import com.beeacademy.backend.model.QuestionChoice;
 import com.beeacademy.backend.model.RewardAssessmentType;
 import com.beeacademy.backend.repository.ChapterRepository;
 import com.beeacademy.backend.repository.CourseRepository;
+import com.beeacademy.backend.repository.CourseVersionRepository;
 import com.beeacademy.backend.repository.CourseProgressItemRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
 import com.beeacademy.backend.repository.ExamAiAuditLogRepository;
 import com.beeacademy.backend.repository.ExamAttemptRepository;
 import com.beeacademy.backend.repository.ExamConfigRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
+import com.beeacademy.backend.repository.GradeAuditLogRepository;
 import com.beeacademy.backend.repository.QuestionRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import com.beeacademy.backend.client.SupabaseStorageClient;
@@ -53,6 +55,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -102,10 +105,12 @@ public class ExamService {
     private final ExamConfigRepository examRepository;
     private final ExamAttemptRepository examAttemptRepository;
     private final CourseRepository courseRepository;
+    private final CourseVersionRepository courseVersionRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final CourseProgressItemRepository progressItemRepository;
     private final ChapterRepository chapterRepository;
     private final ProfileRepository profileRepository;
+    private final GradeAuditLogRepository gradeAuditLogRepository;
     private final QuestionRepository questionRepository;
     private final ExamAiAuditLogRepository examAiAuditLogRepository;
     private final ObjectMapper objectMapper;
@@ -115,9 +120,11 @@ public class ExamService {
     private final RewardService rewardService;
     private final CertificateService certificateService;
     private final ExamRetakeService examRetakeService;
+    private final TeacherAccessService teacherAccessService;
 
     @Transactional(readOnly = true)
     public List<ExamConfigResponse> listExams(UUID courseId, AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
         loadOwnedCourse(courseId, me.userId());
         return examRepository.findByCourseIdOrderBySlotIndexAsc(courseId).stream()
                 .map(config -> ExamConfigResponse.fromEntity(config, objectMapper))
@@ -126,6 +133,7 @@ public class ExamService {
 
     @Transactional(readOnly = true)
     public ExamConfigResponse getExam(UUID courseId, Integer slotIndex, AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
         loadOwnedCourse(courseId, me.userId());
         return examRepository.findByCourseIdAndSlotIndex(courseId, slotIndex)
                 .map(config -> ExamConfigResponse.fromEntity(config, objectMapper))
@@ -314,6 +322,7 @@ public class ExamService {
 
     @Transactional(readOnly = true)
     public QuestionStatsResponse getQuestionBankStats(UUID courseId, AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
         Course course = loadOwnedCourse(courseId, me.userId());
         List<Object[]> rows = questionRepository.countActiveByDifficultyForTeacherCategoryAndGrades(
                 me.userId(), courseCategoryId(course), courseGrades(course));
@@ -336,6 +345,7 @@ public class ExamService {
     @Transactional(readOnly = true)
     public List<ExamConfigResponse.ExamQuestionResponse> randomQuestions(
             UUID courseId, AuthenticatedUser me, ExamQuestionRandomRequest req) {
+        teacherAccessService.requireApprovedTeacher(me);
         Course course = loadOwnedCourse(courseId, me.userId());
         validateRandomRequest(req);
 
@@ -389,6 +399,7 @@ public class ExamService {
     @Transactional
     public ExamAiDraftResponse generateAiDraft(UUID courseId, AuthenticatedUser me,
                                                ExamAiDraftRequest req) {
+        teacherAccessService.requireApprovedTeacher(me);
         loadOwnedCourse(courseId, me.userId());
         if (req.chapterId() != null) {
             loadCourseChapter(courseId, req.chapterId());
@@ -418,6 +429,7 @@ public class ExamService {
 
     @Transactional
     public void recordAiReview(UUID courseId, AuthenticatedUser me, ExamAiReviewRequest req) {
+        teacherAccessService.requireApprovedTeacher(me);
         loadOwnedCourse(courseId, me.userId());
         JsonNode sourceRefs = req.sourceRefs();
         examAiAuditLogRepository.save(ExamAiAuditLog.create(
@@ -432,6 +444,7 @@ public class ExamService {
     @Transactional
     public ExamConfigResponse saveExam(UUID courseId, Integer slotIndex,
                                        AuthenticatedUser me, ExamConfigRequest req) {
+        teacherAccessService.requireApprovedTeacher(me);
         Course course = loadOwnedCourse(courseId, me.userId());
         Profile teacher = loadProfile(me.userId());
         validateSlot(slotIndex);
@@ -442,6 +455,8 @@ public class ExamService {
         String resolvedExamType = resolveExamType(courseChapters, placementChapter);
         validateExamChapterRange(courseId, scopeStartChapter, placementChapter);
         validateExamContentScope(courseChapters, scopeStartChapter, placementChapter, resolvedExamType);
+        validateFixedExamContinuityOnSave(courseId, slotIndex, courseChapters,
+                scopeStartChapter, placementChapter);
 
         String questionsJson = toJson(req.questions());
         ExamConfig config = examRepository.findByCourseIdAndSlotIndex(courseId, slotIndex)
@@ -461,6 +476,12 @@ public class ExamService {
                     resolvedExamType, req.requireFullscreen(), req.blockCopyPaste(),
                     questionsJson);
         }
+        var latestVersion = courseVersionRepository.findByCourseIdOrderByVersionNoDesc(courseId).stream()
+                .findFirst()
+                .orElse(null);
+        if (latestVersion != null) {
+            config.assignCourseVersion(latestVersion.getId());
+        }
 
         ExamConfig saved = examRepository.save(config);
         recordApprovedAiQuestions(courseId, me.userId(), req);
@@ -470,6 +491,7 @@ public class ExamService {
 
     @Transactional
     public void deleteExam(UUID courseId, Integer slotIndex, AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
         loadOwnedCourse(courseId, me.userId());
         ExamConfig config = examRepository.findByCourseIdAndSlotIndex(courseId, slotIndex)
                 .orElseThrow(() -> new BusinessException("EXAM_NOT_FOUND",
@@ -479,6 +501,7 @@ public class ExamService {
 
     @Transactional(readOnly = true)
     public List<TeacherExamAttemptResponse> listTeacherExamAttempts(AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
         return examAttemptRepository.findSubmittedAttemptsForTeacher(me.userId()).stream()
                 .map(this::toTeacherExamAttemptResponse)
                 .toList();
@@ -489,21 +512,57 @@ public class ExamService {
             UUID attemptId,
             AuthenticatedUser me,
             GradeExamAttemptRequest request) {
+        teacherAccessService.requireApprovedTeacher(me);
         ExamAttempt attempt = examAttemptRepository
                 .findSubmittedAttemptForTeacher(attemptId, me.userId())
                 .orElseThrow(() -> new ResourceNotFoundException("ExamAttempt", attemptId));
 
+        Double oldScore = attempt.getEffectiveScorePercent() != null
+                ? attempt.getEffectiveScorePercent().doubleValue()
+                : null;
+        validateGradeRevision("exam_attempt", attempt.getGradedAt(), request.revisionReason());
+
         attempt.grade(request.scorePercent(), request.feedback());
         ExamAttempt saved = examAttemptRepository.save(attempt);
+        gradeAuditLogRepository.save(com.beeacademy.backend.model.GradeAuditLog.create(
+                "exam_attempt",
+                saved.getId(),
+                saved.getStudent().getId(),
+                me.userId(),
+                oldScore,
+                request.scorePercent(),
+                request.revisionReason()));
         rewardService.recordAssessmentScore(
                 saved.getStudent().getId(),
                 RewardAssessmentType.EXAM,
                 saved.getExamConfig().getId(),
                 request.scorePercent());
         certificateService.handleFinalExamGradeChanged(saved);
+        userNotificationService.notify(
+                saved.getStudent().getId(),
+                "exam_graded",
+                "Bai kiem tra da duoc cham diem",
+                "Bai kiem tra \"" + saved.getExamConfig().getName() + "\" da co diem.",
+                "/student/courses");
         log.info("Teacher {} graded exam attempt {} with score={}",
                 me.userId(), attemptId, request.scorePercent());
         return toTeacherExamAttemptResponse(saved);
+    }
+
+    private void validateGradeRevision(String targetType, Instant gradedAt, String reason) {
+        if (gradedAt == null) {
+            return;
+        }
+        if (gradedAt.isBefore(Instant.now().minus(24, ChronoUnit.HOURS))) {
+            throw new BusinessException("GRADE_REVISION_WINDOW_EXPIRED",
+                    "Chi duoc sua diem trong vong 24 gio sau khi cham.",
+                    HttpStatus.CONFLICT);
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException("GRADE_REVISION_REASON_REQUIRED",
+                    "Can nhap ly do khi sua diem " + targetType + ".",
+                    HttpStatus.BAD_REQUEST);
+        }
     }
 
     private TeacherExamAttemptResponse toTeacherExamAttemptResponse(ExamAttempt attempt) {
@@ -1214,6 +1273,51 @@ public class ExamService {
         }
     }
 
+    private void validateFixedExamContinuityOnSave(UUID courseId, Integer slotIndex,
+                                                   List<Chapter> chapters,
+                                                   Chapter scopeStartChapter,
+                                                   Chapter placementChapter) {
+        Map<Integer, ChapterRange> ranges = new HashMap<>();
+        for (ExamConfig exam : examRepository.findByCourseIdOrderBySlotIndexAsc(courseId)) {
+            if (exam.getSlotIndex() == null || !isFixedExamSlot(exam.getSlotIndex())
+                    || exam.getScopeStartChapter() == null || exam.getPlacementChapter() == null
+                    || exam.getSlotIndex().equals(slotIndex)) {
+                continue;
+            }
+            ranges.put(exam.getSlotIndex(), new ChapterRange(
+                    indexOfChapter(chapters, exam.getScopeStartChapter().getId()),
+                    indexOfChapter(chapters, exam.getPlacementChapter().getId())));
+        }
+        ranges.put(slotIndex, new ChapterRange(
+                indexOfChapter(chapters, scopeStartChapter.getId()),
+                indexOfChapter(chapters, placementChapter.getId())));
+
+        ChapterRange current = ranges.get(slotIndex);
+        if (slotIndex == 0 && current.start() != 0) {
+            throw new BusinessException("INVALID_EXAM_SCOPE_COVERAGE",
+                    "Bai kiem tra dau tien phai bat dau tu chuong dau tien.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        if (slotIndex == FINAL_EXAM_SLOT_INDEX && current.end() != chapters.size() - 1) {
+            throw new BusinessException("INVALID_EXAM_SCOPE_COVERAGE",
+                    "Bai kiem tra cuoi ky 2 phai ket thuc o chuong cuoi cung.",
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        ChapterRange previous = ranges.get(slotIndex - 1);
+        if (previous != null && current.start() > previous.end() + 1) {
+            throw new BusinessException("INVALID_EXAM_SCOPE_COVERAGE",
+                    "Pham vi bai kiem tra khong duoc bo trong chuong giua slot truoc va slot hien tai.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        ChapterRange next = ranges.get(slotIndex + 1);
+        if (next != null && next.start() > current.end() + 1) {
+            throw new BusinessException("INVALID_EXAM_SCOPE_COVERAGE",
+                    "Pham vi bai kiem tra khong duoc bo trong chuong giua slot hien tai va slot sau.",
+                    HttpStatus.BAD_REQUEST);
+        }
+    }
+
     private String resolveExamType(List<Chapter> chapters, Chapter placementChapter) {
         if (chapters.isEmpty()) {
             return EXAM_TYPE_CHAPTER_TEST;
@@ -1226,9 +1330,9 @@ public class ExamService {
 
     private void validateExamContentScope(List<Chapter> chapters, Chapter scopeStartChapter,
                                           Chapter placementChapter, String examType) {
-        if (chapters.size() < 3) {
+        if (chapters.size() < 4) {
             throw new BusinessException("COURSE_MIN_CHAPTERS_REQUIRED",
-                    "Khoa hoc phai co toi thieu 3 chuong truoc khi tao bai kiem tra.",
+                    "Khoa hoc phai co toi thieu 4 chuong truoc khi tao bai kiem tra.",
                     HttpStatus.BAD_REQUEST);
         }
         List<Chapter> scopedChapters = scopedChapters(chapters,
@@ -1242,16 +1346,6 @@ public class ExamService {
             if (chapter.getLessons().isEmpty()) {
                 throw new BusinessException("CHAPTER_LESSON_REQUIRED",
                         "Moi chuong trong pham vi bai kiem tra phai co it nhat 1 bai hoc.",
-                        HttpStatus.BAD_REQUEST);
-            }
-        }
-        if (EXAM_TYPE_FINAL_EXAM.equals(examType)) {
-            Chapter first = chapters.get(0);
-            Chapter last = chapters.get(chapters.size() - 1);
-            if (!first.getId().equals(scopeStartChapter.getId())
-                    || !last.getId().equals(placementChapter.getId())) {
-                throw new BusinessException("FINAL_EXAM_SCOPE_REQUIRED",
-                        "Final exam phai ap dung cho toan bo khoa hoc.",
                         HttpStatus.BAD_REQUEST);
             }
         }
@@ -1309,6 +1403,8 @@ public class ExamService {
         }
         return -1;
     }
+
+    private record ChapterRange(int start, int end) {}
 
     private void validateRandomRequest(ExamQuestionRandomRequest req) {
         if (req != null && hasChapterConfigs(req)) {
