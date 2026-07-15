@@ -29,7 +29,7 @@ import {
   Lock, ShoppingCart, Video, Menu, X, MessageSquare, BookOpen,
   ClipboardList, XCircle, Award, RotateCcw, ChevronLeft, ChevronRight,
   Trophy, Loader2, Send, AlertCircle, Plus, Minus, Clock, Trash2, Pencil,
-  PauseCircle, Volume2, VolumeX, Maximize,
+  PauseCircle, Volume2, VolumeX, Maximize, GraduationCap,
 } from 'lucide-react';
 import DashboardHeader from '../../components/DashboardHeader';
 import EmbeddedVideoPlayer from '../../components/EmbeddedVideoPlayer';
@@ -661,6 +661,7 @@ function MarketingView({
   const enrollCourses = useCourseStore(state => state.enrollCourses);
   const completedLessons = useCourseStore(state => state.completedLessons);
   const completedQuizzes = useCourseStore(state => state.completedQuizzes);
+  const hydrateCourseProgress = useCourseStore(state => state.hydrateCourseProgress);
   const lessonDurations = useCourseStore(state => state.lessonDurations);
   const videoPositions = useCourseStore(state => state.videoPositions);
   const navigate = useNavigate();
@@ -695,15 +696,6 @@ function MarketingView({
   const completedList = completedLessons[course.id] ?? [];
   const completedQuizList = completedQuizzes[course.id] ?? [];
   const videoProgressStorageKey = `${user?.id ?? 'guest'}:${course.id}`;
-  const continueLesson = useMemo(
-    () => findContinueLearningLesson(
-      course,
-      syllabusSections,
-      completedList,
-      videoPositions[videoProgressStorageKey] ?? {},
-    ),
-    [completedList, course, syllabusSections, videoPositions, videoProgressStorageKey],
-  );
   const progressStats = useMemo(
     () => getCourseProgressStats(syllabusSections, completedList, completedQuizList),
     [syllabusSections, completedList, completedQuizList],
@@ -784,10 +776,21 @@ function MarketingView({
       }
     }
 
-    const continueLesson = getContinueLearningLesson(
-      orderedVideoLessons,
+    const latestVideoPositions: Record<string, VideoPosition> = { ...localCourseProgress };
+    if (latestVideoProgress) {
+      latestVideoPositions[latestVideoProgress.lessonId] = {
+        positionSec: latestVideoProgress.positionSec,
+        durationSec: latestVideoProgress.durationSec,
+        updatedAt: latestVideoProgress.updatedAt ?? new Date().toISOString(),
+        watchedSegments: latestVideoProgress.watchedSegments,
+      };
+    }
+
+    const continueLesson = findContinueLearningLesson(
+      course,
+      syllabusSections,
       latestCompletedLessonIds,
-      latestVideoProgress,
+      latestVideoPositions,
     );
     onOpenLearning(continueLesson?.id);
     setOpeningLearning(false);
@@ -1078,8 +1081,9 @@ function MarketingView({
                   </div>
                   <button
                     type="button"
-                    onClick={() => onOpenLearning?.(continueLesson?.id)}
-                    className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-4 text-lg font-bold text-on-primary shadow-lg shadow-primary/30 transition-all hover:-translate-y-1 hover:shadow-primary/50"
+                    onClick={handleOpenLearning}
+                    disabled={openingLearning}
+                    className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-4 text-lg font-bold text-on-primary shadow-lg shadow-primary/30 transition-all hover:-translate-y-1 hover:shadow-primary/50 disabled:cursor-wait disabled:opacity-75"
                   >
                     {openingLearning
                       ? <Loader2 className="h-6 w-6 animate-spin" />
@@ -2457,6 +2461,8 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const [videoNoteOverlayOpen, setVideoNoteOverlayOpen] = useState(false);
   const [currentVideoTime, setCurrentVideoTime] = useState(0);
   const [currentVideoDuration, setCurrentVideoDuration] = useState(0);
+  const [maxSeekablePosition, setMaxSeekablePosition] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
 
@@ -2483,6 +2489,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const currentPositionRef = useRef(0);
   const currentDurationRef = useRef(0);
   const maxSeekablePositionRef = useRef(0);
+  const lastSeekWarningAtRef = useRef(0);
   const lastLocalProgressRef = useRef(-1);
   const lastRemoteSaveAtRef = useRef(0);
 
@@ -2527,6 +2534,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     () => getGlobalLessonNumberById(chapterSections),
     [chapterSections],
   );
+  const videoProgressStorageKey = `${user?.id ?? 'guest'}:${course.id}`;
   const requestedLesson = initialLessonId
     ? course.lessons?.find((lesson) => {
       if (lesson.id !== initialLessonId || lesson.type === 'quiz') {
@@ -2536,6 +2544,12 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     })
     : null;
   const firstLesson = requestedLesson
+    ?? findContinueLearningLesson(
+      course,
+      chapterSections,
+      completedList,
+      videoPositions[videoProgressStorageKey] ?? {},
+    )
     ?? course.lessons?.find((lesson) =>
       lesson.type !== 'quiz' && getLessonUnlockState(course, lesson, orderedVideoLessons, completedList).canOpen
     )
@@ -2550,7 +2564,6 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(firstLesson);
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
   const [resumePositionSec, setResumePositionSec] = useState(0);
-  const videoProgressStorageKey = `${user?.id ?? 'guest'}:${course.id}`;
   const [activeTab, setActiveTab] = useState<'overview' | 'qa' | 'notes' | 'assignments' | 'reviews'>('overview');
   const playableVideoUrl = usingVideoFallback && activeLesson?.videoFallbackUrl
     ? activeLesson.videoFallbackUrl
@@ -2679,6 +2692,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     isResettingSeekRef.current = false;
     setCurrentVideoTime(localPosition);
     setCurrentVideoDuration(localProgress?.durationSec ?? 0);
+    setMaxSeekablePosition(localMaxSeekablePosition);
     setIsVideoPlaying(false);
     setResumePositionSec(localPosition);
     setTimedNoteInput('');
@@ -2714,6 +2728,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
         maxSeekablePositionRef.current = remoteMaxSeekablePosition;
         setCurrentVideoTime(remoteProgress.positionSec);
         setCurrentVideoDuration(remoteProgress.durationSec);
+        setMaxSeekablePosition(remoteMaxSeekablePosition);
         setResumePositionSec(remoteProgress.positionSec);
         saveVideoPosition(
           videoProgressStorageKey,
@@ -3091,7 +3106,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
 
     const allowedTime = Math.min(
       Math.max(0, currentPositionRef.current),
-      Math.max(0, watchedUntilRef.current),
+      Math.max(0, maxSeekablePositionRef.current),
     );
     isResettingSeekRef.current = true;
     video.currentTime = allowedTime;
@@ -3099,6 +3114,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     window.setTimeout(() => {
       isResettingSeekRef.current = false;
     }, 0);
+  }
 
   function toggleDirectVideoPlayback() {
     const video = videoRef.current;
@@ -3244,7 +3260,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     isResettingSeekRef.current = true;
     video.currentTime = targetTime;
     currentPositionRef.current = targetTime;
-    watchedUntilRef.current = Math.max(watchedUntilRef.current, targetTime);
+    updateMaxSeekablePosition(targetTime);
     setCurrentVideoTime(targetTime);
     if (duration > 0) setCurrentVideoDuration(duration);
     saveVideoPosition(videoProgressStorageKey, activeLesson.id, targetTime, duration);
@@ -3738,9 +3754,14 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                         <div className="space-y-2">
                           {activeTimedNotes.map(note => (
                             <div key={note.id} className="flex items-start gap-2 rounded-xl bg-white/8 p-2.5">
-                              <span className="shrink-0 rounded-lg bg-amber-400/15 px-2 py-1 font-mono text-[10px] font-extrabold text-amber-200">
+                              <button
+                                type="button"
+                                onClick={() => handleSeekToNote(note.timeSec)}
+                                className="shrink-0 rounded-lg bg-amber-400/15 px-2 py-1 font-mono text-[10px] font-extrabold text-amber-200 transition-colors hover:bg-amber-400/25 focus:outline-none focus:ring-2 focus:ring-amber-300/70"
+                                title="Nhảy đến mốc thời gian này"
+                              >
                                 {formatDurationSec(note.timeSec)}
-                              </span>
+                              </button>
                               <p className="min-w-0 flex-1 whitespace-pre-wrap text-xs leading-relaxed text-white/90">
                                 {note.content}
                               </p>
@@ -4222,9 +4243,14 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                         <div className="space-y-2 pt-1">
                           {activeTimedNotes.map(note => (
                             <div key={note.id} className="flex items-start gap-3 rounded-xl bg-surface px-3 py-2.5 border border-outline-variant/30">
-                              <span className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-extrabold text-primary">
+                              <button
+                                type="button"
+                                onClick={() => handleSeekToNote(note.timeSec)}
+                                className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-extrabold text-primary transition-colors hover:bg-primary/20 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                                title="Nhảy đến mốc thời gian này"
+                              >
                                 {formatDurationSec(note.timeSec)}
-                              </span>
+                              </button>
                               <p className="flex-1 text-sm text-on-surface whitespace-pre-wrap">{note.content}</p>
                               <button
                                 type="button"

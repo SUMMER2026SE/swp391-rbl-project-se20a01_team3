@@ -175,7 +175,7 @@ export default function FavoritesPage() {
                           {isEnrolled ? (
                             /* Đã mua → "Tiếp tục học" */
                             <button
-                              onClick={() => navigate(`/courses/${course.id}`)}
+                              onClick={() => navigate(`/courses/${course.id}?learn=1`)}
                               className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold hover:bg-primary/90 transition-colors"
                             >
                               <PlayCircle className="w-3.5 h-3.5" />
