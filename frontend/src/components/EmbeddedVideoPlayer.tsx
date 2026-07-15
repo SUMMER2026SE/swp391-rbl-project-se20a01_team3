@@ -38,6 +38,7 @@ declare global {
 }
 
 let youTubeApiPromise: Promise<YouTubeNamespace> | null = null;
+const SEEK_GUARD_TOLERANCE_SEC = 2.5;
 
 function loadYouTubeApi(): Promise<YouTubeNamespace> {
   if (window.YT?.Player) return Promise.resolve(window.YT);
@@ -82,18 +83,30 @@ function VimeoPlayer(props: EmbeddedVideoPlayerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const playerId = useMemo(() => `bee-vimeo-${crypto.randomUUID()}`, []);
   const callbackRef = useRef(props);
+  const lastAllowedTimeRef = useRef(Math.max(0, props.initialPositionSec));
+  const isProgrammaticSeekRef = useRef(false);
   callbackRef.current = props;
 
   const source = useMemo(() => {
     const parsed = new URL(props.url);
     parsed.searchParams.set('api', '1');
     parsed.searchParams.set('player_id', playerId);
+    parsed.searchParams.set('controls', '0');
+    parsed.searchParams.set('keyboard', '0');
     return parsed.toString();
   }, [playerId, props.url]);
 
   useEffect(() => {
     function send(method: string, value?: unknown) {
       iframeRef.current?.contentWindow?.postMessage({ method, value }, 'https://player.vimeo.com');
+    }
+    function allowProgrammaticSeek(seconds: number) {
+      isProgrammaticSeekRef.current = true;
+      lastAllowedTimeRef.current = Math.max(0, seconds);
+      send('setCurrentTime', lastAllowedTimeRef.current);
+      window.setTimeout(() => {
+        isProgrammaticSeekRef.current = false;
+      }, 500);
     }
     function handleMessage(event: MessageEvent) {
       if (event.origin !== 'https://player.vimeo.com' || event.source !== iframeRef.current?.contentWindow) return;
@@ -105,9 +118,17 @@ function VimeoPlayer(props: EmbeddedVideoPlayerProps) {
         send('addEventListener', 'timeupdate');
         send('addEventListener', 'pause');
         send('addEventListener', 'ended');
-        if (props.initialPositionSec > 0) send('setCurrentTime', props.initialPositionSec);
+        if (props.initialPositionSec > 0) allowProgrammaticSeek(props.initialPositionSec);
       } else if (message?.event === 'timeupdate') {
-        callbackRef.current.onProgress(message.data?.seconds ?? 0, message.data?.duration ?? 0);
+        const position = Math.max(0, message.data?.seconds ?? 0);
+        const duration = Math.max(0, message.data?.duration ?? 0);
+        const jumpedByUser = Math.abs(position - lastAllowedTimeRef.current) > SEEK_GUARD_TOLERANCE_SEC;
+        if (!isProgrammaticSeekRef.current && jumpedByUser) {
+          allowProgrammaticSeek(lastAllowedTimeRef.current);
+          return;
+        }
+        lastAllowedTimeRef.current = position;
+        callbackRef.current.onProgress(position, duration);
       } else if (message?.event === 'pause') {
         callbackRef.current.onPause();
       } else if (message?.event === 'ended') {
@@ -134,6 +155,8 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const callbackRef = useRef(props);
+  const lastAllowedTimeRef = useRef(Math.max(0, props.initialPositionSec));
+  const isProgrammaticSeekRef = useRef(false);
   callbackRef.current = props;
 
   useEffect(() => {
@@ -150,17 +173,38 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
         playerVars: {
           playsinline: 1,
           rel: 0,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          modestbranding: 1,
           start: Math.max(0, Math.floor(props.initialPositionSec)),
         },
         events: {
           onReady: ({ target }) => {
             playerRef.current = target;
             const resumeAt = callbackRef.current.initialPositionSec;
-            if (resumeAt > 0) target.seekTo(resumeAt, true);
+            if (resumeAt > 0) {
+              isProgrammaticSeekRef.current = true;
+              lastAllowedTimeRef.current = resumeAt;
+              target.seekTo(resumeAt, true);
+              window.setTimeout(() => {
+                isProgrammaticSeekRef.current = false;
+              }, 500);
+            }
             progressTimer = window.setInterval(() => {
               const position = target.getCurrentTime();
               const duration = target.getDuration();
               if (Number.isFinite(position) && Number.isFinite(duration)) {
+                const jumpedByUser = Math.abs(position - lastAllowedTimeRef.current) > SEEK_GUARD_TOLERANCE_SEC;
+                if (!isProgrammaticSeekRef.current && jumpedByUser) {
+                  isProgrammaticSeekRef.current = true;
+                  target.seekTo(lastAllowedTimeRef.current, false);
+                  window.setTimeout(() => {
+                    isProgrammaticSeekRef.current = false;
+                  }, 500);
+                  return;
+                }
+                lastAllowedTimeRef.current = Math.max(0, position);
                 callbackRef.current.onProgress(position, duration);
               }
             }, 1000);
@@ -190,7 +234,12 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
 
   useEffect(() => {
     if (props.initialPositionSec > 0) {
+      isProgrammaticSeekRef.current = true;
+      lastAllowedTimeRef.current = props.initialPositionSec;
       playerRef.current?.seekTo(props.initialPositionSec, true);
+      window.setTimeout(() => {
+        isProgrammaticSeekRef.current = false;
+      }, 500);
     }
   }, [props.initialPositionSec]);
 

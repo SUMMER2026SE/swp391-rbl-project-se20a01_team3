@@ -29,6 +29,7 @@ import {
   Lock, ShoppingCart, Video, Menu, X, MessageSquare, BookOpen,
   ClipboardList, XCircle, Award, RotateCcw, ChevronLeft, ChevronRight,
   Trophy, Loader2, Send, AlertCircle, Plus, Minus, Clock, Trash2, Pencil,
+  PauseCircle, Volume2, VolumeX, Maximize,
 } from 'lucide-react';
 import DashboardHeader from '../../components/DashboardHeader';
 import EmbeddedVideoPlayer from '../../components/EmbeddedVideoPlayer';
@@ -37,7 +38,7 @@ import type { Course, Lesson, QuizQuestion } from '../../data/mockCourses';
 import { notify } from '../../lib/toast';
 import { useCartStore } from '../../store/useCartStore';
 import { useAuthStore } from '../../store/useAuthStore';
-import { useCourseStore } from '../../store/useCourseStore';
+import { useCourseStore, type VideoPosition } from '../../store/useCourseStore';
 // API integration (Giai đoạn 1C) - thay MOCK_COURSES bằng call BE thật
 import {
   getCourseDetail as courseServiceGetDetail,
@@ -569,6 +570,7 @@ function MarketingView({
   const completedLessons = useCourseStore(state => state.completedLessons);
   const completedQuizzes = useCourseStore(state => state.completedQuizzes);
   const lessonDurations = useCourseStore(state => state.lessonDurations);
+  const videoPositions = useCourseStore(state => state.videoPositions);
   const navigate = useNavigate();
   const [activating, setActivating] = useState(false);
   const syllabusSections = useMemo<MarketingSyllabusSection[]>(() => (
@@ -599,6 +601,16 @@ function MarketingView({
   );
   const completedList = completedLessons[course.id] ?? [];
   const completedQuizList = completedQuizzes[course.id] ?? [];
+  const videoProgressStorageKey = `${user?.id ?? 'guest'}:${course.id}`;
+  const continueLesson = useMemo(
+    () => findContinueLearningLesson(
+      course,
+      syllabusSections,
+      completedList,
+      videoPositions[videoProgressStorageKey] ?? {},
+    ),
+    [completedList, course, syllabusSections, videoPositions, videoProgressStorageKey],
+  );
   const progressStats = useMemo(
     () => getCourseProgressStats(syllabusSections, completedList, completedQuizList),
     [syllabusSections, completedList, completedQuizList],
@@ -903,7 +915,7 @@ function MarketingView({
                   </div>
                   <button
                     type="button"
-                    onClick={() => onOpenLearning()}
+                    onClick={() => onOpenLearning?.(continueLesson?.id)}
                     className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-4 text-lg font-bold text-on-primary shadow-lg shadow-primary/30 transition-all hover:-translate-y-1 hover:shadow-primary/50"
                   >
                     <PlayCircle className="h-6 w-6" />
@@ -1147,6 +1159,21 @@ function getOrderedVideoLessons(
   return sections.flatMap((section) => section.lessons).filter((lesson) => lesson.type === 'video');
 }
 
+function getGlobalLessonNumberById(sections: Array<{ lessons: Lesson[] }>): Map<string, number> {
+  const result = new Map<string, number>();
+  let nextNumber = 1;
+
+  sections.forEach((section) => {
+    section.lessons.forEach((lesson) => {
+      if (lesson.type === 'quiz') return;
+      result.set(lesson.id, nextNumber);
+      nextNumber += 1;
+    });
+  });
+
+  return result;
+}
+
 function getLessonUnlockState(
   course: Course,
   lesson: Lesson,
@@ -1203,6 +1230,64 @@ function getLessonUnlockState(
     lockedByPurchase: false,
     lockedByPrerequisite: true,
   };
+}
+
+function getVideoPositionUpdatedTime(position?: VideoPosition): number {
+  if (!position?.updatedAt) return 0;
+  const time = new Date(position.updatedAt).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function hasUnfinishedVideoProgress(position?: VideoPosition): boolean {
+  if (!position || position.positionSec <= 0) return false;
+  if (position.durationSec > 0) {
+    return position.positionSec < position.durationSec - 5;
+  }
+  return true;
+}
+
+function findContinueLearningLesson(
+  course: Course,
+  sections: Array<{ lessons: Lesson[] }>,
+  completedLessonIds: string[],
+  videoPositions: Record<string, VideoPosition> = {},
+): Lesson | null {
+  const orderedVideoLessons = getOrderedVideoLessons(sections);
+  const completedSet = new Set(completedLessonIds);
+  const canOpen = (lesson: Lesson) =>
+    getLessonUnlockState(course, lesson, orderedVideoLessons, completedLessonIds).canOpen;
+
+  const unfinishedLessons = orderedVideoLessons
+    .filter(lesson =>
+      !completedSet.has(lesson.id) &&
+      canOpen(lesson) &&
+      hasUnfinishedVideoProgress(videoPositions[lesson.id])
+    )
+    .sort((a, b) =>
+      getVideoPositionUpdatedTime(videoPositions[b.id]) - getVideoPositionUpdatedTime(videoPositions[a.id])
+    );
+
+  if (unfinishedLessons.length > 0) {
+    return unfinishedLessons[0];
+  }
+
+  const latestActivityLesson = orderedVideoLessons
+    .filter(lesson => videoPositions[lesson.id])
+    .sort((a, b) =>
+      getVideoPositionUpdatedTime(videoPositions[b.id]) - getVideoPositionUpdatedTime(videoPositions[a.id])
+    )[0];
+
+  if (latestActivityLesson && completedSet.has(latestActivityLesson.id)) {
+    const latestIndex = orderedVideoLessons.findIndex(lesson => lesson.id === latestActivityLesson.id);
+    const nextLesson = orderedVideoLessons
+      .slice(latestIndex + 1)
+      .find(lesson => !completedSet.has(lesson.id) && canOpen(lesson));
+    if (nextLesson) return nextLesson;
+  }
+
+  return orderedVideoLessons.find(lesson => !completedSet.has(lesson.id) && canOpen(lesson))
+    ?? orderedVideoLessons.find(canOpen)
+    ?? null;
 }
 
 function getLessonDisplayDuration(
@@ -1613,6 +1698,10 @@ function MarketingSyllabusList({
     () => getOrderedVideoLessons(sections),
     [sections],
   );
+  const lessonNumberById = useMemo(
+    () => getGlobalLessonNumberById(sections),
+    [sections],
+  );
 
   return (
     <div className="space-y-7">
@@ -1656,6 +1745,7 @@ function MarketingSyllabusList({
                   <div className="space-y-2 pl-1 sm:pl-3">
                     {chapter.lessons.map((lesson, lessonIndex) => {
                       const isLessonCompleted = completedList.includes(lesson.id);
+                      const lessonNumber = lessonNumberById.get(lesson.id) ?? lessonIndex + 1;
                       const canPreviewLesson = Boolean(lesson.isFree && onStartPreview);
                       const unlockState = getLessonUnlockState(course, lesson, orderedVideoLessons, completedList);
                       const canOpen = unlockState.canOpen && (isOwnedCourse || canPreviewLesson);
@@ -1702,7 +1792,7 @@ function MarketingSyllabusList({
                             </div>
                             <div className="min-w-0 flex-1">
                               <h4 className="text-sm font-extrabold leading-snug text-current">
-                                Bài {lessonIndex + 1}: {lesson.title.replace(/^Bài\s*\d+\s*[:.-]?\s*/i, '')}
+                                Bài {lessonNumber}: {lesson.title.replace(/^Bài\s*\d+\s*[:.-]?\s*/i, '')}
                               </h4>
                               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium">
                                 <span className={canPreviewLesson ? 'text-primary' : 'text-on-surface-variant'}>
@@ -1806,6 +1896,9 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   const [deletingTimedNoteId, setDeletingTimedNoteId] = useState<string | null>(null);
   const [videoNoteOverlayOpen, setVideoNoteOverlayOpen] = useState(false);
   const [currentVideoTime, setCurrentVideoTime] = useState(0);
+  const [currentVideoDuration, setCurrentVideoDuration] = useState(0);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [isVideoMuted, setIsVideoMuted] = useState(false);
 
   // State cục bộ cho Q&A
   const [qaInput, setQaInput] = useState('');
@@ -1851,6 +1944,10 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   ), [rawChapters, course.lessons]);
   const orderedVideoLessons = useMemo(
     () => getOrderedVideoLessons(chapterSections),
+    [chapterSections],
+  );
+  const lessonNumberById = useMemo(
+    () => getGlobalLessonNumberById(chapterSections),
     [chapterSections],
   );
   const requestedLesson = initialLessonId
@@ -1909,6 +2006,8 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     isResettingSeekRef.current = false;
     lastSeekWarningAtRef.current = 0;
     setCurrentVideoTime(localPosition);
+    setCurrentVideoDuration(localProgress?.durationSec ?? 0);
+    setIsVideoPlaying(false);
     setResumePositionSec(localPosition);
     setTimedNoteInput('');
     setVideoNoteOverlayOpen(false);
@@ -1937,6 +2036,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
         currentDurationRef.current = remoteProgress.durationSec;
         watchedUntilRef.current = Math.max(watchedUntilRef.current, remoteProgress.positionSec);
         setCurrentVideoTime(remoteProgress.positionSec);
+        setCurrentVideoDuration(remoteProgress.durationSec);
         setResumePositionSec(remoteProgress.positionSec);
         saveVideoPosition(
           videoProgressStorageKey,
@@ -2156,6 +2256,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     currentDurationRef.current = normalizedDuration;
     watchedUntilRef.current = Math.max(watchedUntilRef.current, normalizedPosition);
     setCurrentVideoTime(normalizedPosition);
+    setCurrentVideoDuration(normalizedDuration);
 
     const wholeSecond = Math.floor(normalizedPosition);
     if (Math.abs(wholeSecond - lastLocalProgressRef.current) >= 2) {
@@ -2194,6 +2295,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
 
   function handleVideoEnded() {
     currentPositionRef.current = 0;
+    setIsVideoPlaying(false);
     persistCurrentVideoProgress(0);
     if (activeLesson && !completedList.includes(activeLesson.id)) {
       markLessonCompleted(course.id, activeLesson.id);
@@ -2209,6 +2311,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
     const video = event.currentTarget;
     saveLessonDuration(course.id, activeLesson.id, video.duration);
     currentDurationRef.current = video.duration;
+    setCurrentVideoDuration(video.duration);
     if (resumePositionSec > 0 && video.duration - resumePositionSec > 5) {
       isResettingSeekRef.current = true;
       video.currentTime = Math.min(resumePositionSec, video.duration);
@@ -2220,6 +2323,9 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
   }
 
   function handleVideoTimeUpdate(event: SyntheticEvent<HTMLVideoElement>) {
+    if (event.currentTarget.seeking && !isResettingSeekRef.current) {
+      return;
+    }
     recordVideoProgress(event.currentTarget.currentTime, event.currentTarget.duration);
     if (isResettingSeekRef.current) {
       return;
@@ -2238,13 +2344,13 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       return;
     }
 
-    // Cho phép tua ngược (ví dụ bấm vào mốc ghi chú), chỉ chặn tua tới phần chưa xem.
-    if (video.currentTime <= watchedUntilRef.current + 0.75) {
-      return;
-    }
-
+    const allowedTime = Math.min(
+      Math.max(0, currentPositionRef.current),
+      Math.max(0, watchedUntilRef.current),
+    );
     isResettingSeekRef.current = true;
-    video.currentTime = watchedUntilRef.current;
+    video.currentTime = allowedTime;
+    setCurrentVideoTime(allowedTime);
     window.setTimeout(() => {
       isResettingSeekRef.current = false;
     }, 0);
@@ -2254,6 +2360,49 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
       lastSeekWarningAtRef.current = now;
       notify.error('Không thể tua video bài giảng.');
     }
+  }
+
+  function blockVideoSeekInteraction(event: SyntheticEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    const now = Date.now();
+    if (now - lastSeekWarningAtRef.current > 1500) {
+      lastSeekWarningAtRef.current = now;
+      notify.error('Không thể tua video bài giảng.');
+    }
+  }
+
+  function handleVideoPlay() {
+    setIsVideoPlaying(true);
+  }
+
+  function handleVideoPause() {
+    setIsVideoPlaying(false);
+    persistCurrentVideoProgress();
+  }
+
+  function toggleVideoPlayback() {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      void video.play();
+    } else {
+      video.pause();
+    }
+  }
+
+  function toggleVideoMute() {
+    const video = videoRef.current;
+    if (!video) return;
+    const nextMuted = !video.muted;
+    video.muted = nextMuted;
+    setIsVideoMuted(nextMuted);
+  }
+
+  function openVideoFullscreen() {
+    const video = videoRef.current;
+    if (!video) return;
+    void (video.parentElement ?? video).requestFullscreen?.();
   }
 
   function toggleChapter(chapterId: string) {
@@ -2318,16 +2467,28 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
 
   function handleSeekToNote(timeSec: number) {
     const video = videoRef.current;
-    if (!video) {
+    if (!video || !activeLesson) {
       notify.error('Không thể tua video nhúng YouTube/Vimeo từ ghi chú.');
       return;
     }
+
+    const duration = Number.isFinite(video.duration) && video.duration > 0
+      ? video.duration
+      : currentDurationRef.current;
+    const targetTime = duration > 0
+      ? Math.min(Math.max(0, timeSec), duration)
+      : Math.max(0, timeSec);
+
     isResettingSeekRef.current = true;
-    video.currentTime = Math.min(timeSec, watchedUntilRef.current);
-    setCurrentVideoTime(video.currentTime);
+    video.currentTime = targetTime;
+    currentPositionRef.current = targetTime;
+    watchedUntilRef.current = Math.max(watchedUntilRef.current, targetTime);
+    setCurrentVideoTime(targetTime);
+    if (duration > 0) setCurrentVideoDuration(duration);
+    saveVideoPosition(videoProgressStorageKey, activeLesson.id, targetTime, duration);
     window.setTimeout(() => {
       isResettingSeekRef.current = false;
-    }, 0);
+    }, 300);
   }
 
   function upsertDiscussionThread(thread: CourseDiscussionThread) {
@@ -2578,15 +2739,17 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                   key={activeLesson.id}
                   src={activeLesson.url}
                   className="absolute inset-0 w-full h-full"
-                  controls
-                  controlsList="nodownload"
                   playsInline
+                  tabIndex={-1}
+                  disablePictureInPicture
                   onLoadedMetadata={handleVideoMetadataLoaded}
                   onTimeUpdate={handleVideoTimeUpdate}
                   onSeeking={handleVideoSeeking}
-                  onPause={() => persistCurrentVideoProgress()}
+                  onPlay={handleVideoPlay}
+                  onPause={handleVideoPause}
                   onEnded={handleVideoEnded}
                   onError={() => setVideoUrlExpired(true)}
+                  onKeyDown={blockVideoSeekInteraction}
                 />
               )
             ) : activeLesson?.type === 'video' ? (
@@ -2631,6 +2794,76 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
             ) : (
               // Thumbnail mặc định
               <SafeCourseImage course={course} alt="Thumbnail" className="absolute inset-0 w-full h-full object-cover opacity-40" />
+            )}
+
+            {isDirectVideo && activeLesson?.type === 'video' && activeLesson?.url && activeLesson.url !== '#' && !videoUrlExpired && (
+              <div className="absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/90 via-black/65 to-transparent px-4 pb-4 pt-12 text-white">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={toggleVideoPlayback}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25"
+                    aria-label={isVideoPlaying ? 'Tạm dừng video' : 'Phát video'}
+                  >
+                    {isVideoPlaying ? <PauseCircle className="h-6 w-6" /> : <PlayCircle className="h-6 w-6" />}
+                  </button>
+
+                  <div className="shrink-0 font-mono text-xs font-semibold text-white/85">
+                    {formatDurationSec(Math.floor(currentVideoTime))}
+                  </div>
+
+                  <div
+                    className="relative h-5 min-w-0 flex-1 cursor-default select-none py-2"
+                    role="progressbar"
+                    aria-label="Tiến trình video"
+                    aria-valuemin={0}
+                    aria-valuemax={Math.max(0, Math.floor(currentVideoDuration))}
+                    aria-valuenow={Math.max(0, Math.floor(currentVideoTime))}
+                    tabIndex={-1}
+                    onClick={blockVideoSeekInteraction}
+                    onMouseDown={blockVideoSeekInteraction}
+                    onMouseUp={blockVideoSeekInteraction}
+                    onPointerDown={blockVideoSeekInteraction}
+                    onPointerUp={blockVideoSeekInteraction}
+                    onTouchStart={blockVideoSeekInteraction}
+                    onTouchEnd={blockVideoSeekInteraction}
+                    onKeyDown={blockVideoSeekInteraction}
+                  >
+                    <div className="h-1.5 overflow-hidden rounded-full bg-white/25">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{
+                          width: `${currentVideoDuration > 0
+                            ? Math.min(100, Math.max(0, (currentVideoTime / currentVideoDuration) * 100))
+                            : 0}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 font-mono text-xs font-semibold text-white/70">
+                    {formatDurationSec(Math.floor(currentVideoDuration))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={toggleVideoMute}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                    aria-label={isVideoMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
+                  >
+                    {isVideoMuted ? <VolumeX className="h-4.5 w-4.5" /> : <Volume2 className="h-4.5 w-4.5" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={openVideoFullscreen}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                    aria-label="Xem toàn màn hình"
+                  >
+                    <Maximize className="h-4.5 w-4.5" />
+                  </button>
+                </div>
+              </div>
             )}
 
             {/* Ghi chú nổi trực tiếp trên video để học sinh không phải cuộn xuống dưới. */}
@@ -3250,6 +3483,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                               <div className="space-y-1 pl-3 pt-1">
                                 {chapter.lessons.map((lesson, lessonIndex) => {
                                   const isActive = activeLesson?.id === lesson.id;
+                                  const lessonNumber = lessonNumberById.get(lesson.id) ?? lessonIndex + 1;
                                   const isCompleted = lesson.type === 'quiz'
                                     ? completedQuizList.includes(lesson.id)
                                     : completedList.includes(lesson.id);
@@ -3282,7 +3516,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                                       </div>
                                       <div className="min-w-0 flex-1">
                                         <p className={`text-sm font-semibold leading-snug line-clamp-2 ${isActive ? 'text-primary' : 'text-on-surface'}`}>
-                                          Bài {lessonIndex + 1}: {lesson.title.replace(/^Bài\s*\d+\s*[:.-]?\s*/i, '')}
+                                          Bài {lessonNumber}: {lesson.title.replace(/^Bài\s*\d+\s*[:.-]?\s*/i, '')}
                                         </p>
                                         <div className="mt-0.5 flex flex-wrap items-center gap-2">
                                           <span className="text-xs text-on-surface-variant">
