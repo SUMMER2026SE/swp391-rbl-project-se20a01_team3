@@ -66,11 +66,12 @@ public class StudentDocumentService {
             throw new ResourceNotFoundException("CourseDocument", documentId);
         }
 
-        String storagePath = ensurePrivateStorage(document);
+        String storagePath = resolveStoragePath(document);
         if (storagePath == null || storagePath.isBlank()) {
             throw new BusinessException("DOCUMENT_UNAVAILABLE",
                     "Tai lieu hien chua san sang de tai.", HttpStatus.NOT_FOUND);
         }
+        String sourceBucket = resolveStorageBucket(document);
 
         Instant now = Instant.now();
         long downloadsLastHour = downloadRepository
@@ -83,9 +84,10 @@ public class StudentDocumentService {
         }
 
         boolean watermarked = isPdf(document.getFileType());
+        String publicDownloadUrl = watermarked ? null : publicLegacyDownloadUrl(document);
         String temporaryPath = null;
         if (watermarked) {
-            byte[] original = storageClient.download(DOCUMENT_BUCKET, storagePath);
+            byte[] original = storageClient.download(sourceBucket, storagePath);
             byte[] marked = watermarkPdf(original, studentDisplayName(me), me.email());
             temporaryPath = "downloads/" + me.userId() + "/" + documentId + "/"
                     + UUID.randomUUID() + ".pdf";
@@ -97,7 +99,12 @@ public class StudentDocumentService {
         downloadRepository.save(StudentDocumentDownload.create(
                 me.userId(), documentId, now, expiresAt, temporaryPath, hashToken(token)));
 
-        return new DocumentDownloadResponse(DOWNLOAD_ENDPOINT + token, expiresAt, watermarked, true);
+        return new DocumentDownloadResponse(
+                publicDownloadUrl != null ? publicDownloadUrl : DOWNLOAD_ENDPOINT + token,
+                expiresAt,
+                watermarked,
+                publicDownloadUrl == null
+        );
     }
 
     /** Consume token atomically before streaming bytes; replay cannot reach Supabase. */
@@ -117,14 +124,17 @@ public class StudentDocumentService {
         CourseDocument document = documentRepository.findById(download.getDocumentId())
                 .orElseThrow(() -> new BusinessException("DOCUMENT_UNAVAILABLE",
                         "Tai lieu khong con kha dung.", HttpStatus.NOT_FOUND));
+        String bucket = download.getTemporaryStoragePath() != null
+                ? DOCUMENT_BUCKET
+                : resolveStorageBucket(document);
         String objectPath = download.getTemporaryStoragePath() != null
                 ? download.getTemporaryStoragePath()
-                : document.getStoragePath();
+                : resolveStoragePath(document);
         if (objectPath == null || objectPath.isBlank()) {
             throw new BusinessException("DOCUMENT_UNAVAILABLE",
                     "Tai lieu hien chua san sang de tai.", HttpStatus.NOT_FOUND);
         }
-        byte[] bytes = storageClient.download(DOCUMENT_BUCKET, objectPath);
+        byte[] bytes = storageClient.download(bucket, objectPath);
         return new DownloadedDocument(bytes, filename(document), contentType(document));
     }
 
@@ -175,6 +185,20 @@ public class StudentDocumentService {
         String marker = "/storage/v1/object/public/" + bucket + "/";
         int markerIndex = publicUrl.indexOf(marker);
         return markerIndex >= 0 ? publicUrl.substring(markerIndex + marker.length()) : null;
+    }
+
+    private String resolveStorageBucket(CourseDocument document) {
+        String bucket = document.getStorageBucket();
+        return bucket == null || bucket.isBlank() ? LEGACY_DOCUMENT_BUCKET : bucket;
+    }
+
+    private String publicLegacyDownloadUrl(CourseDocument document) {
+        String fileUrl = document.getFileUrl();
+        if (fileUrl == null || fileUrl.isBlank()) return null;
+        String normalized = fileUrl.trim();
+        return normalized.startsWith("http://") || normalized.startsWith("https://")
+                ? normalized
+                : null;
     }
 
     private String ensurePrivateStorage(CourseDocument document) {

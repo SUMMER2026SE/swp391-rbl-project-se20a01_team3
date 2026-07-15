@@ -1,13 +1,18 @@
 package com.beeacademy.backend.service;
 
 import com.beeacademy.backend.client.SupabaseStorageClient;
+import com.beeacademy.backend.dto.response.DocumentDownloadResponse;
 import com.beeacademy.backend.exception.BusinessException;
+import com.beeacademy.backend.model.Chapter;
+import com.beeacademy.backend.model.Course;
 import com.beeacademy.backend.model.CourseDocument;
+import com.beeacademy.backend.model.Lesson;
 import com.beeacademy.backend.model.StudentDocumentDownload;
 import com.beeacademy.backend.repository.CourseDocumentRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
 import com.beeacademy.backend.repository.StudentDocumentDownloadRepository;
+import com.beeacademy.backend.security.AuthenticatedUser;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -25,6 +30,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,6 +45,41 @@ class StudentDocumentServiceTest {
     @Mock private StudentDocumentDownloadRepository downloadRepository;
 
     @InjectMocks private StudentDocumentService service;
+
+    @Test
+    void createDownloadReturnsPublicLegacyUrlForNonPdfDocument() {
+        UUID studentId = UUID.randomUUID();
+        UUID courseId = UUID.randomUUID();
+        UUID lessonId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        AuthenticatedUser me = new AuthenticatedUser(studentId, "student@example.com", "student");
+
+        Course course = mock(Course.class);
+        Chapter chapter = mock(Chapter.class);
+        Lesson lesson = mock(Lesson.class);
+        CourseDocument document = mock(CourseDocument.class);
+        String publicUrl = "https://example.supabase.co/storage/v1/object/public/course-docs/lesson/slide.pptx";
+
+        when(enrollmentRepository.existsByStudentIdAndCourseId(studentId, courseId)).thenReturn(true);
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(document.getLesson()).thenReturn(lesson);
+        when(lesson.getId()).thenReturn(lessonId);
+        when(lesson.getChapter()).thenReturn(chapter);
+        when(chapter.getCourse()).thenReturn(course);
+        when(course.getId()).thenReturn(courseId);
+        when(document.getStoragePath()).thenReturn("lesson/slide.pptx");
+        when(document.getStorageBucket()).thenReturn("course-docs");
+        when(document.getFileType()).thenReturn("pptx");
+        when(document.getFileUrl()).thenReturn(publicUrl);
+
+        DocumentDownloadResponse result = service.createDownload(courseId, lessonId, documentId, me);
+
+        assertThat(result.downloadUrl()).isEqualTo(publicUrl);
+        assertThat(result.watermarked()).isFalse();
+        assertThat(result.oneTime()).isFalse();
+        verify(storageClient, never()).download(any(), any());
+        verify(storageClient, never()).upload(any(), any(), any(), any(byte[].class));
+    }
 
     @Test
     void consumeDownloadStreamsPrivateObjectOnlyAfterAtomicTokenConsumption() {
@@ -61,6 +104,31 @@ class StudentDocumentServiceTest {
         assertThat(result.filename()).isEqualTo("Bai giang 1.docx");
         assertThat(result.contentType())
                 .isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    }
+
+    @Test
+    void consumeDownloadStreamsLegacyBucketWithoutPrivateMigration() {
+        UUID documentId = UUID.randomUUID();
+        String tokenHash = hash("legacy-token");
+        StudentDocumentDownload download = StudentDocumentDownload.create(
+                UUID.randomUUID(), documentId, Instant.now(), Instant.now().plusSeconds(300),
+                null, tokenHash);
+        CourseDocument document = CourseDocument.create(
+                null, "Slide lich su", null, "lesson/slide.pptx", "course-docs",
+                "pptx", 206_000L, 1);
+
+        when(downloadRepository.consumeActiveToken(eq(tokenHash), any(Instant.class))).thenReturn(1);
+        when(downloadRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(download));
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(storageClient.download("course-docs", "lesson/slide.pptx"))
+                .thenReturn(new byte[] {4, 5, 6});
+
+        StudentDocumentService.DownloadedDocument result = service.consumeDownload("legacy-token");
+
+        assertThat(result.bytes()).containsExactly(4, 5, 6);
+        assertThat(result.filename()).isEqualTo("Slide lich su.pptx");
+        assertThat(result.contentType())
+                .isEqualTo("application/vnd.openxmlformats-officedocument.presentationml.presentation");
     }
 
     @Test
