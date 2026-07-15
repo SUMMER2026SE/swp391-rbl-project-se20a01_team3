@@ -19,6 +19,7 @@ import com.beeacademy.backend.repository.AssignmentRepository;
 import com.beeacademy.backend.repository.AssignmentSubmissionRepository;
 import com.beeacademy.backend.repository.ChapterRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
+import com.beeacademy.backend.repository.GradeAuditLogRepository;
 import com.beeacademy.backend.repository.LessonRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
@@ -31,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -47,10 +49,14 @@ public class AssignmentService {
     private final LessonRepository lessonRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final ProfileRepository profileRepository;
+    private final GradeAuditLogRepository gradeAuditLogRepository;
+    private final UserNotificationService userNotificationService;
+    private final TeacherAccessService teacherAccessService;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
     public List<AssignmentSubmissionResponse> listTeacherSubmissions(AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
         return submissionRepository.findAllForTeacher(me.userId()).stream()
                 .map(this::toResponse)
                 .toList();
@@ -63,6 +69,7 @@ public class AssignmentService {
     @Transactional
     public TeacherAssignmentResponse createAssignment(
             AuthenticatedUser me, CreateAssignmentRequest request) {
+        teacherAccessService.requireApprovedTeacher(me);
         if (request.chapterId() == null && request.lessonId() == null) {
             throw new BusinessException("ASSIGNMENT_TARGET_REQUIRED",
                     "Bài tập phải gắn với một chương hoặc một bài giảng.");
@@ -92,6 +99,7 @@ public class AssignmentService {
 
     @Transactional(readOnly = true)
     public List<TeacherAssignmentResponse> listTeacherAssignments(AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
         return assignmentRepository.findAllByTeacherId(me.userId()).stream()
                 .map(this::toTeacherResponse)
                 .toList();
@@ -99,6 +107,7 @@ public class AssignmentService {
 
     @Transactional
     public void deleteAssignment(UUID assignmentId, AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
         Assignment assignment = assignmentRepository.findWithCourseById(assignmentId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Assignment", assignmentId));
@@ -277,6 +286,7 @@ public class AssignmentService {
             UUID submissionId,
             AuthenticatedUser me,
             GradeAssignmentSubmissionRequest request) {
+        teacherAccessService.requireApprovedTeacher(me);
         AssignmentSubmission submission = submissionRepository
                 .findOwned(submissionId, me.userId())
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -288,8 +298,41 @@ public class AssignmentService {
         }
         Profile teacher = profileRepository.findById(me.userId())
                 .orElseThrow(() -> new ResourceNotFoundException("Profile", me.userId()));
+        Double oldScore = submission.getScore() != null ? submission.getScore().doubleValue() : null;
+        validateGradeRevision(submission.getGradedAt(), request.revisionReason());
         submission.grade(request.score().intValue(), request.feedback(), teacher);
-        return toResponse(submissionRepository.save(submission));
+        AssignmentSubmission saved = submissionRepository.save(submission);
+        gradeAuditLogRepository.save(com.beeacademy.backend.model.GradeAuditLog.create(
+                "assignment_submission",
+                saved.getId(),
+                saved.getStudent().getId(),
+                me.userId(),
+                oldScore,
+                request.score(),
+                request.revisionReason()));
+        userNotificationService.notify(
+                saved.getStudent().getId(),
+                "assignment_graded",
+                "Bai tap da duoc cham diem",
+                "Bai tap \"" + saved.getAssignment().getTitle() + "\" da co diem.",
+                "/student/courses");
+        return toResponse(saved);
+    }
+
+    private void validateGradeRevision(Instant gradedAt, String reason) {
+        if (gradedAt == null) {
+            return;
+        }
+        if (gradedAt.isBefore(Instant.now().minus(24, ChronoUnit.HOURS))) {
+            throw new BusinessException("GRADE_REVISION_WINDOW_EXPIRED",
+                    "Chi duoc sua diem trong vong 24 gio sau khi cham.",
+                    HttpStatus.CONFLICT);
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException("GRADE_REVISION_REASON_REQUIRED",
+                    "Can nhap ly do khi sua diem bai tap.",
+                    HttpStatus.BAD_REQUEST);
+        }
     }
 
     private AssignmentSubmissionResponse toResponse(AssignmentSubmission submission) {

@@ -69,6 +69,13 @@ public class ParentStudentLink {
     @Column(name = "unlink_requested_at")
     private Instant unlinkRequestedAt;
 
+    @Column(name = "sensitive_data_consent_granted", nullable = false)
+    @Builder.Default
+    private boolean sensitiveDataConsentGranted = false;
+
+    @Column(name = "sensitive_data_consent_updated_at")
+    private Instant sensitiveDataConsentUpdatedAt;
+
     @Embeddable
     @Getter
     @Setter
@@ -156,6 +163,13 @@ public class ParentStudentLink {
         this.unlinkRequestedAt = null;
     }
 
+    public void expire() {
+        this.status = ParentStudentLinkStatus.EXPIRED;
+        this.respondedAt = Instant.now();
+        this.unlinkRequestedBy = null;
+        this.unlinkRequestedAt = null;
+    }
+
     public boolean hasPendingUnlinkRequest() {
         return this.unlinkRequestedBy != null;
     }
@@ -173,8 +187,15 @@ public class ParentStudentLink {
     }
 
     public void revoke() {
-        this.status = ParentStudentLinkStatus.REJECTED;
+        this.status = ParentStudentLinkStatus.REVOKED;
         this.respondedAt = Instant.now();
+        this.unlinkRequestedBy = null;
+        this.unlinkRequestedAt = null;
+    }
+
+    public void updateSensitiveDataConsent(boolean granted) {
+        this.sensitiveDataConsentGranted = granted;
+        this.sensitiveDataConsentUpdatedAt = Instant.now();
     }
 
     private static String normalizeRelationship(String relationship) {

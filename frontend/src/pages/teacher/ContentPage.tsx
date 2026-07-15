@@ -39,6 +39,7 @@ interface LessonFormData {
   videoStoragePath: string;
   videoFallbackUrl: string;
   slideCueSeconds: string;
+  completionRule: 'DOCUMENT_OPENED' | 'MARK_AS_COMPLETE' | 'ASSIGNMENT_SUBMITTED' | 'ASSIGNMENT_PASSED' | '';
   existingPdfName: string;
   existingSlideName: string;
   existingPdfId: string;
@@ -81,6 +82,7 @@ function emptyLessonForm(position = 1): LessonFormData {
     title: '', description: '', position, isFree: false,
     videoSource: 'none', videoEmbedUrl: '', videoStoragePath: '',
     videoFallbackUrl: '', slideCueSeconds: '',
+    completionRule: '',
     existingPdfName: '', existingSlideName: '',
     existingPdfId: '', existingSlideId: '',
   };
@@ -108,6 +110,7 @@ function lessonToForm(l: TeacherLessonResponse): LessonFormData {
     videoStoragePath: l.videoStoragePath ?? '',
     videoFallbackUrl: l.videoFallbackUrl ?? '',
     slideCueSeconds: l.slideCueSeconds ?? '',
+    completionRule: l.completionRule ?? '',
     existingPdfName: pdfDocument?.name ?? '',
     existingSlideName: slideDocument?.name ?? '',
     existingPdfId: pdfDocument?.id ?? '',
@@ -142,13 +145,13 @@ function isCourseEditable(status: CourseStatus): boolean {
 function courseEditLockMessage(status: CourseStatus): string {
   switch (status) {
     case 'pending_review':
-      return 'Dang cho Admin duyet, khong the chinh sua cau truc khoa hoc.';
+      return 'Đang chờ Admin duyệt, không thể chỉnh sửa cấu trúc khóa học.';
     case 'approved':
-      return 'Khoa hoc da duyet, khong the chinh sua luc nay.';
+      return 'Khóa học đã duyệt, không thể chỉnh sửa lúc này.';
     case 'published':
-      return 'Khoa hoc da xuat ban, khong the chinh sua truc tiep.';
+      return 'Khóa học đã xuất bản, không thể chỉnh sửa trực tiếp.';
     default:
-      return 'Trang thai hien tai khong cho phep chinh sua.';
+      return 'Trạng thái hiện tại không cho phép chỉnh sửa.';
   }
 }
 
@@ -634,6 +637,11 @@ export default function TeacherContentPage() {
       }
     }
 
+    if (lessonForm.videoSource === 'none' && !lessonForm.completionRule) {
+      notify.error('Vui long chon completion rule cho bai hoc khong co video');
+      return;
+    }
+
     setSaving(true);
     setUploadProgress(0);
 
@@ -649,6 +657,7 @@ export default function TeacherContentPage() {
         // Chỉ gửi embedUrl khi user chọn tab embed và đã nhập URL
         videoEmbedUrl: lessonForm.videoSource === 'embed' && lessonForm.videoEmbedUrl.trim()
           ? lessonForm.videoEmbedUrl.trim() : undefined,
+        completionRule: lessonForm.completionRule || undefined,
         videoFallbackUrl: lessonForm.videoFallbackUrl.trim() || undefined,
         slideCueSeconds: lessonForm.slideCueSeconds.trim() || undefined,
       };
@@ -839,7 +848,7 @@ export default function TeacherContentPage() {
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10 text-amber-600">
             <Lock className="h-6 w-6" />
           </div>
-          <h3 className="text-lg font-extrabold text-on-surface">Khong the chinh sua noi dung</h3>
+          <h3 className="text-lg font-extrabold text-on-surface">Không thể chỉnh sửa nội dung</h3>
           <p className="mt-2 max-w-md text-sm text-on-surface-variant">
             {selectedCourseLockMessage}
           </p>
@@ -989,6 +998,24 @@ export default function TeacherContentPage() {
                     setLessonForm({ ...lessonForm, videoSource: 'none', videoStoragePath: '' });
                   }}
                 />
+
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-bold text-on-surface">Completion rule</span>
+                  <select
+                    value={lessonForm.completionRule}
+                    onChange={event => setLessonForm({
+                      ...lessonForm,
+                      completionRule: event.target.value as LessonFormData['completionRule'],
+                    })}
+                    className="w-full rounded-lg border border-outline-variant bg-surface-container px-4 py-2.5 text-on-surface focus:border-primary focus:outline-none"
+                  >
+                    <option value="">Auto by video when available</option>
+                    <option value="DOCUMENT_OPENED">DOCUMENT_OPENED</option>
+                    <option value="MARK_AS_COMPLETE">MARK_AS_COMPLETE</option>
+                    <option value="ASSIGNMENT_SUBMITTED">ASSIGNMENT_SUBMITTED</option>
+                    <option value="ASSIGNMENT_PASSED">ASSIGNMENT_PASSED</option>
+                  </select>
+                </label>
 
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-bold text-on-surface">Nguồn video dự phòng</span>
@@ -1271,7 +1298,7 @@ export default function TeacherContentPage() {
               <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700">
                 <Lock className="mt-0.5 h-4 w-4 flex-shrink-0" />
                 <div>
-                  <p className="font-bold">Khoa hoc dang bi khoa chinh sua</p>
+                  <p className="font-bold">Khóa học đang bị khóa chỉnh sửa</p>
                   <p>{selectedCourseLockMessage}</p>
                 </div>
               </div>
@@ -1336,7 +1363,7 @@ export default function TeacherContentPage() {
                           {/* Chapter header */}
                           <div className="flex items-center bg-surface-container/50 hover:bg-surface-container transition-colors">
                             <span
-                              title={selectedCourseEditable ? 'Keo de doi thu tu chuong' : selectedCourseLockMessage}
+                              title={selectedCourseEditable ? 'Kéo để đổi thứ tự chương' : selectedCourseLockMessage}
                               className={`pl-2 ${
                                 selectedCourseEditable
                                   ? 'text-on-surface-variant/60 cursor-grab active:cursor-grabbing'
@@ -1364,7 +1391,7 @@ export default function TeacherContentPage() {
                               <button
                                 onClick={() => startEditChapter(chapter)}
                                 disabled={!selectedCourseEditable}
-                                title={selectedCourseEditable ? 'Sua chuong' : selectedCourseLockMessage}
+                                title={selectedCourseEditable ? 'Sửa chương' : selectedCourseLockMessage}
                                 className={`p-1.5 rounded transition-colors ${
                                   selectedCourseEditable
                                     ? 'text-blue-500 hover:bg-blue-500/10'
@@ -1376,7 +1403,7 @@ export default function TeacherContentPage() {
                               <button
                                 onClick={() => deleteChapterHandler(chapter.id, chapter.title)}
                                 disabled={!selectedCourseEditable}
-                                title={selectedCourseEditable ? 'Xoa chuong' : selectedCourseLockMessage}
+                                title={selectedCourseEditable ? 'Xóa chương' : selectedCourseLockMessage}
                                 className={`p-1.5 rounded transition-colors ${
                                   selectedCourseEditable
                                     ? 'text-red-500 hover:bg-red-500/10'
@@ -1429,7 +1456,7 @@ export default function TeacherContentPage() {
                                           isEditing ? 'bg-primary/10' : 'hover:bg-surface-container/50'
                                         } ${dragging?.type === 'lesson' && dragging.id === lesson.id ? 'opacity-60' : ''}`}
                                       >
-                                        <span title={selectedCourseEditable ? 'Keo de doi thu tu bai giang' : selectedCourseLockMessage}>
+                                        <span title={selectedCourseEditable ? 'Kéo để đổi thứ tự bài giảng' : selectedCourseLockMessage}>
                                           <GripVertical
                                             className={`w-3.5 h-3.5 flex-shrink-0 ${
                                               selectedCourseEditable
@@ -1450,7 +1477,7 @@ export default function TeacherContentPage() {
                                         <button
                                           onClick={() => startEditLesson(chapter.id, lesson)}
                                           disabled={!selectedCourseEditable}
-                                          title={selectedCourseEditable ? 'Sua' : selectedCourseLockMessage}
+                                          title={selectedCourseEditable ? 'Sửa' : selectedCourseLockMessage}
                                           className={`p-1.5 rounded opacity-0 transition-opacity group-hover:opacity-100 ${
                                             selectedCourseEditable
                                               ? 'text-blue-500 hover:bg-blue-500/10'
@@ -1462,7 +1489,7 @@ export default function TeacherContentPage() {
                                         <button
                                           onClick={() => deleteLessonHandler(chapter.id, lesson.id, lesson.title)}
                                           disabled={!selectedCourseEditable}
-                                          title={selectedCourseEditable ? 'Xoa' : selectedCourseLockMessage}
+                                          title={selectedCourseEditable ? 'Xóa' : selectedCourseLockMessage}
                                           className={`p-1.5 rounded opacity-0 transition-opacity group-hover:opacity-100 ${
                                             selectedCourseEditable
                                               ? 'text-red-500 hover:bg-red-500/10'
@@ -1477,7 +1504,7 @@ export default function TeacherContentPage() {
                                   <button
                                     onClick={() => startAddLesson(chapter.id)}
                                     disabled={!selectedCourseEditable}
-                                    title={selectedCourseEditable ? 'Them bai giang' : selectedCourseLockMessage}
+                                    title={selectedCourseEditable ? 'Thêm bài giảng' : selectedCourseLockMessage}
                                     className={`w-full flex items-center justify-center gap-2 mt-1 px-2 py-2 text-sm font-bold rounded-lg transition-colors ${
                                       selectedCourseEditable
                                         ? 'text-primary hover:bg-primary/5'
@@ -1502,7 +1529,7 @@ export default function TeacherContentPage() {
                   <button
                     onClick={startAddChapter}
                     disabled={!selectedCourseEditable}
-                    title={selectedCourseEditable ? 'Them chuong' : selectedCourseLockMessage}
+                    title={selectedCourseEditable ? 'Thêm chương' : selectedCourseLockMessage}
                     className={`w-full mt-3 flex items-center justify-center gap-2 py-2.5 text-sm font-bold border-2 border-dashed rounded-xl transition-colors ${
                       selectedCourseEditable
                         ? 'text-on-surface-variant border-outline-variant hover:border-primary hover:text-primary'

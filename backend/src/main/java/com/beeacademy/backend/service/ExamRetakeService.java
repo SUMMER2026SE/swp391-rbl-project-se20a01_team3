@@ -18,6 +18,7 @@ import com.beeacademy.backend.security.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,9 +39,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ExamRetakeService {
 
-    private static final int MAX_APPROVALS_PER_EXAM = 2;
+    private static final int MAX_APPROVALS_PER_EXAM = 3;
     private static final int MAX_EXTRA_ATTEMPTS_PER_APPROVAL = 2;
     private static final long RETAKE_WINDOW_DAYS = 14L;
+    private static final long REJECT_COOLDOWN_HOURS = 12L;
     private static final String ROLE_ADMIN = "admin";
 
     private final ExamRetakeRequestRepository retakeRepository;
@@ -49,6 +51,7 @@ public class ExamRetakeService {
     private final EnrollmentRepository enrollmentRepository;
     private final ProfileRepository profileRepository;
     private final UserNotificationService userNotificationService;
+    private final JdbcTemplate jdbcTemplate;
 
     /** Tổng lượt được cộng thêm từ các yêu cầu đã APPROVED. */
     @Transactional(readOnly = true)
@@ -97,8 +100,17 @@ public class ExamRetakeService {
 
         Profile student = profileRepository.findById(me.userId())
                 .orElseThrow(() -> new ResourceNotFoundException("Profile", me.userId()));
+        long previousRequests = retakeRepository
+                .findByStudentIdAndExamConfigIdAndStatus(me.userId(), config.getId(), ExamRetakeStatus.REJECTED)
+                .size() + approvedCount;
         ExamRetakeRequest saved = retakeRepository.save(
-                ExamRetakeRequest.create(student, config, request.reason().trim()));
+                ExamRetakeRequest.create(
+                        student,
+                        config,
+                        request.reason().trim(),
+                        (int) previousRequests + 1,
+                        (int) approvedCount));
+        auditRetake(saved, "CREATE", null, saved.getStatus().name(), me);
 
         notifyTeacherAboutRequest(config, student);
         log.info("Student {} requested exam retake for config {}", me.userId(), config.getId());
@@ -133,6 +145,7 @@ public class ExamRetakeService {
                     "Yêu cầu này đã được xử lý trước đó.");
         }
         requireReviewerPermission(request, me);
+        String statusBefore = request.getStatus().name();
 
         if (Boolean.TRUE.equals(decision.approve())) {
             int extra = decision.extraAttempts() != null ? decision.extraAttempts() : 1;
@@ -151,12 +164,22 @@ public class ExamRetakeService {
                         "Đã đạt tối đa %d lần duyệt cho bài kiểm tra này."
                                 .formatted(MAX_APPROVALS_PER_EXAM));
             }
-            request.approve(me.userId(), extra, decision.reason().trim(),
-                    Instant.now().plus(RETAKE_WINDOW_DAYS, ChronoUnit.DAYS));
+            request.approve(
+                    me.userId(),
+                    me.role(),
+                    extra,
+                    decision.reason().trim(),
+                    Instant.now().plus(RETAKE_WINDOW_DAYS, ChronoUnit.DAYS),
+                    (int) approvedCount + 1);
         } else {
-            request.reject(me.userId(), decision.reason().trim());
+            request.reject(
+                    me.userId(),
+                    me.role(),
+                    decision.reason().trim(),
+                    Instant.now().plus(REJECT_COOLDOWN_HOURS, ChronoUnit.HOURS));
         }
         ExamRetakeRequest saved = retakeRepository.save(request);
+        auditRetake(saved, saved.getStatus().name(), statusBefore, saved.getStatus().name(), me);
 
         notifyStudentAboutDecision(saved);
         log.info("Reviewer {} ({}) {} retake request {}",
@@ -222,5 +245,28 @@ public class ExamRetakeService {
         int maxAttempts = request.getExamConfig().getMaxAttempts() != null
                 ? request.getExamConfig().getMaxAttempts() : 1;
         return ExamRetakeRequestResponse.fromEntity(request, attemptsUsed, maxAttempts);
+    }
+
+    private void auditRetake(ExamRetakeRequest request, String eventType,
+                             String statusBefore, String statusAfter,
+                             AuthenticatedUser actor) {
+        try {
+            jdbcTemplate.update("""
+                    INSERT INTO public.exam_retake_audit_logs
+                    (id, approval_id, event_type, status_before, status_after,
+                     actor_id, actor_role, request_count, approval_count, created_at)
+                    VALUES (gen_random_uuid(), ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                    """,
+                    request.getId(),
+                    eventType,
+                    statusBefore,
+                    statusAfter,
+                    actor.userId(),
+                    actor.role(),
+                    request.getRequestCount(),
+                    request.getApprovalCount());
+        } catch (Exception ex) {
+            log.warn("Could not write retake audit log for request {}", request.getId(), ex);
+        }
     }
 }

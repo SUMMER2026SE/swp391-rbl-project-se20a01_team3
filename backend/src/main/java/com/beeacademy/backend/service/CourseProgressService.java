@@ -57,6 +57,7 @@ public class CourseProgressService {
     private final ExamAttemptRepository examAttemptRepository;
     private final OrderItemRepository orderItemRepository;
     private final CertificateService certificateService;
+    private final CourseVersionSnapshotService courseVersionSnapshotService;
 
     @Transactional(readOnly = true)
     public CourseProgressResponse getProgress(UUID courseId, AuthenticatedUser me) {
@@ -147,7 +148,8 @@ public class CourseProgressService {
             CompleteCourseProgressItemRequest request
     ) {
         requireEnrolled(me.userId(), courseId);
-        validateItemBelongsToCourse(courseId, request.itemId(), request.itemType());
+        validateItemBelongsToCourse(
+                courseId, request.itemId(), request.itemType(), me.userId());
 
         if (ITEM_LESSON.equals(request.itemType())) {
             Lesson lesson = lessonRepository.findById(request.itemId()).orElse(null);
@@ -170,7 +172,7 @@ public class CourseProgressService {
     public CourseProgressResponse completeVideoLessonAfterWatch(
             UUID courseId, UUID lessonId, AuthenticatedUser me) {
         requireEnrolled(me.userId(), courseId);
-        validateItemBelongsToCourse(courseId, lessonId, ITEM_LESSON);
+        validateItemBelongsToCourse(courseId, lessonId, ITEM_LESSON, me.userId());
         Lesson lesson = lessonRepository.findById(lessonId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lesson", lessonId));
         if (!isVideoLesson(lesson)) {
@@ -243,11 +245,17 @@ public class CourseProgressService {
                         row -> (UUID) row[0],
                         row -> (Long) row[1]
                 ));
+        Map<UUID, Enrollment> enrollmentByCourse = enrollmentRepository.findByStudentId(studentId)
+                .stream()
+                .filter(enrollment -> courseIds.contains(enrollment.getCourseId()))
+                .collect(Collectors.toMap(Enrollment::getCourseId, enrollment -> enrollment));
 
         return courseIds.stream().collect(Collectors.toMap(
                 courseId -> courseId,
                 courseId -> {
-                    long total = Math.max(totalByCourse.getOrDefault(courseId, 0L), 0L);
+                    long total = resolveProgressItemCount(
+                            enrollmentByCourse.get(courseId),
+                            Math.max(totalByCourse.getOrDefault(courseId, 0L), 0L));
                     if (total == 0) return 0;
                     long completed = Math.min(completedByCourse.getOrDefault(courseId, 0L), total);
                     return (int) Math.round((completed * 100.0) / total);
@@ -269,11 +277,17 @@ public class CourseProgressService {
         Map<UUID, Long> totalByCourse = courseRepository.countLessonsByCourseIds(courseIds)
                 .stream()
                 .collect(Collectors.toMap(row -> (UUID) row[0], row -> (Long) row[1]));
+        Map<UUID, Enrollment> enrollmentByCourse = enrollmentRepository.findByStudentId(studentId)
+                .stream()
+                .filter(enrollment -> courseIds.contains(enrollment.getCourseId()))
+                .collect(Collectors.toMap(Enrollment::getCourseId, enrollment -> enrollment));
 
         return courseIds.stream().collect(Collectors.toMap(
                 courseId -> courseId,
                 courseId -> {
-                    long total = totalByCourse.getOrDefault(courseId, 0L);
+                    long total = resolveLessonCount(
+                            enrollmentByCourse.get(courseId),
+                            totalByCourse.getOrDefault(courseId, 0L));
                     if (total == 0) return 0;
                     long completed = Math.min(completedByCourse.getOrDefault(courseId, 0L), total);
                     return (int) Math.round((completed * 100.0) / total);
@@ -330,6 +344,7 @@ public class CourseProgressService {
                 .orElse(null);
         return new StudentLearningProgressResponse.CourseProgressDetail(
                 course.getId(),
+                enrollment != null ? enrollment.getCourseVersionId() : null,
                 course.getSlug(),
                 course.getTitle(),
                 course.getThumbnailUrl(),
@@ -410,7 +425,8 @@ public class CourseProgressService {
         }
     }
 
-    private void validateItemBelongsToCourse(UUID courseId, UUID itemId, String itemType) {
+    private void validateItemBelongsToCourse(
+            UUID courseId, UUID itemId, String itemType, UUID studentId) {
         boolean valid = switch (itemType) {
             case ITEM_LESSON -> lessonRepository.existsByIdAndCourseId(itemId, courseId);
             case ITEM_QUIZ -> quizConfigRepository.existsByChapterIdAndCourseId(itemId, courseId);
@@ -423,12 +439,42 @@ public class CourseProgressService {
                     HttpStatus.BAD_REQUEST
             );
         }
+        enrollmentRepository.findByStudentIdAndCourseId(studentId, courseId)
+                .flatMap(enrollment -> courseVersionSnapshotService.findMetrics(
+                        enrollment.getCourseVersionId()))
+                .filter(metrics -> !metrics.containsProgressItem(itemId, itemType))
+                .ifPresent(metrics -> {
+                    throw new BusinessException(
+                            "PROGRESS_ITEM_OUTSIDE_ENROLLMENT_VERSION",
+                            "Nội dung không thuộc phiên bản khóa học của enrollment.",
+                            HttpStatus.CONFLICT);
+                });
     }
 
     private int calculateProgressPct(UUID studentId, UUID courseId) {
-        long total = courseRepository.countProgressItemsByCourseId(courseId);
+        Enrollment enrollment = enrollmentRepository.findByStudentIdAndCourseId(studentId, courseId)
+                .orElse(null);
+        long total = resolveProgressItemCount(
+                enrollment, courseRepository.countProgressItemsByCourseId(courseId));
         if (total <= 0) return 0;
         long completed = Math.min(progressRepository.countByStudentIdAndCourseId(studentId, courseId), total);
         return (int) Math.round((completed * 100.0) / total);
+    }
+
+    private long resolveProgressItemCount(Enrollment enrollment, long fallback) {
+        if (enrollment == null) return fallback;
+        return courseVersionSnapshotService.findMetrics(enrollment.getCourseVersionId())
+                .map(metrics -> metrics.quizSnapshotPresent()
+                        ? (long) metrics.progressItemCount()
+                        : (long) metrics.lessonIds().size()
+                          + Math.max(0L, fallback - metrics.lessonIds().size()))
+                .orElse(fallback);
+    }
+
+    private long resolveLessonCount(Enrollment enrollment, long fallback) {
+        if (enrollment == null) return fallback;
+        return courseVersionSnapshotService.findMetrics(enrollment.getCourseVersionId())
+                .map(metrics -> (long) metrics.lessonIds().size())
+                .orElse(fallback);
     }
 }

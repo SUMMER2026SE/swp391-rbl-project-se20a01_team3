@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
+  AlertTriangle,
   Bell,
   CheckCircle2,
   Clock3,
@@ -46,9 +47,10 @@ export default function NotificationsPage() {
   const [linkedParents, setLinkedParents] = useState<StudentParentLinkInvitationResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionKey, setActionKey] = useState<string | null>(null);
+  const [confirmUnlinkParent, setConfirmUnlinkParent] = useState<StudentParentLinkInvitationResponse | null>(null);
+  const [unlinkReason, setUnlinkReason] = useState('');
   const actionableInvitationCount = invitations.filter(invitation => !invitation.expired).length;
   const expiredInvitationCount = invitations.length - actionableInvitationCount;
-  const pendingUnlinkCount = linkedParents.filter(parent => parent.unlinkRequestedByRole === 'parent').length;
 
   const loadInvitations = async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -95,28 +97,42 @@ export default function NotificationsPage() {
     }
   };
 
-  const handleUnlinkAction = async (
-    parent: StudentParentLinkInvitationResponse,
-    action: 'request' | 'confirm'
-  ) => {
-    const key = `${parent.parentId}:unlink:${action}`;
+  const handleUnlinkAction = async () => {
+    if (!confirmUnlinkParent) return;
+
+    const parent = confirmUnlinkParent;
+    const key = `${parent.parentId}:unlink`;
     setActionKey(key);
     try {
-      const updated = action === 'confirm'
-        ? await studentParentLinkService.confirmStudentParentUnlink(parent.parentId)
-        : await studentParentLinkService.requestStudentParentUnlink(parent.parentId);
-
-      if (updated.status === 'rejected') {
-        setLinkedParents(current => current.filter(item => item.parentId !== parent.parentId));
-        notify.success(`Đã hủy liên kết với ${parent.parentName}.`);
-      } else {
-        setLinkedParents(current => current.map(item => item.parentId === parent.parentId ? updated : item));
-        notify.success(`Đã gửi yêu cầu hủy liên kết tới ${parent.parentName}. Cần phụ huynh đồng ý để hoàn tất.`);
-      }
+      await studentParentLinkService.unlinkStudentParent(parent.parentId, unlinkReason);
+      setLinkedParents(current => current.filter(item => item.parentId !== parent.parentId));
+      notify.success(`Đã hủy liên kết với ${parent.parentName}.`);
+      setConfirmUnlinkParent(null);
+      setUnlinkReason('');
       window.dispatchEvent(new Event('bee:student-parent-link-invitations-updated'));
     } catch (error) {
       console.error('Lỗi khi xử lý yêu cầu hủy liên kết phụ huynh:', error);
       notify.error(error instanceof Error ? error.message : 'Không thể xử lý yêu cầu hủy liên kết.');
+    } finally {
+      setActionKey(null);
+    }
+  };
+
+  const handleConsentToggle = async (parent: StudentParentLinkInvitationResponse) => {
+    const nextValue = !parent.sensitiveDataConsentGranted;
+    const key = `${parent.parentId}:consent`;
+    setActionKey(key);
+    try {
+      const updated = await studentParentLinkService.updateSensitiveDataConsent(parent.parentId, nextValue);
+      setLinkedParents(current => current.map(item => item.parentId === parent.parentId ? updated : item));
+      notify.success(
+        nextValue
+          ? `Đã cho phép ${parent.parentName} xem dữ liệu học tập nhạy cảm.`
+          : `Đã tắt quyền xem dữ liệu học tập nhạy cảm của ${parent.parentName}.`
+      );
+    } catch (error) {
+      console.error('Lỗi khi cập nhật quyền xem dữ liệu nhạy cảm:', error);
+      notify.error(error instanceof Error ? error.message : 'Không thể cập nhật quyền xem dữ liệu nhạy cảm.');
     } finally {
       setActionKey(null);
     }
@@ -144,7 +160,7 @@ export default function NotificationsPage() {
                 Liên kết phụ huynh
               </div>
               <h2 className="mt-3 text-2xl font-extrabold text-on-surface">
-                Yêu cầu phụ huynh cần xử lý ({actionableInvitationCount + pendingUnlinkCount})
+                Yêu cầu phụ huynh cần xử lý ({actionableInvitationCount})
               </h2>
               <p className="mt-2 text-sm leading-6 text-on-surface-variant max-w-2xl">
                 Quản lý lời mời liên kết và xác nhận hủy liên kết với phụ huynh trên Bee Academy.
@@ -288,9 +304,8 @@ export default function NotificationsPage() {
             ) : (
               <div className="pt-5 space-y-4">
                 {linkedParents.map(parent => {
-                  const parentRequested = parent.unlinkRequestedByRole === 'parent';
-                  const studentRequested = parent.unlinkRequestedByRole === 'student';
-                  const actionKeyValue = `${parent.parentId}:unlink:${parentRequested ? 'confirm' : 'request'}`;
+                  const actionKeyValue = `${parent.parentId}:unlink`;
+                  const consentKeyValue = `${parent.parentId}:consent`;
 
                   return (
                     <div
@@ -310,42 +325,44 @@ export default function NotificationsPage() {
                             </h3>
                             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-on-surface-variant">
                               <span>{parent.parentEmail}</span>
-                              <span>
-                                {parentRequested
-                                  ? 'Phụ huynh đang yêu cầu hủy'
-                                  : studentRequested
-                                    ? 'Đang chờ phụ huynh đồng ý hủy'
-                                    : 'Đã liên kết'}
-                              </span>
-                              {parent.unlinkRequestedAt && (
-                                <span>Yêu cầu lúc: {formatDateTime(parent.unlinkRequestedAt)}</span>
-                              )}
+                              <span>Đã liên kết</span>
                             </div>
                           </div>
                         </div>
 
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <button
+                            onClick={() => handleConsentToggle(parent)}
+                            disabled={actionKey !== null}
+                            className={`h-10 px-4 rounded-xl text-xs font-extrabold transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 ${
+                              parent.sensitiveDataConsentGranted
+                                ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md shadow-emerald-500/20'
+                                : 'border border-outline-variant/30 bg-surface text-on-surface-variant hover:bg-surface-container'
+                            }`}
+                          >
+                            {actionKey === consentKeyValue ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : parent.sensitiveDataConsentGranted ? (
+                              <CheckCircle2 className="w-4 h-4" />
+                            ) : (
+                              <XCircle className="w-4 h-4" />
+                            )}
+                            {parent.sensitiveDataConsentGranted ? 'Đang cho xem dữ liệu nhạy cảm' : 'Cho xem dữ liệu nhạy cảm'}
+                          </button>
+
                         <button
-                          onClick={() => handleUnlinkAction(parent, parentRequested ? 'confirm' : 'request')}
-                          disabled={actionKey !== null || studentRequested}
-                          className={`h-10 px-4 rounded-xl text-xs font-extrabold transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 ${
-                            parentRequested
-                              ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md shadow-emerald-500/20'
-                              : studentRequested
-                                ? 'border border-amber-200/60 bg-amber-50 text-amber-700'
-                                : 'border border-red-200/50 bg-red-50 text-red-600 hover:bg-red-100'
-                          }`}
+                          onClick={() => setConfirmUnlinkParent(parent)}
+                          disabled={actionKey !== null}
+                          className="h-10 px-4 rounded-xl text-xs font-extrabold transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 border border-red-200/50 bg-red-50 text-red-600 hover:bg-red-100"
                         >
                           {actionKey === actionKeyValue ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : parentRequested ? (
-                            <CheckCircle2 className="w-4 h-4" />
-                          ) : studentRequested ? (
-                            <Clock3 className="w-4 h-4" />
                           ) : (
                             <Trash2 className="w-4 h-4" />
                           )}
-                          {parentRequested ? 'Đồng ý hủy' : studentRequested ? 'Đang chờ' : 'Gửi yêu cầu hủy'}
+                          Hủy liên kết
                         </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -354,6 +371,64 @@ export default function NotificationsPage() {
             )}
           </motion.section>
         )}
+        <AnimatePresence>
+          {confirmUnlinkParent && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-surface-container-lowest border border-outline-variant/40 rounded-3xl p-6 shadow-2xl max-w-sm w-full space-y-6"
+              >
+                <div className="flex items-center gap-3 text-red-600">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/10">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-extrabold text-base text-on-surface">Xác nhận hủy liên kết?</h4>
+                </div>
+
+                <p className="text-sm text-on-surface-variant leading-relaxed">
+                  Liên kết với <strong className="text-on-surface">{confirmUnlinkParent.parentName}</strong> sẽ chuyển sang trạng thái đã hủy ngay.
+                  Phụ huynh sẽ không thể xem tiến độ, liên hệ giáo viên hoặc xem lịch sử thanh toán của bạn.
+                </p>
+
+                <label className="block space-y-2">
+                  <span className="text-xs font-bold text-on-surface-variant">Lý do (tùy chọn)</span>
+                  <textarea
+                    value={unlinkReason}
+                    onChange={event => setUnlinkReason(event.target.value)}
+                    maxLength={500}
+                    rows={3}
+                    placeholder="Nhập lý do hủy liên kết"
+                    className="w-full resize-none rounded-xl border border-outline-variant/40 bg-surface px-3 py-2.5 text-sm text-on-surface outline-none focus:border-primary"
+                  />
+                  <span className="block text-right text-[11px] text-on-surface-variant">{unlinkReason.length}/500</span>
+                </label>
+
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => {
+                      setConfirmUnlinkParent(null);
+                      setUnlinkReason('');
+                    }}
+                    disabled={actionKey !== null}
+                    className="px-4 py-2.5 bg-surface-container hover:bg-surface-container-high rounded-xl text-sm font-bold text-on-surface-variant transition-colors disabled:opacity-60"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    onClick={handleUnlinkAction}
+                    disabled={actionKey !== null}
+                    className="px-4 py-2.5 text-white rounded-xl text-sm font-bold transition-all shadow-md disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2 bg-red-500 hover:bg-red-600 shadow-red-500/20"
+                  >
+                    {actionKey !== null && <Loader2 className="w-4 h-4 animate-spin" />}
+                    Xác nhận hủy
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

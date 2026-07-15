@@ -190,13 +190,9 @@ function syncExamTypeWithPlacement(
     slotIndex: number,
 ): Exam {
   const resolvedType = resolveExamType(chapters, exam.placementChapterId, slotIndex);
-  const firstChapterId = chapters[0]?.id;
   return {
     ...exam,
     examType: resolvedType,
-    scopeStartChapterId: resolvedType === 'final_exam' && firstChapterId
-      ? firstChapterId
-      : exam.scopeStartChapterId,
   };
 }
 
@@ -1589,11 +1585,6 @@ export default function TeacherExamPage() {
       notify.error('Chương bắt đầu phải đứng trước hoặc bằng chương kết thúc');
       return;
     }
-    if (resolvedExamType === 'final_exam'
-      && (startIndex !== 0 || endIndex !== (currentCourse?.chapters.length ?? 0) - 1)) {
-      notify.error('Bài cuối kỳ phải áp dụng cho toàn bộ khóa học');
-      return;
-    }
     if (normalizedForm.durationMinutes < 1) {
       notify.error('Thời gian làm bài phải >= 1 phút');
       return;
@@ -1977,10 +1968,15 @@ export default function TeacherExamPage() {
                           if (chapters.length === 0) return;
 
                           if (nextType === 'final_exam') {
+                            const lastChapterIndex = chapters.length - 1;
+                            const currentStartIndex = chapters.findIndex(ch => ch.id === form.scopeStartChapterId);
+                            const nextStartId = currentStartIndex >= 0 && currentStartIndex <= lastChapterIndex
+                              ? form.scopeStartChapterId
+                              : chapters[0]?.id ?? form.scopeStartChapterId;
                             setForm(syncExamTypeWithPlacement({
                               ...form,
                               examType: nextType,
-                              scopeStartChapterId: chapters[0]?.id ?? form.scopeStartChapterId,
+                              scopeStartChapterId: nextStartId,
                               placementChapterId: chapters[chapters.length - 1]?.id ?? form.placementChapterId,
                             }, chapters, currentSlot.slotIndex));
                             return;
@@ -2030,7 +2026,6 @@ export default function TeacherExamPage() {
                               : form.placementChapterId,
                           }, currentCourse?.chapters ?? [], currentSlot.slotIndex));
                         }}
-                        disabled={resolvedFormExamType === 'final_exam'}
                         className="w-full px-3 py-2 text-sm bg-surface-container border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface"
                       >
                         <option value="">Chọn chương</option>
@@ -2073,7 +2068,7 @@ export default function TeacherExamPage() {
                         Bài kiểm tra sẽ xuất hiện trong mục lục ngay sau chương đã chọn.
                       </p>
                       <p className="mt-1 text-xs text-on-surface-variant">
-                        Nếu chọn chương cuối cùng, hệ thống sẽ tự xem đây là bài cuối kỳ và lấy phạm vi từ đầu khóa học.
+                        Nếu chọn chương cuối cùng, hệ thống sẽ tự xem đây là bài cuối kỳ theo phạm vi bạn đã chọn.
                       </p>
                     </label>
 

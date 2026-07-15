@@ -53,4 +53,6 @@ public interface ExamConfigRepository extends JpaRepository<ExamConfig, UUID> {
     Optional<ExamConfig> findByCourseIdAndSlotIndex(UUID courseId, Integer slotIndex);
 
     Optional<ExamConfig> findByIdAndCourseId(UUID id, UUID courseId);
+
+    boolean existsByCourseIdAndExamType(UUID courseId, String examType);
 }

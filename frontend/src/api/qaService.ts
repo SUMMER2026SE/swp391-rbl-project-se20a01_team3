@@ -14,6 +14,7 @@ export interface QaMessage {
   attachmentName: string | null;
   attachmentType: string | null;
   attachmentSizeBytes: number | null;
+  editedAt?: string | null;
   sentAt: string;
 }
 
@@ -33,9 +34,19 @@ export interface QaThread {
   lessonId: string | null;
   lessonTitle: string | null;
   status: QaThreadStatus;
+  duplicateOfThreadId?: string | null;
+  duplicateMarkedAt?: string | null;
   createdAt: string;
   lastActivityAt: string;
   messages: QaMessage[];
+}
+
+export interface QaKpiReportResponse {
+  totalAnswered: number;
+  answeredWithin48Hours: number;
+  answeredWithin7Days: number;
+  within48HoursRate: number;
+  within7DaysRate: number;
 }
 
 export interface CreateQaThreadPayload {
@@ -80,6 +91,34 @@ export async function addTeacherQaMessage(threadId: string, content: string,
     `/api/teacher/qa/${encodeURIComponent(threadId)}/messages`,
     { content, ...attachment },
   );
+  return unwrap(res.data);
+}
+
+export async function editTeacherQaMessage(
+  threadId: string,
+  messageId: string,
+  content: string,
+): Promise<QaThread> {
+  const res = await apiClient.put<ApiResponse<QaThread>>(
+    `/api/teacher/qa/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(messageId)}`,
+    { content },
+  );
+  return unwrap(res.data);
+}
+
+export async function markTeacherQaDuplicate(
+  threadId: string,
+  duplicateOfThreadId: string,
+): Promise<QaThread> {
+  const res = await apiClient.post<ApiResponse<QaThread>>(
+    `/api/teacher/qa/${encodeURIComponent(threadId)}/duplicate`,
+    { duplicateOfThreadId },
+  );
+  return unwrap(res.data);
+}
+
+export async function getTeacherQaReport(): Promise<QaKpiReportResponse> {
+  const res = await apiClient.get<ApiResponse<QaKpiReportResponse>>('/api/teacher/qa/report');
   return unwrap(res.data);
 }
 

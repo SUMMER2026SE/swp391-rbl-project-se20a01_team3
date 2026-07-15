@@ -10,7 +10,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import type { Course } from '../data/mockCourses';
 import { inferGradeFromSearchQuery, searchCourses } from '../api/courseService';
 import { adaptCourseSummary } from '../api/adapter';
-import { getStudentLinkedParents, getStudentParentLinkInvitations } from '../api/studentParentLinkService';
+import { getStudentParentLinkInvitations } from '../api/studentParentLinkService';
 import { listUserNotifications, markUserNotificationRead } from '../api/notificationService';
 import type { StudentParentLinkInvitationResponse, UserNotification } from '../types/api';
 // ─── Highlight từ khớp trong text ────────────────────────────────────────────
@@ -184,7 +184,6 @@ export default function DashboardHeader() {
   const [notificationLoading, setNotificationLoading] = useState(false);
   const [userNotifications, setUserNotifications] = useState<UserNotification[]>([]);
   const [studentInvitationNotifications, setStudentInvitationNotifications] = useState<StudentParentLinkInvitationResponse[]>([]);
-  const [studentUnlinkNotifications, setStudentUnlinkNotifications] = useState<StudentParentLinkInvitationResponse[]>([]);
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -232,7 +231,6 @@ export default function DashboardHeader() {
       setPendingNotificationCount(0);
       setUserNotifications([]);
       setStudentInvitationNotifications([]);
-      setStudentUnlinkNotifications([]);
       return;
     }
 
@@ -249,22 +247,15 @@ export default function DashboardHeader() {
 
       if (user.role === 'student') {
         try {
-          const [invitations, linkedParents] = await Promise.all([
-            getStudentParentLinkInvitations(),
-            getStudentLinkedParents(),
-          ]);
-          const unlinkRequests = linkedParents.filter(parent => parent.unlinkRequestedByRole === 'parent');
+          const invitations = await getStudentParentLinkInvitations();
           setStudentInvitationNotifications(invitations);
-          setStudentUnlinkNotifications(unlinkRequests);
-          studentActionCount = invitations.length + unlinkRequests.length;
+          studentActionCount = invitations.length;
         } catch (error) {
           console.error('Khong the tai thong bao lien ket phu huynh:', error);
           setStudentInvitationNotifications([]);
-          setStudentUnlinkNotifications([]);
         }
       } else {
         setStudentInvitationNotifications([]);
-        setStudentUnlinkNotifications([]);
       }
 
       if (markGenericRead) {
@@ -443,7 +434,7 @@ export default function DashboardHeader() {
 
   const isDropdownOpen = showDropdown && searchQuery.trim().length >= 1;
   const totalNotificationItems =
-    userNotifications.length + studentInvitationNotifications.length + studentUnlinkNotifications.length;
+    userNotifications.length + studentInvitationNotifications.length;
   const canUseCart = user?.role === 'student';
 
   // Avatar URL: dùng user.avatar nếu có, fallback sang ui-avatars với tên user
@@ -610,29 +601,6 @@ export default function DashboardHeader() {
                             </span>
                             <span className="block text-xs text-on-surface-variant/70 mt-1">
                               {formatNotificationTime(invitation.invitedAt)}
-                            </span>
-                          </span>
-                        </button>
-                      ))}
-
-                      {studentUnlinkNotifications.map(invitation => (
-                        <button
-                          key={`student-unlink-${invitation.parentId}`}
-                          type="button"
-                          onClick={handleStudentNotificationSelect}
-                          className="w-full px-4 py-3 text-left hover:bg-surface-container transition-colors flex gap-3"
-                        >
-                          <span className="mt-1 w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-xs font-bold text-primary mb-1">Hủy liên kết</span>
-                            <span className="block text-sm font-bold text-on-surface line-clamp-1">
-                              {invitation.parentName}
-                            </span>
-                            <span className="block text-sm text-on-surface-variant line-clamp-2">
-                              Đã gửi yêu cầu hủy liên kết phụ huynh
-                            </span>
-                            <span className="block text-xs text-on-surface-variant/70 mt-1">
-                              {formatNotificationTime(invitation.unlinkRequestedAt)}
                             </span>
                           </span>
                         </button>

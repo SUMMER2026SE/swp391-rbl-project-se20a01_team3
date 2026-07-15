@@ -39,6 +39,7 @@ export interface StudentLearningProgress {
 
 export interface LearningCourseProgress {
   courseId: string;
+  courseVersionId: string | null;
   slug: string;
   title: string;
   thumbnailUrl: string | null;
@@ -189,6 +190,7 @@ async function getStudentLearningProgressFallback(): Promise<StudentLearningProg
 
       return {
         courseId: course.id,
+        courseVersionId: null,
         slug: course.slug,
         title: course.title,
         thumbnailUrl: course.thumbnailUrl ?? null,
@@ -244,6 +246,7 @@ function localProgress(courseId: string): CourseProgress {
 function emptyCourseProgress(course: CourseSummary): LearningCourseProgress {
   return {
     courseId: course.id,
+    courseVersionId: null,
     slug: course.slug,
     title: course.title,
     thumbnailUrl: course.thumbnailUrl ?? null,

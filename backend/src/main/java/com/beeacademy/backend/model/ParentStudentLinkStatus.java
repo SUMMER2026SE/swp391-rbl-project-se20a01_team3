@@ -3,7 +3,9 @@ package com.beeacademy.backend.model;
 public enum ParentStudentLinkStatus {
     PENDING("pending"),
     ACCEPTED("active"),
-    REJECTED("revoked");
+    REJECTED("rejected"),
+    EXPIRED("expired"),
+    REVOKED("revoked");
 
     private final String dbValue;
 
@@ -18,8 +20,10 @@ public enum ParentStudentLinkStatus {
     public String toApiValue() {
         return switch (this) {
             case PENDING -> "pending";
-            case ACCEPTED -> "accepted";
+            case ACCEPTED -> "active";
             case REJECTED -> "rejected";
+            case EXPIRED -> "expired";
+            case REVOKED -> "revoked";
         };
     }
 

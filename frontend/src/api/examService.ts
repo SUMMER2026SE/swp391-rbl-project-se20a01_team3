@@ -229,10 +229,11 @@ export async function gradeTeacherExamAttempt(
   attemptId: string,
   scorePercent: number,
   feedback: string,
+  revisionReason?: string,
 ): Promise<TeacherExamAttemptResponse> {
   const res = await apiClient.put<ApiResponse<TeacherExamAttemptResponse>>(
     `/api/teacher/exam-attempts/${attemptId}/grade`,
-    { scorePercent, feedback },
+    { scorePercent, feedback, revisionReason },
   );
   return unwrap(res.data);
 }

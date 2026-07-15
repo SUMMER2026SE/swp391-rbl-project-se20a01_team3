@@ -210,4 +210,17 @@ public interface QuestionRepository extends JpaRepository<Question, UUID>, JpaSp
     @Modifying
     @Query("UPDATE Question q SET q.usageCount = q.usageCount + 1 WHERE q.id IN :ids")
     void incrementUsageCount(@Param("ids") List<UUID> ids);
+
+    @Query("""
+           SELECT COUNT(q) > 0
+           FROM Question q
+           WHERE q.teacher.id = :teacherId
+             AND q.status = 'active'
+             AND LOWER(TRIM(q.content)) = LOWER(TRIM(:content))
+             AND (:excludeQuestionId IS NULL OR q.id <> :excludeQuestionId)
+           """)
+    boolean existsActiveDuplicateContent(
+            @Param("teacherId") UUID teacherId,
+            @Param("content") String content,
+            @Param("excludeQuestionId") UUID excludeQuestionId);
 }

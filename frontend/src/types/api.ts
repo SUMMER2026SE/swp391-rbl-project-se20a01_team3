@@ -174,6 +174,8 @@ export interface LessonDetail {
   videoUrl: string | null;
   videoEmbedUrl: string | null;
   videoFallbackUrl: string | null;
+  hlsPlaylistUrl: string | null;
+  videoProcessingStatus: 'NOT_REQUIRED' | 'EMBED' | 'HLS_QUEUED' | 'HLS_READY' | 'HLS_FAILED';
   durationSec: number;
   position: number;
   isFree: boolean;
@@ -307,7 +309,7 @@ export interface LinkStudentRequest {
   code: string;
 }
 
-export type ParentLinkStatus = 'pending' | 'accepted' | 'rejected';
+export type ParentLinkStatus = 'pending' | 'accepted' | 'active' | 'rejected' | 'expired' | 'revoked';
 export type ParentLinkParticipantRole = 'parent' | 'student';
 
 export interface SendParentLinkInvitationPayload {
@@ -317,7 +319,7 @@ export interface SendParentLinkInvitationPayload {
 }
 
 export interface ParentLinkInvitationResponse {
-  studentId: string;
+  studentId: string | null;
   studentName: string;
   studentEmail: string;
   avatarUrl: string | null;
@@ -332,6 +334,8 @@ export interface ParentLinkInvitationResponse {
   unlinkRequestedById: string | null;
   unlinkRequestedByRole: ParentLinkParticipantRole | null;
   unlinkRequestedAt: string | null;
+  acceptedForProcessing: boolean;
+  neutralMessage: string | null;
 }
 
 export interface StudentParentLinkInvitationResponse {
@@ -349,6 +353,8 @@ export interface StudentParentLinkInvitationResponse {
   unlinkRequestedById: string | null;
   unlinkRequestedByRole: ParentLinkParticipantRole | null;
   unlinkRequestedAt: string | null;
+  sensitiveDataConsentGranted: boolean;
+  sensitiveDataConsentUpdatedAt: string | null;
 }
 
 export type ParentLinkRelationship = 'father' | 'mother' | 'guardian';
@@ -362,10 +368,33 @@ export interface ChildOverviewResponse {
   latestQuizScore: number;
   latestExamScore: number;
   weeklyActivityHours: number[];
+  detailAccessAllowed: boolean;
+  sensitiveDataMasked: boolean;
+  detailAccessReason: string | null;
+}
+
+export type ParentRequiredExamStatus =
+  | 'not_configured'
+  | 'not_submitted'
+  | 'in_progress'
+  | 'pending_grading'
+  | 'passed'
+  | 'failed';
+
+export interface ParentRequiredExamResult {
+  slotIndex: number;
+  label: string;
+  status: ParentRequiredExamStatus;
+  examConfigId: string | null;
+  scorePercent: number | null;
+  normalizedScore: number | null;
+  passed: boolean | null;
+  submittedAt: string | null;
 }
 
 export interface ParentCourseProgressItem {
   courseId: string;
+  courseVersionId: string | null;
   courseTitle: string;
   teacherName: string | null;
   status: 'active' | 'completed';
@@ -378,6 +407,7 @@ export interface ParentCourseProgressItem {
   latestQuizScore: number | null;
   latestExamScore: number | null;
   latestAssignmentScore: number | null;
+  requiredExams: ParentRequiredExamResult[];
 }
 
 export interface ParentAssessmentRecord {
@@ -395,11 +425,24 @@ export interface ParentAssessmentRecord {
   submittedAt: string | null;
 }
 
+export interface ParentWeeklySummary {
+  progressTrend: 'no_data' | 'inactive' | 'needs_support' | 'on_track' | string;
+  averageScore: number | null;
+  completedAssessments: number;
+  incompleteCourses: number;
+  inactiveDays: number;
+  actionSuggestion: string;
+}
+
 export interface ChildProgressReportResponse {
   studentId: string;
   studentName: string;
   gradeLabel: string;
   generatedAt: string;
+  detailAccessAllowed: boolean;
+  sensitiveDataMasked: boolean;
+  detailAccessReason: string | null;
+  weeklySummary: ParentWeeklySummary;
   courses: ParentCourseProgressItem[];
   assessments: ParentAssessmentRecord[];
 }
@@ -415,6 +458,7 @@ export interface ParentPaymentTransaction {
   payerName: string;
   payerRole: ParentPaymentPayerRole;
   courseId: string;
+  courseVersionId: string | null;
   courseTitle: string;
   teacherName: string | null;
   categoryName: string | null;
@@ -426,6 +470,16 @@ export interface ParentPaymentTransaction {
   paidAt: string | null;
   currentProgressPct: number;
   invoiceCode: string;
+  invoiceInfo: ParentPaymentInvoiceInfo | null;
+}
+
+export interface ParentPaymentInvoiceInfo {
+  sellerName: string;
+  sellerTaxCode: string;
+  buyerName: string;
+  legalDescription: string;
+  currency: string;
+  issuedAt: string | null;
 }
 
 export interface ParentPaymentHistoryResponse {
@@ -453,6 +507,8 @@ export interface ParentTeacherMessageResponse {
   attachmentName: string | null;
   attachmentType: string | null;
   attachmentSizeBytes: number | null;
+  moderationStatus: 'approved' | 'pending_review' | string;
+  moderationReason: string | null;
   sentAt: string;
 }
 
@@ -472,6 +528,7 @@ export interface ParentTeacherConversationResponse {
   lastActivityAt: string | null;
   lastMessage: string | null;
   messageCount: number;
+  pendingModerationCount: number;
   messages: ParentTeacherMessageResponse[];
 }
 

@@ -23,6 +23,7 @@ import type {
   ChildProgressReportResponse,
   ParentAssessmentRecord,
   ParentCourseProgressItem,
+  ParentRequiredExamStatus,
 } from '../../types/api';
 
 function formatDateTime(value: string | null | undefined): string {
@@ -59,6 +60,50 @@ function courseMetric(course: ParentCourseProgressItem): number {
 
 function courseStatusLabel(status: ParentCourseProgressItem['status']): string {
   return status === 'completed' ? 'Đã hoàn thành' : 'Đang học';
+}
+
+function requiredExamStatusLabel(status: ParentRequiredExamStatus): string {
+  switch (status) {
+    case 'not_configured':
+      return 'Chưa cấu hình';
+    case 'not_submitted':
+      return 'Chưa nộp';
+    case 'in_progress':
+      return 'Đang làm';
+    case 'pending_grading':
+      return 'Chờ chấm';
+    case 'passed':
+      return 'Đạt';
+    case 'failed':
+      return 'Chưa đạt';
+    default:
+      return status;
+  }
+}
+
+function requiredExamStatusClass(status: ParentRequiredExamStatus): string {
+  switch (status) {
+    case 'passed':
+      return 'bg-green-500/10 text-green-700 border-green-500/20';
+    case 'failed':
+      return 'bg-red-500/10 text-red-700 border-red-500/20';
+    case 'pending_grading':
+    case 'in_progress':
+      return 'bg-amber-500/10 text-amber-700 border-amber-500/20';
+    default:
+      return 'bg-surface text-on-surface-variant border-outline-variant/20';
+  }
+}
+
+function progressAccessReasonLabel(reason: string | null | undefined): string {
+  switch (reason) {
+    case 'DOB_MISSING_REQUIRE_CONSENT':
+      return 'Thiếu ngày sinh học sinh, cần xác nhận đồng ý để xem dữ liệu nhạy cảm.';
+    case 'STUDENT_16_PLUS_PRIVACY_ENABLED_REQUIRE_CONSENT':
+      return 'Học sinh từ 16 tuổi đang bật quyền riêng tư, cần đồng ý trước khi hiển thị chi tiết nhạy cảm.';
+    default:
+      return 'Một số nhận xét và chi tiết bài làm đang được ẩn theo thiết lập quyền riêng tư.';
+  }
 }
 
 export default function ParentProgress() {
@@ -397,6 +442,18 @@ export default function ParentProgress() {
               </div>
             </motion.div>
 
+            {report?.sensitiveDataMasked && (
+              <div className="bg-amber-500/10 border border-amber-500/25 rounded-2xl p-4 flex items-start gap-3 text-amber-800">
+                <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-extrabold">Đang ẩn dữ liệu nhạy cảm</p>
+                  <p className="text-xs mt-1 font-medium">
+                    {progressAccessReasonLabel(report.detailAccessReason)}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="relative">
               {loading && (
                 <div className="absolute inset-0 bg-surface/55 backdrop-blur-[2px] z-20 flex items-center justify-center rounded-3xl">
@@ -527,6 +584,33 @@ export default function ParentProgress() {
                                 <p className="text-on-surface font-extrabold mt-1">{course.latestExamScore != null ? `${course.latestExamScore.toFixed(1)}/10` : '—'}</p>
                               </div>
                             </div>
+
+                            <div className="bg-surface px-3 py-3 rounded-xl border border-outline-variant/15">
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <p className="text-[11px] text-on-surface-variant font-bold uppercase tracking-wider">4 bài kiểm tra bắt buộc</p>
+                                <span className="text-[10px] text-on-surface-variant font-bold">
+                                  {(course.requiredExams ?? []).filter(exam => exam.status === 'passed').length}/4 đạt
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {(course.requiredExams ?? []).map(exam => (
+                                  <div
+                                    key={`${course.courseId}-${exam.slotIndex}`}
+                                    className={`rounded-lg border px-2.5 py-2 ${requiredExamStatusClass(exam.status)}`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <p className="font-extrabold text-[11px] leading-tight">{exam.label}</p>
+                                      <span className="text-[9px] font-extrabold whitespace-nowrap">
+                                        {requiredExamStatusLabel(exam.status)}
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] mt-1 font-semibold">
+                                      {exam.normalizedScore != null ? `${exam.normalizedScore.toFixed(1)}/10` : 'Chưa có điểm'}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -587,7 +671,7 @@ export default function ParentProgress() {
                                 </td>
                                 <td className="px-4 py-3.5 text-xs text-on-surface-variant max-w-[220px]">
                                   <p className="line-clamp-2" title={record.feedback || undefined}>
-                                    {record.feedback || 'Chưa có nhận xét chi tiết'}
+                                    {record.feedback || (report?.sensitiveDataMasked ? 'Đang ẩn theo quyền riêng tư/consent' : 'Chưa có nhận xét chi tiết')}
                                   </p>
                                 </td>
                               </tr>
