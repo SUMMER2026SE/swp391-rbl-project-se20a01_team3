@@ -121,7 +121,7 @@ public interface QuestionRepository extends JpaRepository<Question, UUID>, JpaSp
     @Query("SELECT q FROM Question q WHERE q.category.id = :categoryId " +
            "AND q.grade IN :grades " +
            "AND q.difficulty = :difficulty AND q.status = 'active' " +
-           "AND q.type IN ('multiple_choice', 'true_false')")
+           "AND q.type IN ('multiple_choice', 'true_false', 'image_question', 'audio_question')")
     List<Question> findActiveByCategoryAndGradesAndDifficulty(
             @Param("categoryId") UUID categoryId,
             @Param("grades") List<Integer> grades,
