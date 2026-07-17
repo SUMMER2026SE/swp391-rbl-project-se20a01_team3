@@ -221,6 +221,24 @@ public class ExamConfigSchemaMigration implements ApplicationRunner {
                 )
                 """);
         jdbcTemplate.execute("""
+                ALTER TABLE public.exam_integrity_events
+                ADD COLUMN IF NOT EXISTS client_event_id UUID,
+                ADD COLUMN IF NOT EXISTS enrollment_id UUID REFERENCES public.enrollments(id) ON DELETE CASCADE,
+                ADD COLUMN IF NOT EXISTS exam_id UUID REFERENCES public.exam_configs(id) ON DELETE CASCADE,
+                ADD COLUMN IF NOT EXISTS attempt_id UUID REFERENCES public.exam_attempts(id) ON DELETE CASCADE,
+                ADD COLUMN IF NOT EXISTS event_type VARCHAR(32),
+                ADD COLUMN IF NOT EXISTS violation_count INTEGER,
+                ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                """);
+        jdbcTemplate.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uk_exam_integrity_attempt_client_event
+                ON public.exam_integrity_events(attempt_id, client_event_id)
+                """);
+        jdbcTemplate.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uk_exam_integrity_attempt_count
+                ON public.exam_integrity_events(attempt_id, violation_count)
+                """);
+        jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_exam_integrity_enrollment_created
                 ON public.exam_integrity_events(enrollment_id, occurred_at DESC)
                 """);

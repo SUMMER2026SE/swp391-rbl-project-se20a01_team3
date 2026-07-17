@@ -37,6 +37,7 @@ import com.beeacademy.backend.repository.QuizAttemptRepository;
 import com.beeacademy.backend.repository.QuizConfigRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import com.beeacademy.backend.client.SupabaseStorageClient;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -62,6 +63,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -86,6 +88,9 @@ class ParentServiceTest {
 
     @Mock
     private ExamConfigRepository examConfigRepository;
+
+    @Mock
+    private ExamConfigVersionService examConfigVersionService;
 
     @Mock
     private QuizAttemptRepository quizAttemptRepository;
@@ -131,6 +136,12 @@ class ParentServiceTest {
 
     @InjectMocks
     private ParentService service;
+
+    @BeforeEach
+    void defaultExamConfigs() {
+        lenient().when(examConfigVersionService.forEnrollment(any(Enrollment.class)))
+                .thenReturn(List.of());
+    }
 
     @Test
     void sendLinkInvitationStoresRelationshipNoteAndNotifiesStudent() {
@@ -436,6 +447,8 @@ class ParentServiceTest {
                 .thenReturn(List.of());
         when(quizConfigRepository.findByCourseIds(List.of(courseId))).thenReturn(List.of());
         when(examConfigRepository.findByCourseIds(List.of(courseId)))
+                .thenReturn(List.of(midtermOne, finalOne, midtermTwo, finalTwo));
+        when(examConfigVersionService.forEnrollment(enrollment))
                 .thenReturn(List.of(midtermOne, finalOne, midtermTwo, finalTwo));
         when(quizAttemptRepository.findSubmittedByStudentAndCourseIds(studentId, List.of(courseId)))
                 .thenReturn(List.of());

@@ -86,5 +86,22 @@ public class AssignmentSchemaMigration implements ApplicationRunner {
                 CREATE INDEX IF NOT EXISTS idx_assignment_submissions_status
                 ON public.assignment_submissions (status)
                 """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS public.grade_audit_logs (
+                    id UUID PRIMARY KEY,
+                    target_type VARCHAR(50) NOT NULL,
+                    target_id UUID NOT NULL,
+                    student_id UUID NOT NULL REFERENCES public.profiles(id),
+                    grader_id UUID NOT NULL REFERENCES public.profiles(id),
+                    old_score DOUBLE PRECISION,
+                    new_score DOUBLE PRECISION NOT NULL,
+                    reason VARCHAR(1000),
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_grade_audit_logs_target
+                ON public.grade_audit_logs (target_type, target_id, created_at DESC)
+                """);
     }
 }
