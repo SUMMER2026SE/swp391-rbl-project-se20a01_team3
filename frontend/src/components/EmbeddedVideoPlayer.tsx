@@ -10,6 +10,7 @@ interface EmbeddedVideoPlayerProps {
   onPause: () => void;
   onEnded: () => void;
   onError?: () => void;
+  onReady?: () => void;
 }
 
 interface YouTubePlayerInstance {
@@ -120,6 +121,7 @@ function VimeoPlayer(props: EmbeddedVideoPlayerProps) {
         try { message = JSON.parse(message); } catch { return; }
       }
       if (message?.event === 'ready') {
+        callbackRef.current.onReady?.();
         send('addEventListener', 'timeupdate');
         send('addEventListener', 'play');
         send('addEventListener', 'pause');
@@ -190,6 +192,7 @@ function YouTubePlayer(props: EmbeddedVideoPlayerProps & { videoId: string }) {
         },
         events: {
           onReady: ({ target }) => {
+            callbackRef.current.onReady?.();
             playerRef.current = target;
             target.setPlaybackRate(props.playbackRate ?? 1);
             const resumeAt = callbackRef.current.initialPositionSec;
@@ -272,6 +275,7 @@ export default function EmbeddedVideoPlayer(props: EmbeddedVideoPlayerProps) {
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
       allowFullScreen
       title={props.title}
+      onLoad={() => props.onReady?.()}
       onError={() => props.onError?.()}
     />
   );

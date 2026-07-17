@@ -48,6 +48,10 @@ public class QaSchemaMigration implements ApplicationRunner {
                 """);
         jdbcTemplate.execute("""
                 ALTER TABLE public.qa_threads
+                ADD COLUMN IF NOT EXISTS title VARCHAR(180) NULL
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.qa_threads
                 ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'pending'
                 """);
         jdbcTemplate.execute("""
@@ -150,6 +154,10 @@ public class QaSchemaMigration implements ApplicationRunner {
         jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_qa_threads_last_activity
                 ON public.qa_threads (last_activity_at DESC)
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_qa_threads_course_visibility_activity
+                ON public.qa_threads (course_id, visibility, last_activity_at DESC)
                 """);
         jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_qa_threads_duplicate_of

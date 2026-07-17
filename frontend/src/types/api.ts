@@ -127,6 +127,7 @@ export interface CourseSummary {
   lastAccessedAt?: string | null;
   learningStatus?: 'not_started' | 'in_progress' | 'completed' | null;
   finalExamPassed?: boolean | null;
+  allRequiredExamsPassed?: boolean | null;
 }
 
 export interface CourseProgress {
@@ -208,12 +209,16 @@ export interface CourseDetail extends Omit<CourseSummary, 'isFeatured'> {
 export interface CourseReview {
   id: string;
   courseId: string;
+  courseTitle?: string | null;
   studentId: string;
   studentName: string | null;
   studentAvatarUrl: string | null;
   rating: number;
   comment: string | null;
   moderationStatus: 'PUBLISHED' | 'PENDING_MODERATION' | 'REJECTED';
+  moderationReason?: string | null;
+  moderatedBy?: string | null;
+  moderatedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

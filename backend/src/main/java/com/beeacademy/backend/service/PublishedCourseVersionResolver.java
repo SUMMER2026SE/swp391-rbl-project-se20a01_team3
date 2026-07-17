@@ -10,7 +10,6 @@ import com.beeacademy.backend.model.Lesson;
 import com.beeacademy.backend.repository.ChapterRepository;
 import com.beeacademy.backend.repository.CourseRepository;
 import com.beeacademy.backend.repository.CourseVersionRepository;
-import com.beeacademy.backend.repository.ExamConfigRepository;
 import com.beeacademy.backend.repository.QuizConfigRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,7 +31,7 @@ public class PublishedCourseVersionResolver {
     private final CourseVersionRepository courseVersionRepository;
     private final ChapterRepository chapterRepository;
     private final QuizConfigRepository quizConfigRepository;
-    private final ExamConfigRepository examConfigRepository;
+    private final ExamConfigVersionService examConfigVersionService;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -63,16 +62,19 @@ public class PublishedCourseVersionResolver {
         int versionNo = courseVersionRepository.findMaxVersionNo(course.getId()) + 1;
         course.markSubmittedVersion(versionNo);
         courseRepository.save(course);
+        List<ExamConfig> exams = examConfigVersionService.ensureDraftSet(course.getId());
         CourseVersion legacyVersion = CourseVersion.create(
                 course,
                 course.getTeacher(),
                 versionNo,
-                buildSnapshot(course, chapters));
+                buildSnapshot(course, chapters, exams));
         legacyVersion.markApproved(null);
-        return courseVersionRepository.save(legacyVersion);
+        CourseVersion saved = courseVersionRepository.save(legacyVersion);
+        examConfigVersionService.publishDrafts(course.getId(), saved.getId());
+        return saved;
     }
 
-    private String buildSnapshot(Course course, List<Chapter> chapters) {
+    private String buildSnapshot(Course course, List<Chapter> chapters, List<ExamConfig> exams) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("courseId", course.getId());
         snapshot.put("versionNo", course.getSubmittedVersionNo());
@@ -89,9 +91,7 @@ public class PublishedCourseVersionResolver {
                 .sorted(Comparator.comparing(Chapter::getPosition))
                 .map(this::chapterSnapshot)
                 .toList());
-        snapshot.put("requiredExams", examConfigRepository
-                .findByCourseIdOrderBySlotIndexAsc(course.getId())
-                .stream()
+        snapshot.put("requiredExams", exams.stream()
                 .map(this::examSnapshot)
                 .toList());
         try {

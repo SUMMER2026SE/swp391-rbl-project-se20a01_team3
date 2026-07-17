@@ -9,6 +9,7 @@ import java.util.UUID;
 
 public record QaThreadResponse(
         UUID id,
+        String title,
         UUID studentId,
         String studentName,
         UUID courseId,
@@ -34,6 +35,7 @@ public record QaThreadResponse(
                 .toList();
         return new QaThreadResponse(
                 thread.getId(),
+                resolveTitle(thread),
                 thread.getStudent().getId(),
                 studentName,
                 thread.getCourse().getId(),
@@ -48,5 +50,20 @@ public record QaThreadResponse(
                 thread.getLastActivityAt(),
                 messages
         );
+    }
+
+    private static String resolveTitle(QaThread thread) {
+        if (thread.getTitle() != null && !thread.getTitle().isBlank()) {
+            return thread.getTitle();
+        }
+        return thread.getMessages().stream()
+                .map(message -> message.getContent())
+                .filter(content -> content != null && !content.isBlank())
+                .findFirst()
+                .map(String::trim)
+                .map(content -> content.length() <= 180
+                        ? content
+                        : content.substring(0, 177) + "...")
+                .orElse("Câu hỏi khóa học");
     }
 }

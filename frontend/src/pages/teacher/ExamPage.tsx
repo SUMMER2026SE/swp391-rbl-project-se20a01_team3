@@ -1318,6 +1318,9 @@ export default function TeacherExamPage() {
     if (slot.exam) {
       setForm(syncExamTypeWithPlacement({
         ...slot.exam,
+        maxAttempts: 3,
+        requireFullscreen: true,
+        blockCopyPaste: true,
         scopeStartChapterId: slot.exam.scopeStartChapterId ?? slot.scopeStartChapter?.id,
         placementChapterId: slot.exam.placementChapterId ?? slot.placementChapter?.id,
         examType: slot.exam.examType ?? defaultExamType(slot.slotIndex),
@@ -1334,12 +1337,12 @@ export default function TeacherExamPage() {
         passScorePercent: 60,   // Exam thường khó hơn → ngưỡng pass thấp hơn
         objectiveSectionPoints: 6,
         essaySectionPoints: 4,
-        maxAttempts: 1,         // Default 1 lần — exam chỉ làm 1 lần
+        maxAttempts: 3,         // 1 lượt chính + tối đa 2 lượt thi lại theo SRS
         shuffleQuestions: true, // Default ON — chống gian lận
         shuffleOptions: true,   // Default ON — chống gian lận
         showAnswerAfterSubmit: false, // Default OFF — không lộ đề cho khóa sau
-        requireFullscreen: false,
-        blockCopyPaste: false,
+        requireFullscreen: true,
+        blockCopyPaste: true,
         questions: [],
       }, currentCourse?.chapters ?? slot.chapters, slot.slotIndex));
     }
@@ -1562,7 +1565,13 @@ export default function TeacherExamPage() {
     if (!form || selectedSlotIndex === null || !selectedCourseId || saving) return;
     const resolvedExamType = resolveExamType(currentCourse?.chapters ?? [], form.placementChapterId, selectedSlotIndex);
     const normalizedForm = redistributeQuestionPoints(syncExamTypeWithPlacement(
-      { ...form, examType: resolvedExamType },
+      {
+        ...form,
+        examType: resolvedExamType,
+        maxAttempts: 3,
+        requireFullscreen: true,
+        blockCopyPaste: true,
+      },
       currentCourse?.chapters ?? [],
       selectedSlotIndex,
     ));
@@ -2188,19 +2197,19 @@ export default function TeacherExamPage() {
                     {/* Số lần làm lại */}
                     <label className="flex items-center gap-3 rounded-xl border border-outline-variant/25 bg-surface-container-lowest px-4 py-3">
                       <Repeat className="w-4 h-4 text-on-surface-variant flex-shrink-0" />
-                      <span className="text-sm text-on-surface flex-1">Số lần làm tối đa</span>
+                      <span className="text-sm text-on-surface flex-1">Số lần làm tối đa (1 chính + 2 thi lại)</span>
                       <input
                         type="number"
-                        min={1}
-                        max={5}
+                        min={3}
+                        max={3}
                         value={form.maxAttempts}
-                        onChange={e => setForm({ ...form, maxAttempts: parseInt(e.target.value) || 1 })}
+                        disabled
                         className="w-20 px-3 py-1.5 text-sm bg-surface-container border border-outline-variant rounded-lg focus:outline-none focus:border-primary text-on-surface text-center"
                       />
                     </label>
 
                     {/* Toggle: xáo trộn câu hỏi */}
-                    <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-outline-variant/25 bg-surface-container-lowest px-4 py-3">
+                    <label className="flex items-center gap-3 rounded-xl border border-outline-variant/25 bg-surface-container-lowest px-4 py-3">
                       <Shuffle className="w-4 h-4 text-on-surface-variant flex-shrink-0" />
                       <span className="text-sm text-on-surface flex-1">
                         Xáo trộn thứ tự câu hỏi
@@ -2245,22 +2254,22 @@ export default function TeacherExamPage() {
 
                     <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-outline-variant/25 bg-surface-container-lowest px-4 py-3">
                       <Eye className="w-4 h-4 text-on-surface-variant flex-shrink-0" />
-                      <span className="text-sm text-on-surface flex-1">Yêu cầu fullscreen khi làm bài</span>
+                      <span className="text-sm text-on-surface flex-1">Yêu cầu fullscreen khi làm bài (bắt buộc)</span>
                       <input
                         type="checkbox"
-                        checked={form.requireFullscreen}
-                        onChange={e => setForm({ ...form, requireFullscreen: e.target.checked })}
+                        checked
+                        disabled
                         className="w-5 h-5 accent-primary"
                       />
                     </label>
 
-                    <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-outline-variant/25 bg-surface-container-lowest px-4 py-3">
+                    <label className="flex items-center gap-3 rounded-xl border border-outline-variant/25 bg-surface-container-lowest px-4 py-3">
                       <Lock className="w-4 h-4 text-on-surface-variant flex-shrink-0" />
-                      <span className="text-sm text-on-surface flex-1">Chặn copy/paste trong lúc làm bài</span>
+                      <span className="text-sm text-on-surface flex-1">Chặn copy/paste trong lúc làm bài (bắt buộc)</span>
                       <input
                         type="checkbox"
-                        checked={form.blockCopyPaste}
-                        onChange={e => setForm({ ...form, blockCopyPaste: e.target.checked })}
+                        checked
+                        disabled
                         className="w-5 h-5 accent-primary"
                       />
                     </label>

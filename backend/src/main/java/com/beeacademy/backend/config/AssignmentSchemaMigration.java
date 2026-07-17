@@ -24,7 +24,52 @@ public class AssignmentSchemaMigration implements ApplicationRunner {
                 """, Boolean.class);
         if (!Boolean.TRUE.equals(hasCoursesTable)) return;
 
-        log.info("Ensuring essay assignment indexes exist");
+        log.info("Ensuring UC16 assignment policy columns and indexes exist");
+        jdbcTemplate.execute("""
+                ALTER TABLE public.assignments
+                ADD COLUMN IF NOT EXISTS max_attempts INTEGER NOT NULL DEFAULT 3
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.assignments
+                ADD COLUMN IF NOT EXISTS allow_late_submission BOOLEAN NOT NULL DEFAULT FALSE
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.assignments
+                ADD COLUMN IF NOT EXISTS late_penalty_percent INTEGER NOT NULL DEFAULT 0
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.assignments
+                ADD COLUMN IF NOT EXISTS accepting_submissions BOOLEAN NOT NULL DEFAULT TRUE
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.assignment_submissions
+                ADD COLUMN IF NOT EXISTS attempt_number INTEGER NOT NULL DEFAULT 1
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.assignment_submissions
+                ADD COLUMN IF NOT EXISTS late BOOLEAN NOT NULL DEFAULT FALSE
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.assignment_submissions
+                ADD COLUMN IF NOT EXISTS late_penalty_percent INTEGER NOT NULL DEFAULT 0
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.assignment_submissions
+                ADD COLUMN IF NOT EXISTS raw_score INTEGER
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.assignment_submissions
+                ADD COLUMN IF NOT EXISTS expected_graded_by TIMESTAMPTZ
+                """);
+        jdbcTemplate.execute("""
+                UPDATE public.assignment_submissions
+                SET expected_graded_by = submitted_at + INTERVAL '7 days'
+                WHERE expected_graded_by IS NULL
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.assignment_submissions
+                ALTER COLUMN expected_graded_by SET NOT NULL
+                """);
         jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_assignments_chapter
                 ON public.assignments (chapter_id)

@@ -4,11 +4,13 @@ import com.beeacademy.backend.dto.request.ExamConfigRequest;
 import com.beeacademy.backend.dto.request.ExamAiDraftRequest;
 import com.beeacademy.backend.dto.request.ExamAiReviewRequest;
 import com.beeacademy.backend.dto.request.ExamQuestionRandomRequest;
+import com.beeacademy.backend.dto.request.ExamIntegrityEventRequest;
 import com.beeacademy.backend.dto.request.GradeExamAttemptRequest;
 import com.beeacademy.backend.dto.request.SaveExamDraftRequest;
 import com.beeacademy.backend.dto.request.SubmitExamRequest;
 import com.beeacademy.backend.dto.response.ExamAiDraftResponse;
 import com.beeacademy.backend.dto.response.ExamConfigResponse;
+import com.beeacademy.backend.dto.response.ExamIntegrityEventResponse;
 import com.beeacademy.backend.dto.response.QuestionResponse;
 import com.beeacademy.backend.dto.response.QuestionStatsResponse;
 import com.beeacademy.backend.dto.response.StudentExamResponse;
@@ -19,6 +21,7 @@ import com.beeacademy.backend.exception.BusinessException;
 import com.beeacademy.backend.exception.ResourceNotFoundException;
 import com.beeacademy.backend.model.Chapter;
 import com.beeacademy.backend.model.Course;
+import com.beeacademy.backend.model.Enrollment;
 import com.beeacademy.backend.model.ExamAiAuditLog;
 import com.beeacademy.backend.model.ExamAttempt;
 import com.beeacademy.backend.model.ExamConfig;
@@ -29,7 +32,6 @@ import com.beeacademy.backend.model.QuestionChoice;
 import com.beeacademy.backend.model.RewardAssessmentType;
 import com.beeacademy.backend.repository.ChapterRepository;
 import com.beeacademy.backend.repository.CourseRepository;
-import com.beeacademy.backend.repository.CourseVersionRepository;
 import com.beeacademy.backend.repository.CourseProgressItemRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
 import com.beeacademy.backend.repository.ExamAiAuditLogRepository;
@@ -73,8 +75,8 @@ public class ExamService {
 
     private static final int FIXED_EXAM_SLOT_COUNT = 4;
     private static final int FINAL_EXAM_SLOT_INDEX = 3;
+    private static final int REQUIRED_EXAM_MAX_ATTEMPTS = 3;
     private static final double EXAM_TOTAL_POINTS = 10.0;
-    private static final long RETAKE_WINDOW_DAYS = 14L;
     private static final String ITEM_LESSON = "lesson";
     private static final String EXAM_TYPE_QUIZ = "quiz";
     private static final String EXAM_TYPE_CHAPTER_TEST = "chapter_test";
@@ -105,8 +107,8 @@ public class ExamService {
     private final ExamConfigRepository examRepository;
     private final ExamAttemptRepository examAttemptRepository;
     private final CourseRepository courseRepository;
-    private final CourseVersionRepository courseVersionRepository;
     private final EnrollmentRepository enrollmentRepository;
+    private final ExamConfigVersionService examConfigVersionService;
     private final CourseProgressItemRepository progressItemRepository;
     private final ChapterRepository chapterRepository;
     private final ProfileRepository profileRepository;
@@ -120,13 +122,14 @@ public class ExamService {
     private final RewardService rewardService;
     private final CertificateService certificateService;
     private final ExamRetakeService examRetakeService;
+    private final ExamIntegrityService examIntegrityService;
     private final TeacherAccessService teacherAccessService;
 
     @Transactional(readOnly = true)
     public List<ExamConfigResponse> listExams(UUID courseId, AuthenticatedUser me) {
         teacherAccessService.requireApprovedTeacher(me);
         loadOwnedCourse(courseId, me.userId());
-        return examRepository.findByCourseIdOrderBySlotIndexAsc(courseId).stream()
+        return examConfigVersionService.currentForAuthoring(courseId).stream()
                 .map(config -> ExamConfigResponse.fromEntity(config, objectMapper))
                 .toList();
     }
@@ -135,7 +138,7 @@ public class ExamService {
     public ExamConfigResponse getExam(UUID courseId, Integer slotIndex, AuthenticatedUser me) {
         teacherAccessService.requireApprovedTeacher(me);
         loadOwnedCourse(courseId, me.userId());
-        return examRepository.findByCourseIdAndSlotIndex(courseId, slotIndex)
+        return examConfigVersionService.currentForAuthoring(courseId, slotIndex)
                 .map(config -> ExamConfigResponse.fromEntity(config, objectMapper))
                 .orElseThrow(() -> new BusinessException("EXAM_NOT_FOUND",
                         "Chưa có bài kiểm tra cho vị trí này.", HttpStatus.NOT_FOUND));
@@ -143,8 +146,8 @@ public class ExamService {
 
     @Transactional(readOnly = true)
     public List<StudentExamResponse> listStudentExams(UUID courseId, AuthenticatedUser me) {
-        requireStudentEnrollment(courseId, me.userId());
-        return examRepository.findStudentVisibleByCourseId(courseId).stream()
+        Enrollment enrollment = requireStudentEnrollment(courseId, me.userId());
+        return examConfigVersionService.forEnrollment(enrollment).stream()
                 .filter(config -> isFixedExamSlot(config.getSlotIndex()))
                 .filter(config -> isExamUnlockedForStudent(config, me.userId()))
                 .map(config -> StudentExamResponse.fromEntity(config, objectMapper, me.userId()))
@@ -154,13 +157,14 @@ public class ExamService {
     @Transactional(readOnly = true)
     public StudentExamResponse getStudentExam(UUID courseId, Integer slotIndex, AuthenticatedUser me) {
         validateSlot(slotIndex);
-        requireStudentEnrollment(courseId, me.userId());
-        return examRepository.findStudentVisibleByCourseIdAndSlotIndex(courseId, slotIndex)
-                .filter(config -> isExamUnlockedForStudent(config, me.userId()))
-                .map(config -> StudentExamResponse.fromEntity(config, objectMapper, me.userId()))
+        Enrollment enrollment = requireStudentEnrollment(courseId, me.userId());
+        ExamConfig config = examConfigVersionService.forEnrollment(enrollment, slotIndex)
+                .filter(candidate -> isExamUnlockedForStudent(candidate, me.userId()))
                 .orElseThrow(() -> new BusinessException("EXAM_NOT_FOUND",
                         "Bai kiem tra chua duoc mo. Hay hoan thanh 100% noi dung trong pham vi.",
                         HttpStatus.FORBIDDEN));
+        examRetakeService.enforceAttemptAllowed(enrollment, config);
+        return StudentExamResponse.fromEntity(config, objectMapper, me.userId());
     }
 
     @Transactional
@@ -170,19 +174,19 @@ public class ExamService {
             AuthenticatedUser me,
             SubmitExamRequest request) {
         validateSlot(slotIndex);
-        requireStudentEnrollment(courseId, me.userId());
+        Enrollment enrollment = requireStudentEnrollment(courseId, me.userId());
         if (request == null || request.answers() == null) {
             throw new BusinessException("INVALID_SUBMISSION",
                     "Thieu danh sach cau tra loi.");
         }
         validateAnswerImages(me.userId(), request.answers());
 
-        ExamConfig config = examRepository.findStudentVisibleByCourseIdAndSlotIndex(courseId, slotIndex)
+        ExamConfig config = examConfigVersionService.forEnrollment(enrollment, slotIndex)
                 .orElseThrow(() -> new BusinessException("EXAM_NOT_FOUND",
                         "Chua co bai kiem tra cho vi tri nay.", HttpStatus.NOT_FOUND));
         requireExamUnlockedForStudent(config, me.userId());
 
-        int submittedCount = enforceStudentAttemptWindow(me.userId(), config);
+        int submittedCount = examRetakeService.enforceAttemptAllowed(enrollment, config);
 
         List<SnapshotExamQuestion> questions = readSnapshotQuestions(config.getQuestionsJson());
         ExamScoringSummary scoringSummary = scoreObjectiveQuestions(questions, request.answers());
@@ -191,14 +195,7 @@ public class ExamService {
                 : scoringSummary.autoScorePercent() >= effectivePassScorePercent(config);
 
         Profile student = loadProfile(me.userId());
-        ExamAttempt attempt = examAttemptRepository
-                .findFirstByStudentIdAndExamConfigIdAndSubmittedAtIsNullOrderByStartedAtDesc(
-                        me.userId(), config.getId())
-                .orElseGet(() -> ExamAttempt.start(
-                        student,
-                        config,
-                        config.getQuestionsJson(),
-                        submittedCount + 1));
+        ExamAttempt attempt = getOrCreateOpenAttempt(student, config, submittedCount);
         attempt.submit(toJson(request.answers()), scoringSummary.autoScorePercent(), passed);
         ExamAttempt saved = examAttemptRepository.save(attempt);
 
@@ -241,29 +238,64 @@ public class ExamService {
             AuthenticatedUser me,
             SaveExamDraftRequest request) {
         validateSlot(slotIndex);
-        requireStudentEnrollment(courseId, me.userId());
+        Enrollment enrollment = requireStudentEnrollment(courseId, me.userId());
         if (request == null || request.answers() == null) {
             throw new BusinessException("INVALID_DRAFT", "Thieu danh sach cau tra loi.");
         }
         validateAnswerImages(me.userId(), request.answers());
 
-        ExamConfig config = examRepository.findStudentVisibleByCourseIdAndSlotIndex(courseId, slotIndex)
+        ExamConfig config = examConfigVersionService.forEnrollment(enrollment, slotIndex)
                 .orElseThrow(() -> new BusinessException("EXAM_NOT_FOUND",
                         "Chua co bai kiem tra cho vi tri nay.", HttpStatus.NOT_FOUND));
         requireExamUnlockedForStudent(config, me.userId());
 
-        int submittedCount = enforceStudentAttemptWindow(me.userId(), config);
+        int submittedCount = examRetakeService.enforceAttemptAllowed(enrollment, config);
         Profile student = loadProfile(me.userId());
-        ExamAttempt attempt = examAttemptRepository
+        ExamAttempt attempt = getOrCreateOpenAttempt(student, config, submittedCount);
+        attempt.saveDraft(toJson(request.answers()));
+        examAttemptRepository.save(attempt);
+    }
+
+    @Transactional
+    public ExamIntegrityEventResponse recordStudentExamIntegrityEvent(
+            UUID courseId,
+            Integer slotIndex,
+            AuthenticatedUser me,
+            ExamIntegrityEventRequest request) {
+        validateSlot(slotIndex);
+        Enrollment enrollment = requireStudentEnrollment(courseId, me.userId());
+        ExamConfig config = examConfigVersionService.forEnrollment(enrollment, slotIndex)
+                .orElseThrow(() -> new BusinessException(
+                        "EXAM_NOT_FOUND",
+                        "Chưa có bài kiểm tra cho vị trí này.",
+                        HttpStatus.NOT_FOUND));
+        requireExamUnlockedForStudent(config, me.userId());
+
+        int submittedCount = examRetakeService.enforceAttemptAllowed(enrollment, config);
+        Profile student = loadProfile(me.userId());
+        ExamAttempt attempt = getOrCreateOpenAttempt(student, config, submittedCount);
+        examAttemptRepository.saveAndFlush(attempt);
+
+        return examIntegrityService.record(
+                enrollment,
+                config,
+                attempt,
+                request.eventId(),
+                request.eventType());
+    }
+
+    private ExamAttempt getOrCreateOpenAttempt(
+            Profile student,
+            ExamConfig config,
+            int submittedCount) {
+        return examAttemptRepository
                 .findFirstByStudentIdAndExamConfigIdAndSubmittedAtIsNullOrderByStartedAtDesc(
-                        me.userId(), config.getId())
+                        student.getId(), config.getId())
                 .orElseGet(() -> ExamAttempt.start(
                         student,
                         config,
                         config.getQuestionsJson(),
                         submittedCount + 1));
-        attempt.saveDraft(toJson(request.answers()));
-        examAttemptRepository.save(attempt);
     }
 
     private void notifyTeacherAboutEssaySubmission(
@@ -459,30 +491,26 @@ public class ExamService {
                 scopeStartChapter, placementChapter);
 
         String questionsJson = toJson(req.questions());
-        ExamConfig config = examRepository.findByCourseIdAndSlotIndex(courseId, slotIndex)
+        List<ExamConfig> drafts = examConfigVersionService.ensureDraftSet(courseId);
+        ExamConfig config = drafts.stream()
+                .filter(item -> slotIndex.equals(item.getSlotIndex()))
+                .findFirst()
                 .orElse(null);
 
         if (config == null) {
             config = ExamConfig.create(course, teacher, slotIndex, scopeStartChapter, placementChapter,
                     req.name().trim(), trimToNull(req.description()),
-                    req.durationMinutes(), req.passScorePercent(), req.maxAttempts(),
+                    req.durationMinutes(), req.passScorePercent(), REQUIRED_EXAM_MAX_ATTEMPTS,
                     req.shuffleQuestions(), req.shuffleOptions(), req.showAnswerAfterSubmit(),
-                    resolvedExamType, req.requireFullscreen(), req.blockCopyPaste(),
+                    resolvedExamType, true, true,
                     questionsJson);
         } else {
             config.update(scopeStartChapter, placementChapter, req.name().trim(), trimToNull(req.description()),
-                    req.durationMinutes(), req.passScorePercent(), req.maxAttempts(),
+                    req.durationMinutes(), req.passScorePercent(), REQUIRED_EXAM_MAX_ATTEMPTS,
                     req.shuffleQuestions(), req.shuffleOptions(), req.showAnswerAfterSubmit(),
-                    resolvedExamType, req.requireFullscreen(), req.blockCopyPaste(),
+                    resolvedExamType, true, true,
                     questionsJson);
         }
-        var latestVersion = courseVersionRepository.findByCourseIdOrderByVersionNoDesc(courseId).stream()
-                .findFirst()
-                .orElse(null);
-        if (latestVersion != null) {
-            config.assignCourseVersion(latestVersion.getId());
-        }
-
         ExamConfig saved = examRepository.save(config);
         recordApprovedAiQuestions(courseId, me.userId(), req);
         log.info("Teacher {} saved exam course={} slot={}", me.userId(), courseId, slotIndex);
@@ -493,7 +521,8 @@ public class ExamService {
     public void deleteExam(UUID courseId, Integer slotIndex, AuthenticatedUser me) {
         teacherAccessService.requireApprovedTeacher(me);
         loadOwnedCourse(courseId, me.userId());
-        ExamConfig config = examRepository.findByCourseIdAndSlotIndex(courseId, slotIndex)
+        examConfigVersionService.ensureDraftSet(courseId);
+        ExamConfig config = examRepository.findByCourseIdAndDraftTrueAndSlotIndex(courseId, slotIndex)
                 .orElseThrow(() -> new BusinessException("EXAM_NOT_FOUND",
                         "Chưa có bài kiểm tra cho vị trí này.", HttpStatus.NOT_FOUND));
         examRepository.delete(config);
@@ -537,7 +566,7 @@ public class ExamService {
                 RewardAssessmentType.EXAM,
                 saved.getExamConfig().getId(),
                 request.scorePercent());
-        certificateService.handleFinalExamGradeChanged(saved);
+        certificateService.handleRequiredExamGradeChanged(saved);
         userNotificationService.notify(
                 saved.getStudent().getId(),
                 "exam_graded",
@@ -860,32 +889,6 @@ public class ExamService {
         return value != null && value >= 0 ? value : 60;
     }
 
-    private int enforceStudentAttemptWindow(UUID studentId, ExamConfig config) {
-        int submittedCount = examAttemptRepository.countByStudentIdAndExamConfigIdAndSubmittedAtIsNotNull(
-                studentId, config.getId());
-        // BRULE-RETAKE-001: lượt được GV/Admin duyệt thêm cộng vào maxAttempts gốc.
-        int allowedAttempts = config.getMaxAttempts()
-                + examRetakeService.extraAttemptsGranted(studentId, config.getId());
-        if (submittedCount >= allowedAttempts) {
-            throw new BusinessException("RETAKE_LOCKED",
-                    "Ban da het luot lam bai kiem tra. Hay gui yeu cau mo them luot neu can.",
-                    HttpStatus.FORBIDDEN);
-        }
-        examAttemptRepository.findFirstByStudentIdAndExamConfigIdAndSubmittedAtIsNotNullOrderBySubmittedAtAsc(
-                        studentId, config.getId())
-                .filter(firstAttempt -> firstAttempt.getSubmittedAt() != null)
-                .filter(firstAttempt -> firstAttempt.getSubmittedAt()
-                        .isBefore(Instant.now().minus(RETAKE_WINDOW_DAYS, ChronoUnit.DAYS)))
-                // Lần duyệt gần nhất mở lại cửa sổ làm bài đến retake_expire_at.
-                .filter(firstAttempt -> !examRetakeService.hasActiveRetakeWindow(studentId, config.getId()))
-                .ifPresent(firstAttempt -> {
-                    throw new BusinessException("RETAKE_LOCKED",
-                            "Da qua han 14 ngay ke tu lan nop dau tien. Hay gui yeu cau mo them luot.",
-                            HttpStatus.FORBIDDEN);
-                });
-        return submittedCount;
-    }
-
     private boolean isFixedExamSlot(Integer slotIndex) {
         return slotIndex != null && slotIndex >= 0 && slotIndex < FIXED_EXAM_SLOT_COUNT;
     }
@@ -1051,17 +1054,15 @@ public class ExamService {
         return course;
     }
 
-    private void requireStudentEnrollment(UUID courseId, UUID studentId) {
+    private Enrollment requireStudentEnrollment(UUID courseId, UUID studentId) {
         if (!courseRepository.existsById(courseId)) {
             throw new ResourceNotFoundException("Course", courseId);
         }
-        if (!enrollmentRepository.existsByStudentIdAndCourseId(studentId, courseId)) {
-            throw new BusinessException(
-                    "COURSE_NOT_ENROLLED",
-                    "Ban can ghi danh khoa hoc truoc khi lam bai kiem tra.",
-                    HttpStatus.FORBIDDEN
-            );
-        }
+        return enrollmentRepository.findByStudentIdAndCourseId(studentId, courseId)
+                .orElseThrow(() -> new BusinessException(
+                        "COURSE_NOT_ENROLLED",
+                        "Ban can ghi danh khoa hoc truoc khi lam bai kiem tra.",
+                        HttpStatus.FORBIDDEN));
     }
 
     private Profile loadProfile(UUID profileId) {
@@ -1278,7 +1279,7 @@ public class ExamService {
                                                    Chapter scopeStartChapter,
                                                    Chapter placementChapter) {
         Map<Integer, ChapterRange> ranges = new HashMap<>();
-        for (ExamConfig exam : examRepository.findByCourseIdOrderBySlotIndexAsc(courseId)) {
+        for (ExamConfig exam : examConfigVersionService.currentForAuthoring(courseId)) {
             if (exam.getSlotIndex() == null || !isFixedExamSlot(exam.getSlotIndex())
                     || exam.getScopeStartChapter() == null || exam.getPlacementChapter() == null
                     || exam.getSlotIndex().equals(slotIndex)) {

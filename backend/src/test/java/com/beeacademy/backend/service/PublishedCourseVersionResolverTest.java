@@ -6,7 +6,6 @@ import com.beeacademy.backend.model.CourseVersion;
 import com.beeacademy.backend.repository.ChapterRepository;
 import com.beeacademy.backend.repository.CourseRepository;
 import com.beeacademy.backend.repository.CourseVersionRepository;
-import com.beeacademy.backend.repository.ExamConfigRepository;
 import com.beeacademy.backend.repository.QuizConfigRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -31,7 +30,7 @@ class PublishedCourseVersionResolverTest {
     @Mock CourseVersionRepository courseVersionRepository;
     @Mock ChapterRepository chapterRepository;
     @Mock QuizConfigRepository quizConfigRepository;
-    @Mock ExamConfigRepository examConfigRepository;
+    @Mock ExamConfigVersionService examConfigVersionService;
 
     @Test
     void publishedLegacyCourseGetsApprovedSnapshot() {
@@ -49,7 +48,7 @@ class PublishedCourseVersionResolverTest {
         when(courseVersionRepository.findMaxVersionNo(courseId)).thenReturn(0);
         when(chapterRepository.findWithLessonsByCourseId(courseId)).thenReturn(List.of());
         when(quizConfigRepository.findByCourseIds(List.of(courseId))).thenReturn(List.of());
-        when(examConfigRepository.findByCourseIdOrderBySlotIndexAsc(courseId)).thenReturn(List.of());
+        when(examConfigVersionService.ensureDraftSet(courseId)).thenReturn(List.of());
         when(courseVersionRepository.save(any(CourseVersion.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -58,7 +57,7 @@ class PublishedCourseVersionResolverTest {
                 courseVersionRepository,
                 chapterRepository,
                 quizConfigRepository,
-                examConfigRepository,
+                examConfigVersionService,
                 new ObjectMapper());
 
         CourseVersion resolved = resolver.resolve(course);

@@ -112,6 +112,7 @@ public class ParentService {
     private final CourseRepository courseRepository;
     private final QuizConfigRepository quizConfigRepository;
     private final ExamConfigRepository examConfigRepository;
+    private final ExamConfigVersionService examConfigVersionService;
     private final QuizAttemptRepository quizAttemptRepository;
     private final ExamAttemptRepository examAttemptRepository;
     private final AssignmentSubmissionRepository assignmentSubmissionRepository;
@@ -1214,22 +1215,20 @@ public class ParentService {
 
         UUID courseId = course.getId();
         UUID courseVersionId = enrollment.getCourseVersionId();
-        List<ExamConfig> versionExamConfigs = examConfigs.stream()
-                .filter(config -> courseVersionId == null
-                        || courseVersionId.equals(config.getCourseVersionId()))
-                .toList();
+        List<ExamConfig> versionExamConfigs = examConfigVersionService.forEnrollment(enrollment);
+        Set<UUID> versionExamConfigIds = versionExamConfigs.stream()
+                .map(ExamConfig::getId)
+                .collect(Collectors.toSet());
         List<QuizAttempt> courseQuizAttempts = quizAttempts.stream()
                 .filter(attempt -> attempt.getQuizConfig().getChapter().getCourse().getId().equals(courseId))
                 .toList();
         List<ExamAttempt> courseExamAttempts = examAttempts.stream()
                 .filter(attempt -> attempt.getExamConfig().getCourse().getId().equals(courseId))
-                .filter(attempt -> courseVersionId == null
-                        || courseVersionId.equals(attempt.getExamConfig().getCourseVersionId()))
+                .filter(attempt -> versionExamConfigIds.contains(attempt.getExamConfig().getId()))
                 .toList();
         List<ExamAttempt> courseAllExamAttempts = allExamAttempts.stream()
                 .filter(attempt -> attempt.getExamConfig().getCourse().getId().equals(courseId))
-                .filter(attempt -> courseVersionId == null
-                        || courseVersionId.equals(attempt.getExamConfig().getCourseVersionId()))
+                .filter(attempt -> versionExamConfigIds.contains(attempt.getExamConfig().getId()))
                 .toList();
         List<AssignmentSubmission> courseAssignmentSubmissions = assignmentSubmissions.stream()
                 .filter(submission -> courseId.equals(resolveAssignmentCourseId(submission)))
