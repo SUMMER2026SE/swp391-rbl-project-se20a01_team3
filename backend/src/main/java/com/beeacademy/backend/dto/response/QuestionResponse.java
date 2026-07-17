@@ -12,6 +12,8 @@ public record QuestionResponse(
         UUID id,
         String content,
         String explanation,
+        Double defaultPoints,
+        List<String> tags,
         JsonNode metadata,
         String difficulty,
         String type,
@@ -38,6 +40,8 @@ public record QuestionResponse(
                 q.getId(),
                 q.getContent(),
                 q.getExplanation(),
+                q.getDefaultPoints(),
+                parseStringList(q.getTagsJson(), mapper),
                 parseMetadata(q.getMetadataJson(), mapper),
                 q.getDifficulty(),
                 q.getType(),
@@ -61,6 +65,8 @@ public record QuestionResponse(
                 id,
                 content,
                 explanation,
+                defaultPoints,
+                tags,
                 metadata,
                 difficulty,
                 type,
@@ -86,6 +92,8 @@ public record QuestionResponse(
                 q.getId(),
                 q.getContent(),
                 null,
+                q.getDefaultPoints(),
+                parseStringList(q.getTagsJson(), mapper),
                 parseMetadata(q.getMetadataJson(), mapper),
                 q.getDifficulty(),
                 q.getType(),
@@ -112,6 +120,17 @@ public record QuestionResponse(
             return mapper.readTree(metadataJson);
         } catch (Exception ignored) {
             return null;
+        }
+    }
+
+    private static List<String> parseStringList(String json, ObjectMapper mapper) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return mapper.readerForListOf(String.class).readValue(json);
+        } catch (Exception ignored) {
+            return List.of();
         }
     }
 }

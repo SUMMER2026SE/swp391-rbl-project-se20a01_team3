@@ -2,7 +2,7 @@ package com.beeacademy.backend.model;
 
 public enum ParentStudentLinkStatus {
     PENDING("pending"),
-    ACCEPTED("active"),
+    ACTIVE("active"),
     REJECTED("rejected"),
     EXPIRED("expired"),
     REVOKED("revoked");
@@ -18,21 +18,19 @@ public enum ParentStudentLinkStatus {
     }
 
     public String toApiValue() {
-        return switch (this) {
-            case PENDING -> "pending";
-            case ACCEPTED -> "active";
-            case REJECTED -> "rejected";
-            case EXPIRED -> "expired";
-            case REVOKED -> "revoked";
-        };
+        return dbValue;
     }
 
     public static ParentStudentLinkStatus fromDbValue(String value) {
         if (value == null) {
-            return ACCEPTED;
+            return ACTIVE;
         }
 
         String normalizedValue = value.trim();
+        // Compatibility for deployments that stored the pre-SRS status name.
+        if ("accepted".equalsIgnoreCase(normalizedValue)) {
+            return ACTIVE;
+        }
         for (ParentStudentLinkStatus status : values()) {
             if (status.dbValue.equalsIgnoreCase(normalizedValue)
                     || status.toApiValue().equalsIgnoreCase(normalizedValue)) {

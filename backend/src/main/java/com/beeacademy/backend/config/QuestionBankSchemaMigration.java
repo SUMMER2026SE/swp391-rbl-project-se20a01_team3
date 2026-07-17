@@ -38,6 +38,7 @@ public class QuestionBankSchemaMigration implements ApplicationRunner {
 
         ensureQuestionTypeValues();
         ensureMetadataColumn();
+        ensureQuestionPointAndTagColumns();
         ensureGradeColumn();
         ensureQuestionBankSchema();
     }
@@ -91,6 +92,22 @@ public class QuestionBankSchemaMigration implements ApplicationRunner {
                 """, Boolean.class);
         if (!Boolean.TRUE.equals(hasMetadataColumn)) {
             jdbcTemplate.execute("ALTER TABLE public.questions ADD COLUMN metadata_json TEXT");
+        }
+    }
+
+    private void ensureQuestionPointAndTagColumns() {
+        jdbcTemplate.execute("ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS default_points NUMERIC(6,2)");
+        jdbcTemplate.execute("ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS tags_json JSONB NOT NULL DEFAULT '[]'::jsonb");
+        Boolean hasQuestionVersionsTable = jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = 'question_versions'
+                )
+                """, Boolean.class);
+        if (Boolean.TRUE.equals(hasQuestionVersionsTable)) {
+            jdbcTemplate.execute("ALTER TABLE public.question_versions ADD COLUMN IF NOT EXISTS default_points NUMERIC(6,2)");
+            jdbcTemplate.execute("ALTER TABLE public.question_versions ADD COLUMN IF NOT EXISTS tags_json JSONB NOT NULL DEFAULT '[]'::jsonb");
         }
     }
 

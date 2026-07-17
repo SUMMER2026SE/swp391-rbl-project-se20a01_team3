@@ -50,6 +50,7 @@ public record StudentExamResponse(
 
     private record StoredExamQuestion(
             String id,
+            UUID questionVersionId,
             String text,
             String type,
             List<String> options,

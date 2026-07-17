@@ -16,7 +16,9 @@ import com.beeacademy.backend.security.CurrentUser;
 import com.beeacademy.backend.service.ParentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -93,6 +95,26 @@ public class ParentController {
             @RequestParam(required = false) LocalDate to) {
         AuthenticatedUser me = CurrentUser.required();
         return ApiResponse.ok(parentService.getChildProgressReport(me, studentId, courseId, from, to));
+    }
+
+    @GetMapping(
+            value = "/children/{studentId}/progress-report/export",
+            produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    public ResponseEntity<byte[]> exportChildProgressReport(
+            @PathVariable UUID studentId,
+            @RequestParam(required = false) UUID courseId,
+            @RequestParam(required = false) LocalDate from,
+            @RequestParam(required = false) LocalDate to) {
+        AuthenticatedUser me = CurrentUser.required();
+        byte[] workbook = parentService.exportChildProgressReportExcel(me, studentId, courseId, from, to);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"parent-progress-" + studentId + ".xlsx\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .contentLength(workbook.length)
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(workbook);
     }
 
     @GetMapping("/children/{studentId}/payment-history")

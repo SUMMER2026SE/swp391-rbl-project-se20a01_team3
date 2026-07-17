@@ -178,6 +178,7 @@ public class QaSchemaMigration implements ApplicationRunner {
                     ADD COLUMN IF NOT EXISTS attachment_size_bytes BIGINT NULL,
                     ADD COLUMN IF NOT EXISTS moderation_status VARCHAR(30) NOT NULL DEFAULT 'approved',
                     ADD COLUMN IF NOT EXISTS moderation_reason TEXT NULL,
+                    ADD COLUMN IF NOT EXISTS retention_until TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '12 months'),
                     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NULL,
                     ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ NULL
                 """);
@@ -188,6 +189,10 @@ public class QaSchemaMigration implements ApplicationRunner {
         jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_qa_messages_created_at
                 ON public.qa_messages (created_at ASC)
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_qa_messages_retention_until
+                ON public.qa_messages (retention_until)
                 """);
         jdbcTemplate.execute("""
                 DO $$

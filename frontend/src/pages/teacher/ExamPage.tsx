@@ -62,6 +62,7 @@ type Difficulty = 'easy' | 'medium' | 'hard';
 
 interface ExamQuestion {
   id: string;
+  questionVersionId?: string | null;
   text: string;
   type: QuestionType;
   options: string[];
@@ -263,6 +264,7 @@ function makeLocalQuestionId(prefix: string) {
 function createDirectExamQuestion(points: number): ExamQuestion {
   return {
     id: makeLocalQuestionId('manual'),
+    questionVersionId: null,
     text: '',
     type: 'multiple_choice',
     options: ['', '', '', ''],
@@ -471,6 +473,7 @@ function examFromResponse(response: ExamConfigResponse): Exam {
 function questionFromPayload(payload: ExamQuestionPayload): ExamQuestion {
   return {
     id: payload.id,
+    questionVersionId: payload.questionVersionId ?? null,
     text: payload.text,
     type: payload.type,
     options: [...(payload.options ?? [])],
@@ -515,6 +518,7 @@ function examToRequest(exam: Exam, confirmUnderTenQuestions = false): ExamConfig
     confirmUnderTenQuestions,
     questions: orderExamQuestionsObjectiveFirst(exam.questions).map(q => ({
       id: q.id,
+      questionVersionId: q.questionVersionId ?? null,
       text: q.text.trim(),
       type: q.type,
       options: isObjectiveExamType(q.type) ? q.options.map(opt => opt.trim()) : [],

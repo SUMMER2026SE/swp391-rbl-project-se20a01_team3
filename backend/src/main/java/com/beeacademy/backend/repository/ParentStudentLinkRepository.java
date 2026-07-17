@@ -51,6 +51,17 @@ public interface ParentStudentLinkRepository extends JpaRepository<ParentStudent
             @Param("studentId") UUID studentId,
             @Param("status") String status);
 
+    @Query(value = """
+            SELECT *
+            FROM parent_student_links
+            WHERE student_id = :studentId
+              AND CAST(status AS text) IN (:statuses)
+            ORDER BY invited_at DESC
+            """, nativeQuery = true)
+    List<ParentStudentLink> findByIdStudentIdAndStatusesOrderByInvitedAtDesc(
+            @Param("studentId") UUID studentId,
+            @Param("statuses") List<String> statuses);
+
     /**
      * Tìm một liên kết cụ thể giữa một phụ huynh và một học sinh.
      * 

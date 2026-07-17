@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -76,6 +77,8 @@ class CourseProgressServiceTest {
         when(enrollmentRepository.findByStudentIdAndCourseId(studentId, courseId)).thenReturn(Optional.of(enrollment));
         when(progressRepository.findByStudentIdAndCourseId(studentId, courseId)).thenReturn(List.of());
 
+        Instant updateStartedAt = Instant.now();
+
         var response = service.completeItem(
                 courseId,
                 student(studentId),
@@ -89,6 +92,7 @@ class CourseProgressServiceTest {
         assertThat(captor.getValue().getItemId()).isEqualTo(lessonId);
         assertThat(captor.getValue().getItemType()).isEqualTo("lesson");
         assertThat(enrollment.getProgressPct()).isEqualTo(25);
+        assertThat(enrollment.getProgressUpdatedAt()).isAfterOrEqualTo(updateStartedAt);
         assertThat(response.progressPct()).isEqualTo(25);
     }
 

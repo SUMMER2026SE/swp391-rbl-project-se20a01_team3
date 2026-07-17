@@ -84,7 +84,7 @@ Ngày cập nhật: 15/07/2026
 | UC25 | Liên hệ & nhận thông báo từ GV | 85% | 🟢 Trên 80% | Có parent-teacher message; cần giới hạn ký tự/moderation/retention. |
 | UC26 | Xem lịch sử thanh toán khóa học | 80% | 🟡 Từ 50% trở lên | Có payment history theo con; cần hóa đơn pháp lý. |
 | UC27 | Gửi lời mời liên kết con | 95% | ✅ Hoàn thành | Gần đủ SRS; cần E2E email/in-app. |
-| UC28 | Chấp nhận / từ chối liên kết | 90% | ✅ Hoàn thành | Gần đủ SRS; cần thống nhất ACTIVE/ACCEPTED. |
+| UC28 | Chấp nhận / từ chối liên kết | 100% | ✅ Hoàn thành | Đủ SRS; SRS/API/test thống nhất trạng thái canonical `ACTIVE` (`active` trên API/DB). |
 | UC29 | Hủy liên kết tài khoản | 70% | 🟡 Từ 50% trở lên | Có request/confirm; lệch SRS hủy một phía. |
 
 ### Module 7 - Giáo viên
@@ -114,7 +114,7 @@ Ngày cập nhật: 15/07/2026
 
 ## 4. Ưu tiên làm tiếp
 
-1. Hoàn thiện các điểm lệch SRS lớn: PayOS/VNPay-MoMo, trạng thái `ACTIVE`/`ACCEPTED`, UC29 hủy liên kết, teacher approved gate.
+1. Hoàn thiện các điểm lệch SRS lớn còn lại: PayOS/VNPay-MoMo, UC29 hủy liên kết, teacher approved gate.
 2. Bổ sung payment/refund/reconciliation và hóa đơn pháp lý cho UC09-UC11, UC26, UC42.
 3. Hoàn thiện audit/versioning/export cho course content, question bank, grading, payout và admin user action.
 4. Bổ sung consent/opt-out/delete history cho AI UC22-UC23.
