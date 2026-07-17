@@ -67,6 +67,19 @@ export interface StudentExamSubmissionResponse {
   submittedAt: string;
 }
 
+export type ExamIntegrityEventType = 'TAB_HIDDEN' | 'FULLSCREEN_EXIT' | 'WINDOW_BLUR';
+
+export interface ExamIntegrityEventResponse {
+  eventId: string;
+  enrollmentId: string;
+  examId: string;
+  attemptId: string;
+  eventType: ExamIntegrityEventType;
+  violationCount: number;
+  autoSubmitRequired: boolean;
+  occurredAt: string;
+}
+
 export async function listStudentExams(courseId: string): Promise<StudentExam[]> {
   const res = await apiClient.get<ApiResponse<StudentExam[]>>(
     `/api/student/courses/${encodeURIComponent(courseId)}/exams`,
@@ -95,6 +108,19 @@ export async function saveStudentExamDraft(
     `/api/student/courses/${encodeURIComponent(courseId)}/exams/${slotIndex}/draft`,
     { answers },
   );
+}
+
+export async function recordExamIntegrityEvent(
+  courseId: string,
+  slotIndex: number,
+  eventId: string,
+  eventType: ExamIntegrityEventType,
+): Promise<ExamIntegrityEventResponse> {
+  const res = await apiClient.post<ApiResponse<ExamIntegrityEventResponse>>(
+    `/api/student/courses/${encodeURIComponent(courseId)}/exams/${slotIndex}/integrity-events`,
+    { eventId, eventType },
+  );
+  return unwrap(res.data);
 }
 
 export async function uploadStudentExamAnswerImage(
@@ -132,6 +158,7 @@ export async function getStudentExam(
 }
 
 export type ExamRetakeRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type ExamEnrollmentRetakeStatus = 'AVAILABLE' | 'RETAKE_LOCKED' | 'RETAKE_APPROVED';
 
 export interface ExamRetakeRequest {
   id: string;
@@ -143,10 +170,15 @@ export interface ExamRetakeRequest {
   studentId: string;
   studentName: string;
   status: ExamRetakeRequestStatus;
+  examEnrollmentStatus: ExamEnrollmentRetakeStatus;
   requestedReason: string;
   extraAttempts: number | null;
   decidedReason: string | null;
   retakeExpireAt: string | null;
+  requestCount: number;
+  approvalCount: number;
+  rejectedAt: string | null;
+  cooldownUntil: string | null;
   createdAt: string;
   decidedAt: string | null;
   attemptsUsed: number;

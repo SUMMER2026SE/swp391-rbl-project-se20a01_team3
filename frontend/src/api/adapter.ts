@@ -158,6 +158,7 @@ export function adaptCourseSummary(summary: ApiCourseSummary, isEnrolled = false
     lastAccessedAt: summary.lastAccessedAt ?? null,
     learningStatus: summary.learningStatus ?? null,
     finalExamPassed: summary.finalExamPassed ?? null,
+    allRequiredExamsPassed: summary.allRequiredExamsPassed ?? null,
   };
 }
 

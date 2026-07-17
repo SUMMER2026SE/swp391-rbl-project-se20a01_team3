@@ -63,6 +63,7 @@ export interface Course {
   lastAccessedAt?: string | null;
   learningStatus?: 'not_started' | 'in_progress' | 'completed' | null;
   finalExamPassed?: boolean | null;
+  allRequiredExamsPassed?: boolean | null;
   lessons?: Lesson[];
 }
 

@@ -62,8 +62,6 @@ import java.util.stream.Collectors;
 public class CourseService {
 
     private static final String VIDEO_BUCKET = "course-videos";
-    private static final int FINAL_EXAM_SLOT_INDEX = 3;
-
     private final CourseRepository         courseRepository;
     private final CategoryRepository       categoryRepository;
     private final EnrollmentRepository     enrollmentRepository;
@@ -73,6 +71,7 @@ public class CourseService {
     private final QuizConfigRepository     quizConfigRepository;
     private final SupabaseStorageClient    storageClient;
     private final CourseProgressService    courseProgressService;
+    private final CertificateEligibilityService certificateEligibilityService;
     private final CourseProgressItemRepository courseProgressItemRepository;
     private final StudentVideoProgressRepository studentVideoProgressRepository;
     private final QuizAttemptRepository quizAttemptRepository;
@@ -379,8 +378,10 @@ public class CourseService {
                 me.userId(),
                 courseIds
         );
-        Set<UUID> passedFinalCourseIds = Set.copyOf(examAttemptRepository
-                .findPassedFinalCourseIds(me.userId(), courseIds, FINAL_EXAM_SLOT_INDEX));
+        Map<UUID, CertificateEligibilityService.Eligibility> eligibilityByCourse = enrollments.stream()
+                .collect(Collectors.toMap(
+                        Enrollment::getCourseId,
+                        certificateEligibilityService::evaluate));
         Map<UUID, Instant> latestActivityByCourse = new HashMap<>();
         mergeLatestActivity(latestActivityByCourse,
                 courseProgressItemRepository.findLatestCompletedAtByStudentAndCourseIds(me.userId(), courseIds));
@@ -403,10 +404,14 @@ public class CourseService {
                             new CourseReviewService.RatingSummary(0.0, 0)
                     );
                     int progressPct = progressByCourse.getOrDefault(course.getId(), 0);
-                    boolean finalExamPassed = passedFinalCourseIds.contains(course.getId());
+                    CertificateEligibilityService.Eligibility eligibility =
+                            eligibilityByCourse.get(course.getId());
+                    boolean finalExamPassed = eligibility != null && eligibility.finalExamPassed();
+                    boolean allRequiredExamsPassed = eligibility != null
+                            && eligibility.allRequiredExamsPassed();
                     String learningStatus = progressPct == 0
                             ? "not_started"
-                            : progressPct >= 100 && finalExamPassed
+                            : progressPct >= 100 && allRequiredExamsPassed
                             ? "completed"
                             : "in_progress";
                     Instant purchasedAt = enrollment.getEnrolledAt();
@@ -422,7 +427,8 @@ public class CourseService {
                             purchasedAt,
                             lastAccessedAt,
                             learningStatus,
-                            finalExamPassed
+                            finalExamPassed,
+                            allRequiredExamsPassed
                     );
                 })
                 .toList();

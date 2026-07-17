@@ -82,7 +82,7 @@ public class ContentUploadService {
 
     private static final long MAX_VIDEO_BYTES = 2L * 1024 * 1024 * 1024; // 2 GB
     private static final long MAX_DOC_BYTES   = 100L * 1024 * 1024;      // 100 MB
-    private static final long MAX_SUBMISSION_BYTES = 20L * 1024 * 1024;  // 20 MB
+    private static final long MAX_SUBMISSION_BYTES = 25L * 1024 * 1024;  // UC16: 25 MB
     private static final long MAX_THUMBNAIL_BYTES = 5L * 1024 * 1024; // 5 MB
     private static final long MAX_QUESTION_IMAGE_BYTES = 5L * 1024 * 1024;
     private static final long MAX_QUESTION_AUDIO_BYTES = 20L * 1024 * 1024;
@@ -222,7 +222,7 @@ public class ContentUploadService {
     public UploadResponse uploadAssignmentFile(UUID assignmentId, UUID studentId,
                                                 MultipartFile file) {
         validateFile(file, ALLOWED_SUBMISSION_MIME, MAX_SUBMISSION_BYTES,
-                     "PDF, DOCX, PPTX hoặc ảnh JPEG/PNG/WEBP", "20MB");
+                     "PDF, DOCX, PPTX hoặc ảnh JPEG/PNG/WEBP", "25MB");
 
         String ext  = getExtension(file.getOriginalFilename(), "pdf");
         String path = "assignment-submissions/" + assignmentId + "/" + studentId + "/"

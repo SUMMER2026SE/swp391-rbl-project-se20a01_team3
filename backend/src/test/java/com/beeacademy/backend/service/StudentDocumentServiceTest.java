@@ -31,7 +31,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -47,7 +46,7 @@ class StudentDocumentServiceTest {
     @InjectMocks private StudentDocumentService service;
 
     @Test
-    void createDownloadReturnsPublicLegacyUrlForNonPdfDocument() {
+    void createDownloadMigratesLegacyDocumentAndReturnsOneTimeLink() {
         UUID studentId = UUID.randomUUID();
         UUID courseId = UUID.randomUUID();
         UUID lessonId = UUID.randomUUID();
@@ -58,8 +57,6 @@ class StudentDocumentServiceTest {
         Chapter chapter = mock(Chapter.class);
         Lesson lesson = mock(Lesson.class);
         CourseDocument document = mock(CourseDocument.class);
-        String publicUrl = "https://example.supabase.co/storage/v1/object/public/course-docs/lesson/slide.pptx";
-
         when(enrollmentRepository.existsByStudentIdAndCourseId(studentId, courseId)).thenReturn(true);
         when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
         when(document.getLesson()).thenReturn(lesson);
@@ -69,16 +66,24 @@ class StudentDocumentServiceTest {
         when(course.getId()).thenReturn(courseId);
         when(document.getStoragePath()).thenReturn("lesson/slide.pptx");
         when(document.getStorageBucket()).thenReturn("course-docs");
+        when(document.getId()).thenReturn(documentId);
         when(document.getFileType()).thenReturn("pptx");
-        when(document.getFileUrl()).thenReturn(publicUrl);
+        when(storageClient.download("course-docs", "lesson/slide.pptx"))
+                .thenReturn(new byte[] {4, 5, 6});
 
         DocumentDownloadResponse result = service.createDownload(courseId, lessonId, documentId, me);
 
-        assertThat(result.downloadUrl()).isEqualTo(publicUrl);
+        assertThat(result.downloadUrl()).startsWith("/api/document-downloads/");
         assertThat(result.watermarked()).isFalse();
-        assertThat(result.oneTime()).isFalse();
-        verify(storageClient, never()).download(any(), any());
-        verify(storageClient, never()).upload(any(), any(), any(), any(byte[].class));
+        assertThat(result.oneTime()).isTrue();
+        verify(storageClient).download("course-docs", "lesson/slide.pptx");
+        verify(storageClient).upload(eq("course-documents"),
+                org.mockito.ArgumentMatchers.startsWith("documents/"),
+                eq("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+                eq(new byte[] {4, 5, 6}));
+        verify(document).moveToPrivateStorage(eq("course-documents"),
+                org.mockito.ArgumentMatchers.startsWith("documents/"));
+        verify(downloadRepository).save(any(StudentDocumentDownload.class));
     }
 
     @Test

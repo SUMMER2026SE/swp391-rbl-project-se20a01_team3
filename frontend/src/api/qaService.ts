@@ -3,6 +3,7 @@ import type { ApiResponse } from '../types/api';
 
 export type QaThreadStatus = 'pending' | 'answered' | 'resolved';
 export type QaAuthorRole = 'student' | 'teacher' | 'parent' | 'admin';
+export type QaVisibility = 'public' | 'private';
 
 export interface QaMessage {
   id: string;
@@ -27,6 +28,7 @@ export interface QaAttachment {
 
 export interface QaThread {
   id: string;
+  title: string;
   studentId: string;
   studentName: string;
   courseId: string;
@@ -34,6 +36,7 @@ export interface QaThread {
   lessonId: string | null;
   lessonTitle: string | null;
   status: QaThreadStatus;
+  visibility: QaVisibility;
   duplicateOfThreadId?: string | null;
   duplicateMarkedAt?: string | null;
   createdAt: string;
@@ -52,7 +55,9 @@ export interface QaKpiReportResponse {
 export interface CreateQaThreadPayload {
   courseId: string;
   lessonId?: string | null;
+  title: string;
   content: string;
+  visibility?: QaVisibility;
   attachment?: QaAttachment;
 }
 
@@ -65,9 +70,25 @@ export async function createStudentQaThread(payload: CreateQaThreadPayload): Pro
   const res = await apiClient.post<ApiResponse<QaThread>>('/api/student/qa', {
     courseId: payload.courseId,
     lessonId: payload.lessonId,
+    title: payload.title,
     content: payload.content,
+    visibility: payload.visibility ?? 'public',
     ...payload.attachment,
   });
+  return unwrap(res.data);
+}
+
+export async function listCoursePublicQaThreads(courseId: string): Promise<QaThread[]> {
+  const res = await apiClient.get<ApiResponse<QaThread[]>>(
+    `/api/student/courses/${encodeURIComponent(courseId)}/qa/public`,
+  );
+  return unwrap(res.data);
+}
+
+export async function getStudentQaThread(threadId: string): Promise<QaThread> {
+  const res = await apiClient.get<ApiResponse<QaThread>>(
+    `/api/student/qa/${encodeURIComponent(threadId)}`,
+  );
   return unwrap(res.data);
 }
 
@@ -82,6 +103,20 @@ export async function addStudentQaMessage(threadId: string, content: string,
 
 export async function listTeacherQaThreads(): Promise<QaThread[]> {
   const res = await apiClient.get<ApiResponse<QaThread[]>>('/api/teacher/qa');
+  return unwrap(res.data);
+}
+
+export async function listAdminQaThreads(courseId?: string): Promise<QaThread[]> {
+  const res = await apiClient.get<ApiResponse<QaThread[]>>('/api/admin/qa', {
+    params: courseId ? { courseId } : undefined,
+  });
+  return unwrap(res.data);
+}
+
+export async function getAdminQaThread(threadId: string): Promise<QaThread> {
+  const res = await apiClient.get<ApiResponse<QaThread>>(
+    `/api/admin/qa/${encodeURIComponent(threadId)}`,
+  );
   return unwrap(res.data);
 }
 

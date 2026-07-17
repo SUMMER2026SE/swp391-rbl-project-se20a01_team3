@@ -13,6 +13,8 @@ public interface ExamRetakeRequestRepository extends JpaRepository<ExamRetakeReq
     Optional<ExamRetakeRequest> findFirstByStudentIdAndExamConfigIdOrderByCreatedAtDesc(
             UUID studentId, UUID examConfigId);
 
+    long countByStudentIdAndExamConfigId(UUID studentId, UUID examConfigId);
+
     boolean existsByStudentIdAndExamConfigIdAndStatus(
             UUID studentId, UUID examConfigId, ExamRetakeStatus status);
 

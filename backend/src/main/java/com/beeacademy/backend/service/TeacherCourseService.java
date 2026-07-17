@@ -36,7 +36,6 @@ import com.beeacademy.backend.repository.CourseDocumentRepository;
 import com.beeacademy.backend.repository.CourseRepository;
 import com.beeacademy.backend.repository.CourseVersionRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
-import com.beeacademy.backend.repository.ExamConfigRepository;
 import com.beeacademy.backend.repository.LessonRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
 import com.beeacademy.backend.repository.QuizConfigRepository;
@@ -100,7 +99,7 @@ public class TeacherCourseService {
     private final EnrollmentRepository      enrollmentRepository;
     private final ApprovalHistoryRepository approvalHistoryRepository;
     private final CourseVersionRepository   courseVersionRepository;
-    private final ExamConfigRepository      examConfigRepository;
+    private final ExamConfigVersionService  examConfigVersionService;
     private final AdminNotificationRepository notificationRepository;
     private final ContentUploadService      contentUploadService;
     private final TeacherAccessService      teacherAccessService;
@@ -318,17 +317,17 @@ public class TeacherCourseService {
         chapters.stream()
                 .flatMap(chapter -> chapter.getLessons().stream())
                 .forEach(lesson -> validateCompletionRuleForLesson(lesson, false));
-        validateRequiredExamCoverage(courseId, chapters);
+        List<ExamConfig> submittedExams = examConfigVersionService.ensureDraftSet(courseId);
+        validateRequiredExamCoverage(chapters, submittedExams);
 
         int nextVersion = courseVersionRepository.findMaxVersionNo(courseId) + 1;
         course.markSubmittedVersion(nextVersion);
         course.submitForReview();
         Course saved = courseRepository.save(course);
         CourseVersion version = courseVersionRepository.save(CourseVersion.create(
-                saved, saved.getTeacher(), nextVersion, buildCourseSnapshotJson(saved, chapters)));
-        List<ExamConfig> submittedExams = examConfigRepository.findByCourseIdOrderBySlotIndexAsc(courseId);
-        submittedExams.forEach(exam -> exam.assignCourseVersion(version.getId()));
-        examConfigRepository.saveAll(submittedExams);
+                saved, saved.getTeacher(), nextVersion,
+                buildCourseSnapshotJson(saved, chapters, submittedExams)));
+        examConfigVersionService.publishDrafts(courseId, version.getId());
         notificationRepository.save(AdminNotification.courseSubmitted(saved, saved.getTeacher()));
         log.info("GV {} ná»™p khÃ³a há»c {} Ä‘á»ƒ duyá»‡t", me.userId(), courseId);
         return TeacherCourseResponse.fromEntity(saved, enrollmentRepository.countByCourseId(saved.getId()));
@@ -732,7 +731,8 @@ public class TeacherCourseService {
         }
     }
 
-    private String buildCourseSnapshotJson(Course course, List<Chapter> chapters) {
+    private String buildCourseSnapshotJson(
+            Course course, List<Chapter> chapters, List<ExamConfig> submittedExams) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("courseId", course.getId());
         snapshot.put("versionNo", course.getSubmittedVersionNo());
@@ -762,8 +762,7 @@ public class TeacherCourseService {
                 .sorted(Comparator.comparing(Chapter::getPosition))
                 .map(this::chapterSnapshot)
                 .toList());
-        snapshot.put("requiredExams", examConfigRepository.findByCourseIdOrderBySlotIndexAsc(course.getId())
-                .stream()
+        snapshot.put("requiredExams", submittedExams.stream()
                 .sorted(Comparator.comparing(ExamConfig::getSlotIndex))
                 .map(this::examSnapshot)
                 .toList());
@@ -823,8 +822,8 @@ public class TeacherCourseService {
         return row;
     }
 
-    private void validateRequiredExamCoverage(UUID courseId, List<Chapter> chapters) {
-        List<ExamConfig> exams = examConfigRepository.findByCourseIdOrderBySlotIndexAsc(courseId);
+    private void validateRequiredExamCoverage(
+            List<Chapter> chapters, List<ExamConfig> exams) {
         if (exams.size() != 4 || exams.stream().map(ExamConfig::getSlotIndex).collect(Collectors.toSet()).size() != 4) {
             throw new BusinessException("REQUIRED_EXAMS_MISSING",
                     "Khoa hoc phai co dung 4 bai kiem tra bat buoc.");

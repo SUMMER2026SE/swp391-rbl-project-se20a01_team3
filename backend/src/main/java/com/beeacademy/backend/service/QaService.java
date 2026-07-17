@@ -61,6 +61,53 @@ public class QaService {
     }
 
     @Transactional(readOnly = true)
+    public List<QaThreadResponse> listCoursePublicThreads(UUID courseId, AuthenticatedUser me) {
+        Profile student = loadProfile(me.userId());
+        assertRole(student, UserRole.STUDENT);
+        courseRepository.findById(courseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Course", courseId));
+        requireEnrollment(me.userId(), courseId);
+        return qaThreadRepository.findPublicThreadsByCourseId(courseId).stream()
+                .map(QaThreadResponse::fromEntity)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public QaThreadResponse getStudentThread(UUID threadId, AuthenticatedUser me) {
+        Profile student = loadProfile(me.userId());
+        assertRole(student, UserRole.STUDENT);
+        QaThread thread = loadThread(threadId);
+        boolean isOwner = thread.getStudent().getId().equals(me.userId());
+        boolean canViewPublic = "public".equals(thread.getVisibility())
+                && enrollmentRepository.existsByStudentIdAndCourseId(
+                        me.userId(), thread.getCourse().getId());
+        if (!isOwner && !canViewPublic) {
+            throwForbidden();
+        }
+        return QaThreadResponse.fromEntity(thread);
+    }
+
+    @Transactional(readOnly = true)
+    public List<QaThreadResponse> listAdminThreads(UUID courseId, AuthenticatedUser me) {
+        Profile admin = loadProfile(me.userId());
+        assertRole(admin, UserRole.ADMIN);
+        if (courseId != null) {
+            courseRepository.findById(courseId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Course", courseId));
+        }
+        return qaThreadRepository.findAdminThreads(courseId).stream()
+                .map(QaThreadResponse::fromEntity)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public QaThreadResponse getAdminThread(UUID threadId, AuthenticatedUser me) {
+        Profile admin = loadProfile(me.userId());
+        assertRole(admin, UserRole.ADMIN);
+        return QaThreadResponse.fromEntity(loadThread(threadId));
+    }
+
+    @Transactional(readOnly = true)
     public List<QaThreadResponse> listTeacherThreads(AuthenticatedUser me) {
         teacherAccessService.requireApprovedTeacher(me);
         return qaThreadRepository.findTeacherThreads(me.userId()).stream()
@@ -72,6 +119,8 @@ public class QaService {
     public QaThreadResponse createStudentThread(AuthenticatedUser me, CreateQaThreadRequest req) {
         Profile student = loadProfile(me.userId());
         assertRole(student, UserRole.STUDENT);
+        String title = normalizeQuestionTitle(req.title());
+        String content = normalizeQuestionContent(req.content());
         validateAttachment(me.userId(), req.attachmentUrl(), req.attachmentType(),
                 req.attachmentSizeBytes());
 
@@ -99,10 +148,11 @@ public class QaService {
         }
 
         QaThread saved = qaThreadRepository.saveAndFlush(
-                QaThread.create(student, course, lesson, req.content(),
+                QaThread.createStudentQuestion(student, course, lesson, title, content,
                         req.attachmentUrl(), req.attachmentName(),
                         req.attachmentType(), req.attachmentSizeBytes(),
                         normalizeVisibility(req.visibility())));
+        notifyTeacherAboutNewQuestion(saved);
         return QaThreadResponse.fromEntity(saved);
     }
 
@@ -287,6 +337,26 @@ public class QaService {
         }
     }
 
+    private void requireEnrollment(UUID studentId, UUID courseId) {
+        if (!enrollmentRepository.existsByStudentIdAndCourseId(studentId, courseId)) {
+            throw new BusinessException("NOT_ENROLLED",
+                    "Bạn cần ghi danh khóa học trước khi xem hoặc đặt câu hỏi.",
+                    HttpStatus.FORBIDDEN);
+        }
+    }
+
+    private void notifyTeacherAboutNewQuestion(QaThread thread) {
+        Profile teacher = thread.getCourse().getTeacher();
+        notificationService.notify(
+                teacher.getId(),
+                "qa_new_student_question",
+                "Câu hỏi mới từ học sinh",
+                displayName(thread.getStudent(), "Học sinh") + " đã đặt câu hỏi \""
+                        + excerpt(thread.getTitle()) + "\" trong khóa "
+                        + thread.getCourse().getTitle() + ".",
+                "/teacher/qa");
+    }
+
     private void notifyParentsAboutTeacherReply(QaThread thread, Profile teacher, String content) {
         Map<UUID, Profile> parents = new LinkedHashMap<>();
         thread.getMessages().stream()
@@ -370,5 +440,26 @@ public class QaService {
                     HttpStatus.BAD_REQUEST);
         }
         return normalized;
+    }
+
+    private String normalizeQuestionTitle(String title) {
+        if (title == null || title.isBlank()) {
+            throw new BusinessException("QA_TITLE_REQUIRED",
+                    "Vui lòng nhập tiêu đề câu hỏi.", HttpStatus.BAD_REQUEST);
+        }
+        String normalized = title.trim();
+        if (normalized.length() > 180) {
+            throw new BusinessException("QA_TITLE_TOO_LONG",
+                    "Tiêu đề câu hỏi tối đa 180 ký tự.", HttpStatus.BAD_REQUEST);
+        }
+        return normalized;
+    }
+
+    private String normalizeQuestionContent(String content) {
+        if (content == null || content.trim().length() < 10) {
+            throw new BusinessException("QA_CONTENT_TOO_SHORT",
+                    "Nội dung câu hỏi phải có ít nhất 10 ký tự.", HttpStatus.BAD_REQUEST);
+        }
+        return content.trim();
     }
 }

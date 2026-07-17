@@ -12,8 +12,12 @@ public record CreateQaThreadRequest(
 
         UUID lessonId,
 
+        @NotBlank(message = "Vui lòng nhập tiêu đề câu hỏi")
+        @Size(max = 180, message = "Tiêu đề tối đa 180 ký tự")
+        String title,
+
         @NotBlank(message = "Vui lòng nhập nội dung câu hỏi")
-        @Size(max = 5000, message = "Câu hỏi tối đa 5000 ký tự")
+        @Size(min = 10, max = 5000, message = "Nội dung câu hỏi phải từ 10 đến 5000 ký tự")
         String content,
 
         @Size(max = 16) String visibility,
