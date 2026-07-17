@@ -218,7 +218,7 @@ class ExamServiceTest {
         when(chapterRepository.findWithLessonsByCourseId(courseId)).thenReturn(chapters);
         when(chapterRepository.findByCourseIdOrderByPositionAsc(courseId)).thenReturn(chapters);
         ExamConfig firstExam = existingExam(0, chapter1, chapter1);
-        when(examRepository.findByCourseIdOrderBySlotIndexAsc(courseId))
+        when(examConfigVersionService.currentForAuthoring(courseId))
                 .thenReturn(List.of(firstExam));
 
         assertThatThrownBy(() -> service.saveExam(
@@ -256,7 +256,7 @@ class ExamServiceTest {
         ExamConfig firstExam = existingExam(0, chapter1, chapter1);
         ExamConfig secondExam = existingExam(1, chapter2, chapter2);
         ExamConfig thirdExam = existingExam(2, chapter3, chapter3);
-        when(examRepository.findByCourseIdOrderBySlotIndexAsc(courseId))
+        when(examConfigVersionService.currentForAuthoring(courseId))
                 .thenReturn(List.of(firstExam, secondExam, thirdExam));
 
         assertThatThrownBy(() -> service.saveExam(

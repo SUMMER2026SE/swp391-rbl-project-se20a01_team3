@@ -358,13 +358,18 @@ public class CourseService {
     @Transactional(readOnly = true)
     public List<CourseSummaryResponse> getMyCourses(AuthenticatedUser me) {
         if (me == null) return Collections.emptyList();
-        List<Enrollment> enrollments = enrollmentRepository
+        List<Enrollment> rawEnrollments = enrollmentRepository
                 .findByStudentIdOrderByEnrolledAtDesc(me.userId());
+        Map<UUID, Enrollment> enrollmentByCourse = rawEnrollments.stream()
+                .collect(Collectors.toMap(
+                        Enrollment::getCourseId,
+                        Function.identity(),
+                        (latest, ignored) -> latest,
+                        java.util.LinkedHashMap::new));
+        List<Enrollment> enrollments = List.copyOf(enrollmentByCourse.values());
         if (enrollments.isEmpty()) return Collections.emptyList();
 
         List<UUID> courseIds = enrollments.stream().map(Enrollment::getCourseId).toList();
-        Map<UUID, Enrollment> enrollmentByCourse = enrollments.stream()
-                .collect(Collectors.toMap(Enrollment::getCourseId, Function.identity()));
         Map<UUID, Course> courseById = courseRepository.findByIdIn(courseIds).stream()
                 .collect(Collectors.toMap(Course::getId, Function.identity()));
         List<Course> courses = courseIds.stream()

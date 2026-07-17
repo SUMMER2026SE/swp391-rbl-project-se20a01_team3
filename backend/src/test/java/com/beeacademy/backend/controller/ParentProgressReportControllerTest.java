@@ -34,11 +34,14 @@ import com.beeacademy.backend.service.ParentTeacherMessageEmailService;
 import com.beeacademy.backend.service.CertificateService;
 import com.beeacademy.backend.service.CourseProgressService;
 import com.beeacademy.backend.service.CourseVersionSnapshotService;
+import com.beeacademy.backend.service.ExamConfigVersionService;
+import com.beeacademy.backend.service.LearningProgressPdfService;
 import com.beeacademy.backend.service.UserNotificationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -67,6 +70,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -104,12 +108,20 @@ class ParentProgressReportControllerTest {
     @Mock private ParentTeacherMessageEmailService parentTeacherMessageEmailService;
     @Mock private CertificateService certificateService;
     @Mock private CourseVersionSnapshotService courseVersionSnapshotService;
+    @Mock private LearningProgressPdfService learningProgressPdfService;
+    @Mock private ExamConfigVersionService examConfigVersionService;
 
     @InjectMocks
     private ParentService parentService;
 
     @InjectMocks
     private CourseProgressService courseProgressService;
+
+    @BeforeEach
+    void defaultExamConfigs() {
+        lenient().when(examConfigVersionService.forEnrollment(any(Enrollment.class)))
+                .thenReturn(List.of());
+    }
 
     @AfterEach
     void clearSecurityContext() {
@@ -195,7 +207,7 @@ class ParentProgressReportControllerTest {
 
         MockMvc mockMvc = MockMvcBuilders
                 .standaloneSetup(
-                        new CourseProgressController(courseProgressService),
+                        new CourseProgressController(courseProgressService, learningProgressPdfService),
                         new ParentController(parentService))
                 .setMessageConverters(
                         new MappingJackson2HttpMessageConverter(objectMapper),

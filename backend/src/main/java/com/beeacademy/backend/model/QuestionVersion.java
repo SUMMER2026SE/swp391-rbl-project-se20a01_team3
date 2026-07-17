@@ -56,7 +56,7 @@ public class QuestionVersion {
     @Column(name = "explanation", columnDefinition = "TEXT")
     private String explanation;
 
-    @Column(name = "default_points")
+    @Column(name = "default_points", columnDefinition = "NUMERIC(6,2)")
     private Double defaultPoints;
 
     @JdbcTypeCode(SqlTypes.JSON)

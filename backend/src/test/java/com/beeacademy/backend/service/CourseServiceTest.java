@@ -17,6 +17,7 @@ import com.beeacademy.backend.repository.QuizConfigRepository;
 import com.beeacademy.backend.repository.StudentVideoProgressRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.InjectMocks;
@@ -31,6 +32,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -107,5 +110,49 @@ class CourseServiceTest {
         assertThat(result.getFirst().learningStatus()).isEqualTo(expectedStatus);
         assertThat(result.getFirst().finalExamPassed()).isEqualTo(finalExamPassed);
         assertThat(result.getFirst().allRequiredExamsPassed()).isEqualTo(allRequiredExamsPassed);
+    }
+
+    @Test
+    void myCoursesDeduplicatesDuplicateEnrollmentsForSameCourse() {
+        UUID studentId = UUID.randomUUID();
+        UUID courseId = UUID.randomUUID();
+        Enrollment latestEnrollment = Enrollment.create(studentId, courseId, UUID.randomUUID());
+        Enrollment duplicateEnrollment = Enrollment.create(studentId, courseId, UUID.randomUUID());
+        Course course = mock(Course.class);
+        List<UUID> courseIds = List.of(courseId);
+
+        when(course.getId()).thenReturn(courseId);
+        when(course.getGrades()).thenReturn(new int[]{8});
+        when(enrollmentRepository.findByStudentIdOrderByEnrolledAtDesc(studentId))
+                .thenReturn(List.of(latestEnrollment, duplicateEnrollment));
+        when(courseRepository.findByIdIn(courseIds)).thenReturn(List.of(course));
+        when(lessonRepository.countFreePreviewByCourseIds(courseIds)).thenReturn(List.of());
+        when(courseReviewRepository.summarizeByCourseIds(
+                courseIds, CourseReviewModerationStatus.PUBLISHED)).thenReturn(List.of());
+        when(enrollmentRepository.countGroupedByCourseId(courseIds)).thenReturn(List.of());
+        when(courseProgressService.calculateLessonProgressForCourses(studentId, courseIds))
+                .thenReturn(Map.of(courseId, 0));
+        when(certificateEligibilityService.evaluate(latestEnrollment))
+                .thenReturn(new CertificateEligibilityService.Eligibility(
+                        false,
+                        false,
+                        false,
+                        null,
+                        Set.of()));
+        when(courseProgressItemRepository.findLatestCompletedAtByStudentAndCourseIds(studentId, courseIds))
+                .thenReturn(List.of());
+        when(studentVideoProgressRepository.findLatestUpdatedAtByStudentAndCourseIds(studentId, courseIds))
+                .thenReturn(List.of());
+        when(quizAttemptRepository.findLatestActivityByStudentAndCourseIds(studentId, courseIds))
+                .thenReturn(List.of());
+        when(examAttemptRepository.findLatestActivityByStudentAndCourseIds(studentId, courseIds))
+                .thenReturn(List.of());
+
+        var result = service.getMyCourses(new AuthenticatedUser(
+                studentId, "student@example.com", "student"));
+
+        assertThat(result).hasSize(1);
+        verify(certificateEligibilityService).evaluate(latestEnrollment);
+        verify(certificateEligibilityService, never()).evaluate(duplicateEnrollment);
     }
 }
