@@ -48,7 +48,7 @@ public class ParentStudentLink {
     @ColumnTransformer(read = "status::text", write = "?::parent_link_status")
     @Column(name = "status", nullable = false)
     @Builder.Default
-    private ParentStudentLinkStatus status = ParentStudentLinkStatus.ACCEPTED;
+    private ParentStudentLinkStatus status = ParentStudentLinkStatus.ACTIVE;
 
     @Column(name = "invited_at", nullable = false)
     private Instant invitedAt;
@@ -93,7 +93,7 @@ public class ParentStudentLink {
         private UUID studentId;
     }
 
-    public static ParentStudentLink createAcceptedLink(Profile parent, Profile student) {
+    public static ParentStudentLink createActiveLink(Profile parent, Profile student) {
         if (parent == null || student == null) {
             throw new IllegalArgumentException("Parent and student profile must not be null.");
         }
@@ -103,7 +103,7 @@ public class ParentStudentLink {
                 .id(new Id(parent.getId(), student.getId()))
                 .parent(parent)
                 .student(student)
-                .status(ParentStudentLinkStatus.ACCEPTED)
+                .status(ParentStudentLinkStatus.ACTIVE)
                 .invitedAt(now)
                 .respondedAt(now)
                 .build();
@@ -150,7 +150,7 @@ public class ParentStudentLink {
     }
 
     public void accept() {
-        this.status = ParentStudentLinkStatus.ACCEPTED;
+        this.status = ParentStudentLinkStatus.ACTIVE;
         this.respondedAt = Instant.now();
         this.unlinkRequestedBy = null;
         this.unlinkRequestedAt = null;

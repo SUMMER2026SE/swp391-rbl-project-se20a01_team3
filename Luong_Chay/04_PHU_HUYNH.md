@@ -156,7 +156,7 @@ CREATE TABLE parent_link_invitations (
     parent_id   UUID        NOT NULL REFERENCES profiles(id),
     student_email TEXT      NOT NULL,
     token       TEXT        NOT NULL UNIQUE,
-    status      TEXT        NOT NULL DEFAULT 'pending',  -- pending/accepted/rejected/expired
+    status      TEXT        NOT NULL DEFAULT 'pending',  -- pending/active/rejected/expired/revoked
     expires_at  TIMESTAMPTZ NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

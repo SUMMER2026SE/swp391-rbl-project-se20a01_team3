@@ -16,10 +16,14 @@ import com.beeacademy.backend.exception.ResourceNotFoundException;
 import com.beeacademy.backend.client.SupabaseStorageClient;
 import com.beeacademy.backend.model.Assignment;
 import com.beeacademy.backend.model.AssignmentSubmission;
+import com.beeacademy.backend.model.Certificate;
+import com.beeacademy.backend.model.Chapter;
 import com.beeacademy.backend.model.Course;
+import com.beeacademy.backend.model.CourseProgressItem;
 import com.beeacademy.backend.model.Enrollment;
 import com.beeacademy.backend.model.ExamAttempt;
 import com.beeacademy.backend.model.ExamConfig;
+import com.beeacademy.backend.model.Lesson;
 import com.beeacademy.backend.model.Order;
 import com.beeacademy.backend.model.OrderItem;
 import com.beeacademy.backend.model.OrderStatus;
@@ -34,6 +38,9 @@ import com.beeacademy.backend.model.QuizAttempt;
 import com.beeacademy.backend.model.QuizConfig;
 import com.beeacademy.backend.model.UserRole;
 import com.beeacademy.backend.repository.AssignmentSubmissionRepository;
+import com.beeacademy.backend.repository.CertificateRepository;
+import com.beeacademy.backend.repository.ChapterRepository;
+import com.beeacademy.backend.repository.CourseProgressItemRepository;
 import com.beeacademy.backend.repository.CourseRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
 import com.beeacademy.backend.repository.ExamAttemptRepository;
@@ -49,6 +56,7 @@ import com.beeacademy.backend.repository.QuizConfigRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -81,6 +89,7 @@ public class ParentService {
 
     private static final String PARENT_MESSAGE_BUCKET = "course-docs";
     private static final long MAX_PARENT_ATTACHMENT_BYTES = 20L * 1024 * 1024;
+    private static final int MAX_PARENT_TEACHER_MESSAGE_LENGTH = 2000;
     private static final Set<String> ALLOWED_ATTACHMENT_MIME = Set.of(
             "application/pdf",
             "image/png",
@@ -106,6 +115,15 @@ public class ParentService {
             "Giữa kỳ 2",
             "Cuối kỳ 2");
 
+    @Value("${app.parent.weekly-report.inactive-days-threshold:5}")
+    private int weeklyInactiveDaysThreshold = 5;
+
+    @Value("${app.parent.weekly-report.low-score-threshold:5.0}")
+    private double weeklyLowScoreThreshold = 5.0;
+
+    @Value("${app.parent.weekly-report.low-progress-threshold:50}")
+    private int weeklyLowProgressThreshold = 50;
+
     private final ProfileRepository profileRepository;
     private final ParentStudentLinkRepository linkRepository;
     private final EnrollmentRepository enrollmentRepository;
@@ -120,6 +138,9 @@ public class ParentService {
     private final OrderRepository orderRepository;
     private final ParentProgressAccessAuditRepository progressAccessAuditRepository;
     private final ParentLinkAuditLogRepository parentLinkAuditLogRepository;
+    private final CertificateRepository certificateRepository;
+    private final ChapterRepository chapterRepository;
+    private final CourseProgressItemRepository courseProgressItemRepository;
     private final ParentLinkInvitationEmailService parentLinkInvitationEmailService;
     private final SupabaseStorageClient storageClient;
     private final UserNotificationService notificationService;
@@ -131,7 +152,7 @@ public class ParentService {
 
         List<ParentStudentLink> links = linkRepository.findByIdParentIdAndStatusOrderByInvitedAtDesc(
                 me.userId(),
-                ParentStudentLinkStatus.ACCEPTED.toDbValue());
+                ParentStudentLinkStatus.ACTIVE.toDbValue());
         return links.stream()
                 .map(this::toLinkedStudentResponse)
                 .collect(Collectors.toList());
@@ -185,7 +206,7 @@ public class ParentService {
             existingLink = expireIfPending(existingLink, me.userId(), UserRole.PARENT, "expire_link_invitation");
         }
         if (existingLink != null
-                && (existingLink.getStatus() == ParentStudentLinkStatus.ACCEPTED
+                && (existingLink.getStatus() == ParentStudentLinkStatus.ACTIVE
                 || existingLink.getStatus() == ParentStudentLinkStatus.PENDING)) {
             throw new BusinessException(
                     "PARENT_LINK_ALREADY_EXISTS",
@@ -203,7 +224,7 @@ public class ParentService {
                 .toList();
         long activeOrPendingChildren = linkRepository.findByIdParentIdAndStatusOrderByInvitedAtDesc(
                         me.userId(),
-                        ParentStudentLinkStatus.ACCEPTED.toDbValue())
+                        ParentStudentLinkStatus.ACTIVE.toDbValue())
                 .size()
                 + pendingChildren.size();
         if (activeOrPendingChildren >= MAX_ACTIVE_OR_PENDING_CHILDREN) {
@@ -382,6 +403,8 @@ public class ParentService {
         ProgressAccessDecision accessDecision = decideProgressAccess(link);
         auditProgressAccess(me.userId(), studentId, "view_child_progress_report", accessDecision);
         List<Enrollment> enrollments = enrollmentRepository.findByStudentId(studentId);
+        List<ChildProgressReportResponse.CertificateRecord> certificateRecords =
+                buildCertificateRecords(studentId, courseFilterId);
 
         if (enrollments.isEmpty()) {
             return new ChildProgressReportResponse(
@@ -394,7 +417,8 @@ public class ParentService {
                     accessDecision.reason(),
                     emptyWeeklySummary(),
                     List.of(),
-                    List.of());
+                    List.of(),
+                    certificateRecords);
         }
 
         List<UUID> courseIds = enrollments.stream()
@@ -420,7 +444,8 @@ public class ParentService {
                     accessDecision.reason(),
                     emptyWeeklySummary(),
                     List.of(),
-                    List.of());
+                    List.of(),
+                    certificateRecords);
         }
         Map<UUID, Enrollment> enrollmentByCourseId = enrollments.stream()
                 .collect(Collectors.toMap(
@@ -432,6 +457,24 @@ public class ParentService {
         List<Course> courses = courseRepository.findByIdIn(courseIds);
         Map<UUID, Course> courseById = courses.stream()
                 .collect(Collectors.toMap(Course::getId, course -> course));
+        Map<UUID, List<Chapter>> chaptersByCourseId = Optional
+                .ofNullable(chapterRepository.findWithLessonsByCourseIdIn(courseIds))
+                .orElse(List.of())
+                .stream()
+                .collect(Collectors.groupingBy(
+                        chapter -> chapter.getCourse().getId(),
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+        Map<UUID, CourseProgressItem> completedLessonById = Optional
+                .ofNullable(courseProgressItemRepository.findByStudentIdAndCourseIdIn(studentId, courseIds))
+                .orElse(List.of())
+                .stream()
+                .filter(item -> "lesson".equals(item.getItemType()))
+                .collect(Collectors.toMap(
+                        CourseProgressItem::getItemId,
+                        Function.identity(),
+                        (first, ignored) -> first,
+                        LinkedHashMap::new));
 
         List<QuizConfig> quizConfigs = quizConfigRepository.findByCourseIds(courseIds);
         Map<UUID, List<QuizConfig>> quizConfigsByCourseId = quizConfigs.stream()
@@ -465,17 +508,20 @@ public class ParentService {
                         quizAttempts,
                         examAttempts,
                         allExamAttempts,
-                        assignmentSubmissions))
+                        assignmentSubmissions,
+                        chaptersByCourseId.getOrDefault(enrollment.getCourseId(), List.of()),
+                        completedLessonById))
                 .flatMap(Optional::stream)
                 .toList();
 
-        List<ChildProgressReportResponse.AssessmentRecord> assessments = buildAssessmentRecords(
+        List<ChildProgressReportResponse.AssessmentRecord> allAssessments = buildAssessmentRecords(
                 quizAttempts,
                 examAttempts,
                 assignmentSubmissions,
                 courseById,
                 courseStatusById,
-                accessDecision.detailAllowed()).stream()
+                accessDecision.detailAllowed());
+        List<ChildProgressReportResponse.AssessmentRecord> assessments = allAssessments.stream()
                 .filter(record -> isWithinDateRange(record.submittedAt(), from, to))
                 .toList();
 
@@ -487,9 +533,22 @@ public class ParentService {
                 accessDecision.detailAllowed(),
                 !accessDecision.detailAllowed(),
                 accessDecision.reason(),
-                buildWeeklySummary(courseItems, assessments),
+                buildWeeklySummary(courseItems, allAssessments),
                 courseItems,
-                assessments);
+                assessments,
+                certificateRecords);
+    }
+
+    @Transactional
+    public byte[] exportChildProgressReportExcel(
+            AuthenticatedUser me,
+            UUID studentId,
+            UUID courseFilterId,
+            LocalDate from,
+            LocalDate to) {
+        ChildProgressReportResponse report =
+                getChildProgressReport(me, studentId, courseFilterId, from, to);
+        return ParentProgressWorkbookExporter.export(report);
     }
 
     @Transactional(readOnly = true)
@@ -645,6 +704,7 @@ public class ParentService {
 
         List<QaThread> existingThreads = qaThreadRepository
                 .findParentThreadsForCourse(me.userId(), studentId, course.getId());
+        validateParentTeacherMessageContent(request.content());
         validateAttachmentMetadata(request.attachmentUrl(), request.attachmentSizeBytes());
         QaThread thread;
         if (existingThreads.isEmpty()) {
@@ -736,6 +796,10 @@ public class ParentService {
         if (attachmentSizeBytes != null && attachmentSizeBytes > MAX_PARENT_ATTACHMENT_BYTES) {
             throw new BusinessException("FILE_TOO_LARGE", "File đính kèm tối đa 20MB.");
         }
+    }
+
+    private void validateParentTeacherMessageContent(String content) {
+        QaMessage.requireAllowedContent(content, MAX_PARENT_TEACHER_MESSAGE_LENGTH);
     }
 
     private String extensionOf(String filename, String contentType) {
@@ -853,7 +917,7 @@ public class ParentService {
         boolean isLinked = linkRepository.existsByIdParentIdAndIdStudentIdAndStatus(
                 me.userId(),
                 studentId,
-                ParentStudentLinkStatus.ACCEPTED.toDbValue());
+                ParentStudentLinkStatus.ACTIVE.toDbValue());
         if (!isLinked) {
             throw new BusinessException(
                     "ACCESS_DENIED",
@@ -946,24 +1010,45 @@ public class ParentService {
     }
 
     private ChildProgressReportResponse.WeeklySummary emptyWeeklySummary() {
+        LocalDate periodEnd = LocalDate.now();
+        LocalDate periodStart = periodEnd.minusDays(6);
         return new ChildProgressReportResponse.WeeklySummary(
+                periodStart,
+                periodEnd,
                 "no_data",
+                0,
+                0,
                 null,
                 0,
                 0,
+                0,
                 7,
+                "no_data",
                 "Chua co du lieu hoc tap trong khoang thoi gian nay.");
     }
 
     private ChildProgressReportResponse.WeeklySummary buildWeeklySummary(
             List<ChildProgressReportResponse.CourseProgressItem> courseItems,
             List<ChildProgressReportResponse.AssessmentRecord> assessments) {
-        LocalDate today = LocalDate.now();
-        LocalDate weekStart = today.minusDays(6);
+        LocalDate periodEnd = LocalDate.now();
+        LocalDate periodStart = periodEnd.minusDays(6);
+        LocalDate previousPeriodStart = periodStart.minusDays(7);
+        LocalDate previousPeriodEnd = periodStart.minusDays(1);
         List<ChildProgressReportResponse.AssessmentRecord> weeklyAssessments = assessments.stream()
                 .filter(record -> record.submittedAt() != null)
-                .filter(record -> !record.submittedAt().atZone(ZoneId.systemDefault()).toLocalDate().isBefore(weekStart))
+                .filter(record -> isWithinInclusivePeriod(record.submittedAt(), periodStart, periodEnd))
                 .toList();
+
+        int currentWeekCompletedLessons = countCompletedLessons(courseItems, periodStart, periodEnd);
+        int previousWeekCompletedLessons = countCompletedLessons(
+                courseItems, previousPeriodStart, previousPeriodEnd);
+        int previousWeekAssessments = (int) assessments.stream()
+                .filter(record -> record.submittedAt() != null)
+                .filter(record -> isWithinInclusivePeriod(
+                        record.submittedAt(), previousPeriodStart, previousPeriodEnd))
+                .count();
+        int currentWeekCompletedItems = currentWeekCompletedLessons + weeklyAssessments.size();
+        int previousWeekCompletedItems = previousWeekCompletedLessons + previousWeekAssessments;
 
         Double averageScore = weeklyAssessments.stream()
                 .map(ChildProgressReportResponse.AssessmentRecord::normalizedScore)
@@ -978,8 +1063,18 @@ public class ParentService {
         int incompleteCourses = (int) courseItems.stream()
                 .filter(course -> course.progressPct() == null || course.progressPct() < 100)
                 .count();
-        int activeDays = (int) weeklyAssessments.stream()
-                .map(record -> record.submittedAt().atZone(ZoneId.systemDefault()).toLocalDate())
+        int incompleteLearningItems = courseItems.stream()
+                .mapToInt(this::countIncompleteLearningItems)
+                .sum();
+        int activeDays = (int) java.util.stream.Stream.concat(
+                        weeklyAssessments.stream().map(ChildProgressReportResponse.AssessmentRecord::submittedAt),
+                        courseItems.stream()
+                                .flatMap(course -> course.completedLessons().stream())
+                                .map(ChildProgressReportResponse.LessonProgressItem::completedAt)
+                                .filter(java.util.Objects::nonNull)
+                                .filter(completedAt -> isWithinInclusivePeriod(
+                                        completedAt, periodStart, periodEnd)))
+                .map(completedAt -> completedAt.atZone(ZoneId.systemDefault()).toLocalDate())
                 .distinct()
                 .count();
         int inactiveDays = Math.max(0, 7 - activeDays);
@@ -990,29 +1085,77 @@ public class ParentService {
                 .average()
                 .orElse(0.0);
 
-        String trend;
+        String trend = progressTrend(currentWeekCompletedItems, previousWeekCompletedItems);
+        String actionRule;
         String suggestion;
-        if (courseItems.isEmpty() && weeklyAssessments.isEmpty()) {
+        if (courseItems.isEmpty() && currentWeekCompletedItems == 0 && previousWeekCompletedItems == 0) {
             trend = "no_data";
+            actionRule = "no_data";
             suggestion = "Chua co du lieu hoc tap trong khoang thoi gian nay.";
-        } else if (inactiveDays >= 5 && averageProgress < 50) {
-            trend = "inactive";
+        } else if (inactiveDays >= weeklyInactiveDaysThreshold
+                && averageProgress < weeklyLowProgressThreshold) {
+            actionRule = "inactive";
             suggestion = "Nen nhac hoc sinh quay lai hoc va hoan thanh cac bai danh gia con thieu.";
-        } else if (averageScore != null && averageScore < 5.0) {
-            trend = "needs_support";
+        } else if (averageScore != null && averageScore < weeklyLowScoreThreshold) {
+            actionRule = "needs_support";
             suggestion = "Nen trao doi voi giao vien de ho tro cac noi dung co diem thap.";
+        } else if ("decreasing".equals(trend)) {
+            actionRule = "decreasing";
+            suggestion = "Tien do dang giam so voi tuan truoc; nen sap xep lai lich hoc deu hon.";
         } else {
-            trend = "on_track";
+            actionRule = "on_track";
             suggestion = "Tiep tuc duy tri tien do hoc tap hien tai.";
         }
 
         return new ChildProgressReportResponse.WeeklySummary(
+                periodStart,
+                periodEnd,
                 trend,
+                currentWeekCompletedItems,
+                previousWeekCompletedItems,
                 averageScore,
                 weeklyAssessments.size(),
                 incompleteCourses,
+                incompleteLearningItems,
                 inactiveDays,
+                actionRule,
                 suggestion);
+    }
+
+    private int countCompletedLessons(
+            List<ChildProgressReportResponse.CourseProgressItem> courseItems,
+            LocalDate periodStart,
+            LocalDate periodEnd) {
+        return (int) courseItems.stream()
+                .flatMap(course -> course.completedLessons().stream())
+                .map(ChildProgressReportResponse.LessonProgressItem::completedAt)
+                .filter(java.util.Objects::nonNull)
+                .filter(completedAt -> isWithinInclusivePeriod(completedAt, periodStart, periodEnd))
+                .count();
+    }
+
+    private int countIncompleteLearningItems(ChildProgressReportResponse.CourseProgressItem course) {
+        int incompleteLessons = Math.max(0, course.lessonTotalCount() - course.lessonCompletedCount());
+        int incompleteQuizzes = Math.max(0, course.quizTotalCount() - course.quizCompletedCount());
+        int incompleteRequiredExams = (int) course.requiredExams().stream()
+                .filter(exam -> !"passed".equals(exam.status()))
+                .count();
+        return incompleteLessons + incompleteQuizzes + incompleteRequiredExams;
+    }
+
+    private String progressTrend(int currentWeekCompletedItems, int previousWeekCompletedItems) {
+        if (currentWeekCompletedItems > previousWeekCompletedItems) {
+            return "increasing";
+        }
+        if (currentWeekCompletedItems < previousWeekCompletedItems) {
+            return "decreasing";
+        }
+        return "stable";
+    }
+
+    private boolean isWithinInclusivePeriod(Instant value, LocalDate from, LocalDate to) {
+        LocalDate localDate = value.atZone(ZoneId.systemDefault()).toLocalDate();
+        return !localDate.isBefore(from) && !localDate.isAfter(to);
     }
 
     private boolean isWithinDateRange(Instant value, LocalDate from, LocalDate to) {
@@ -1053,7 +1196,7 @@ public class ParentService {
     }
 
     private void requireRevocableStatus(ParentStudentLink link) {
-        if (link.getStatus() == ParentStudentLinkStatus.ACCEPTED) {
+        if (link.getStatus() == ParentStudentLinkStatus.ACTIVE) {
             return;
         }
 
@@ -1079,7 +1222,7 @@ public class ParentService {
                         "Không tìm thấy thông tin liên kết giữa tài khoản của bạn và học sinh này.",
                         HttpStatus.NOT_FOUND));
 
-        if (link.getStatus() != ParentStudentLinkStatus.ACCEPTED) {
+        if (link.getStatus() != ParentStudentLinkStatus.ACTIVE) {
             throw new BusinessException(
                     "LINK_NOT_ACTIVE",
                     "Liên kết này không còn ở trạng thái hoạt động.",
@@ -1208,7 +1351,9 @@ public class ParentService {
             List<QuizAttempt> quizAttempts,
             List<ExamAttempt> examAttempts,
             List<ExamAttempt> allExamAttempts,
-            List<AssignmentSubmission> assignmentSubmissions) {
+            List<AssignmentSubmission> assignmentSubmissions,
+            List<Chapter> chapters,
+            Map<UUID, CourseProgressItem> completedLessonById) {
         if (course == null) {
             return Optional.empty();
         }
@@ -1265,6 +1410,13 @@ public class ParentService {
                 .findFirst()
                 .map(this::toNormalizedAssignmentScore)
                 .orElse(null);
+        List<ChildProgressReportResponse.LessonProgressItem> completedLessons =
+                buildCompletedLessonRecords(chapters, completedLessonById);
+        int totalLessonCount = chapters.stream()
+                .map(Chapter::getLessons)
+                .filter(java.util.Objects::nonNull)
+                .mapToInt(List::size)
+                .sum();
         List<ChildProgressReportResponse.RequiredExamResult> requiredExams =
                 buildRequiredExamResults(versionExamConfigs, courseAllExamAttempts);
 
@@ -1276,14 +1428,56 @@ public class ParentService {
                 toCourseStatus(enrollment),
                 enrollment.getProgressPct() != null ? enrollment.getProgressPct() : 0,
                 enrollment.getEnrolledAt(),
+                enrollment.getProgressUpdatedAt(),
                 toGradeList(course),
+                completedLessons.size(),
+                totalLessonCount,
                 latestQuizScoresByConfig.size(),
                 quizConfigs.size(),
                 averageQuizScore,
                 latestQuizScore,
                 latestExamScore,
                 latestAssignmentScore,
+                completedLessons,
                 requiredExams));
+    }
+
+    private List<ChildProgressReportResponse.LessonProgressItem> buildCompletedLessonRecords(
+            List<Chapter> chapters,
+            Map<UUID, CourseProgressItem> completedLessonById) {
+        if (chapters == null || chapters.isEmpty() || completedLessonById.isEmpty()) {
+            return List.of();
+        }
+
+        return chapters.stream()
+                .sorted(Comparator.comparing(
+                        Chapter::getPosition,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .flatMap(chapter -> chapter.getLessons().stream()
+                        .sorted(Comparator.comparing(
+                                Lesson::getPosition,
+                                Comparator.nullsLast(Comparator.naturalOrder())))
+                        .map(lesson -> toLessonProgressItem(chapter, lesson, completedLessonById.get(lesson.getId())))
+                        .flatMap(Optional::stream))
+                .toList();
+    }
+
+    private Optional<ChildProgressReportResponse.LessonProgressItem> toLessonProgressItem(
+            Chapter chapter,
+            Lesson lesson,
+            CourseProgressItem completed) {
+        if (completed == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new ChildProgressReportResponse.LessonProgressItem(
+                lesson.getId(),
+                chapter.getId(),
+                chapter.getTitle(),
+                chapter.getPosition(),
+                lesson.getTitle(),
+                lesson.getPosition(),
+                lesson.getDurationSec(),
+                completed.getCompletedAt()));
     }
 
     private List<ChildProgressReportResponse.AssessmentRecord> buildAssessmentRecords(
@@ -1314,6 +1508,36 @@ public class ParentService {
                         ChildProgressReportResponse.AssessmentRecord::submittedAt,
                         Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
+    }
+
+    private List<ChildProgressReportResponse.CertificateRecord> buildCertificateRecords(
+            UUID studentId,
+            UUID courseFilterId) {
+        List<Certificate> certificates = Optional.ofNullable(certificateRepository.findByStudentWithCourse(studentId))
+                .orElse(List.of());
+        return certificates.stream()
+                .filter(certificate -> courseFilterId == null
+                        || courseFilterId.equals(certificate.getCourse().getId()))
+                .map(this::toCertificateRecord)
+                .toList();
+    }
+
+    private ChildProgressReportResponse.CertificateRecord toCertificateRecord(Certificate certificate) {
+        Course course = certificate.getCourse();
+        return new ChildProgressReportResponse.CertificateRecord(
+                certificate.getId(),
+                course != null ? course.getId() : null,
+                course != null ? course.getTitle() : "KhÃ³a há»c",
+                course != null && course.getTeacher() != null
+                        ? displayName(course.getTeacher(), "GiÃ¡o viÃªn")
+                        : null,
+                certificate.getStatus() != null ? certificate.getStatus().name() : null,
+                certificate.getCertificateNo(),
+                certificate.getVerificationCode(),
+                certificate.getVersionNo(),
+                certificate.getIssuedAt(),
+                certificate.getRevokedAt(),
+                certificate.getReviewNote());
     }
 
     private ChildProgressReportResponse.AssessmentRecord toQuizAssessmentRecord(
@@ -1415,7 +1639,10 @@ public class ParentService {
             return new ChildProgressReportResponse.RequiredExamResult(
                     slot,
                     REQUIRED_EXAM_LABELS.get(slot),
+                    null,
+                    null,
                     "not_configured",
+                    null,
                     null,
                     null,
                     null,
@@ -1428,8 +1655,11 @@ public class ParentService {
             return new ChildProgressReportResponse.RequiredExamResult(
                     slot,
                     REQUIRED_EXAM_LABELS.get(slot),
+                    config.getName(),
+                    config.getExamType(),
                     "not_submitted",
                     config.getId(),
+                    config.getCourseVersionId(),
                     null,
                     null,
                     null,
@@ -1442,8 +1672,11 @@ public class ParentService {
         return new ChildProgressReportResponse.RequiredExamResult(
                 slot,
                 REQUIRED_EXAM_LABELS.get(slot),
+                config.getName(),
+                config.getExamType(),
                 requiredExamStatus(attempt),
                 config.getId(),
+                config.getCourseVersionId(),
                 scorePercent,
                 scorePercent == null ? null : round1(scorePercent / 10.0),
                 attempt.getPassed(),

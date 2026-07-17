@@ -200,6 +200,79 @@ class ExamServiceTest {
         verify(examRepository).save(any(ExamConfig.class));
     }
 
+    @Test
+    void saveExamRejectsGapBetweenFixedExamSlots() {
+        UUID teacherId = UUID.randomUUID();
+        UUID courseId = UUID.randomUUID();
+        Course course = givenOwnedCourse(courseId, teacherId);
+        when(course.getId()).thenReturn(courseId);
+        when(profileRepository.findById(teacherId)).thenReturn(Optional.of(mock(Profile.class)));
+
+        Chapter chapter1 = chapter(course, UUID.randomUUID(), "Chapter 1");
+        Chapter chapter2 = chapter(course, UUID.randomUUID(), "Chapter 2");
+        Chapter chapter3 = chapter(course, UUID.randomUUID(), "Chapter 3");
+        Chapter chapter4 = chapter(course, UUID.randomUUID(), "Chapter 4");
+        List<Chapter> chapters = List.of(chapter1, chapter2, chapter3, chapter4);
+
+        when(chapterRepository.findById(chapter3.getId())).thenReturn(Optional.of(chapter3));
+        when(chapterRepository.findWithLessonsByCourseId(courseId)).thenReturn(chapters);
+        when(chapterRepository.findByCourseIdOrderByPositionAsc(courseId)).thenReturn(chapters);
+        ExamConfig firstExam = existingExam(0, chapter1, chapter1);
+        when(examRepository.findByCourseIdOrderBySlotIndexAsc(courseId))
+                .thenReturn(List.of(firstExam));
+
+        assertThatThrownBy(() -> service.saveExam(
+                courseId,
+                1,
+                teacher(teacherId),
+                request(true, chapter3.getId(), chapter3.getId(), List.of(
+                        directMultipleChoiceQuestion(),
+                        directEssayQuestion()))))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(((BusinessException) ex).getCode())
+                                .isEqualTo("INVALID_EXAM_SCOPE_COVERAGE"));
+
+        verify(examRepository, never()).save(any(ExamConfig.class));
+    }
+
+    @Test
+    void saveFinalExamRejectsWhenItDoesNotEndAtLastChapter() {
+        UUID teacherId = UUID.randomUUID();
+        UUID courseId = UUID.randomUUID();
+        Course course = givenOwnedCourse(courseId, teacherId);
+        when(course.getId()).thenReturn(courseId);
+        when(profileRepository.findById(teacherId)).thenReturn(Optional.of(mock(Profile.class)));
+
+        Chapter chapter1 = chapter(course, UUID.randomUUID(), "Chapter 1");
+        Chapter chapter2 = chapter(course, UUID.randomUUID(), "Chapter 2");
+        Chapter chapter3 = chapter(course, UUID.randomUUID(), "Chapter 3");
+        Chapter chapter4 = chapter(course, UUID.randomUUID(), "Chapter 4");
+        Chapter chapter5 = chapter(course, UUID.randomUUID(), "Chapter 5");
+        List<Chapter> chapters = List.of(chapter1, chapter2, chapter3, chapter4, chapter5);
+
+        when(chapterRepository.findById(chapter4.getId())).thenReturn(Optional.of(chapter4));
+        when(chapterRepository.findWithLessonsByCourseId(courseId)).thenReturn(chapters);
+        when(chapterRepository.findByCourseIdOrderByPositionAsc(courseId)).thenReturn(chapters);
+        ExamConfig firstExam = existingExam(0, chapter1, chapter1);
+        ExamConfig secondExam = existingExam(1, chapter2, chapter2);
+        ExamConfig thirdExam = existingExam(2, chapter3, chapter3);
+        when(examRepository.findByCourseIdOrderBySlotIndexAsc(courseId))
+                .thenReturn(List.of(firstExam, secondExam, thirdExam));
+
+        assertThatThrownBy(() -> service.saveExam(
+                courseId,
+                3,
+                teacher(teacherId),
+                request(true, chapter4.getId(), chapter4.getId(), List.of(
+                        directMultipleChoiceQuestion(),
+                        directEssayQuestion()))))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(((BusinessException) ex).getCode())
+                                .isEqualTo("INVALID_EXAM_SCOPE_COVERAGE"));
+
+        verify(examRepository, never()).save(any(ExamConfig.class));
+    }
+
     private Course givenOwnedCourse(UUID courseId, UUID teacherId) {
         Profile teacherProfile = mock(Profile.class);
         when(teacherProfile.getId()).thenReturn(teacherId);
@@ -268,6 +341,7 @@ class ExamServiceTest {
         metadata.put("createdInExam", true);
         return new ExamConfigRequest.ExamQuestionRequest(
                 "manual-" + UUID.randomUUID(),
+                null,
                 "2 + 2 = ?",
                 "multiple_choice",
                 List.of("3", "4", "5", "6"),
@@ -285,6 +359,7 @@ class ExamServiceTest {
         metadata.put("createdInExam", true);
         return new ExamConfigRequest.ExamQuestionRequest(
                 "manual-" + UUID.randomUUID(),
+                null,
                 "Explain your reasoning.",
                 "essay",
                 List.of(),
@@ -306,6 +381,7 @@ class ExamServiceTest {
         }
         return new ExamConfigRequest.ExamQuestionRequest(
                 "ai-" + UUID.randomUUID(),
+                null,
                 "Explain the solution.",
                 "essay",
                 List.of(),
@@ -327,6 +403,7 @@ class ExamServiceTest {
         }
         return new ExamConfigRequest.ExamQuestionRequest(
                 "ai-" + UUID.randomUUID(),
+                null,
                 "Explain the solution.",
                 "essay",
                 List.of(),

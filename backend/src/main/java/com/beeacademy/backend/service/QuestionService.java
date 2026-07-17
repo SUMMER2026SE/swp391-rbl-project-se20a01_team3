@@ -4,18 +4,23 @@ import com.beeacademy.backend.dto.request.CreateQuestionRequest;
 import com.beeacademy.backend.dto.response.PageResponse;
 import com.beeacademy.backend.dto.response.QuestionResponse;
 import com.beeacademy.backend.dto.response.QuestionStatsResponse;
+import com.beeacademy.backend.dto.response.QuestionAuditLogResponse;
+import com.beeacademy.backend.dto.response.QuestionVersionResponse;
 import com.beeacademy.backend.exception.BusinessException;
 import com.beeacademy.backend.exception.ResourceNotFoundException;
 import com.beeacademy.backend.model.Category;
 import com.beeacademy.backend.model.Chapter;
 import com.beeacademy.backend.model.Profile;
 import com.beeacademy.backend.model.Question;
+import com.beeacademy.backend.model.QuestionAuditLog;
 import com.beeacademy.backend.model.QuestionBank;
 import com.beeacademy.backend.model.QuestionChoice;
+import com.beeacademy.backend.model.QuestionVersion;
 import com.beeacademy.backend.repository.CategoryRepository;
 import com.beeacademy.backend.repository.ChapterRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
 import com.beeacademy.backend.repository.QuestionRepository;
+import com.beeacademy.backend.repository.QuestionAuditLogRepository;
 import com.beeacademy.backend.repository.QuestionVersionRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -33,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -64,6 +70,7 @@ public class QuestionService {
     private final ProfileRepository profileRepository;
     private final ChapterRepository chapterRepository;
     private final QuestionVersionRepository questionVersionRepository;
+    private final QuestionAuditLogRepository questionAuditLogRepository;
     private final ObjectMapper objectMapper;
     private final QuestionBankService questionBankService;
     private final TeacherAccessService teacherAccessService;
@@ -92,6 +99,8 @@ public class QuestionService {
                 chapter,
                 req.content(),
                 req.explanation(),
+                req.defaultPoints(),
+                serializeTags(req.tags()),
                 serializeMetadata(req.metadata()),
                 req.difficulty(),
                 req.type());
@@ -100,6 +109,8 @@ public class QuestionService {
 
         boolean duplicate = hasDuplicateContent(me.userId(), req.content(), null);
         Question saved = questionRepository.save(question);
+        QuestionVersion initialVersion = saveVersion(saved, 1, "Initial question version.");
+        saveAudit(saved, null, initialVersion.getVersionNo(), "CREATE", null, serializeQuestionState(saved));
         log.info("Teacher {} created question {} type={}", me.userId(), saved.getId(), saved.getType());
         return withDuplicateWarning(QuestionResponse.fromEntity(saved, objectMapper), duplicate);
     }
@@ -153,14 +164,9 @@ public class QuestionService {
         validateQuestionRequest(req);
         teacherAccessService.requireApprovedTeacher(me);
 
-        Question question = loadAndVerifyOwner(questionId, me.userId());
-        if (question.getUsageCount() != null && question.getUsageCount() > 0) {
-            questionVersionRepository.save(com.beeacademy.backend.model.QuestionVersion.snapshot(
-                    question,
-                    (int) questionVersionRepository.countByQuestionId(questionId) + 1,
-                    serializeChoices(question),
-                    "Teacher updated question after it had been used."));
-        }
+        Question question = loadAndVerifyOwnerForUpdate(questionId, me.userId());
+        String oldState = serializeQuestionState(question);
+        QuestionVersion oldVersion = ensureCurrentVersion(question, "Snapshot before update.");
         Category category = loadCategory(req.categoryId());
         Chapter chapter = req.chapterId() != null ? loadChapter(req.chapterId()) : null;
         QuestionBank questionBank = resolveQuestionBank(req.questionBankId(), me.userId(), req.categoryId(), req.grade());
@@ -175,6 +181,8 @@ public class QuestionService {
                 chapter,
                 req.content(),
                 req.explanation(),
+                req.defaultPoints(),
+                serializeTags(req.tags()),
                 serializeMetadata(req.metadata()),
                 req.difficulty(),
                 req.type());
@@ -184,6 +192,19 @@ public class QuestionService {
 
         boolean duplicate = hasDuplicateContent(me.userId(), req.content(), questionId);
         Question saved = questionRepository.save(question);
+        QuestionVersion newVersion = saveVersion(
+                saved,
+                oldVersion.getVersionNo() + 1,
+                question.getUsageCount() != null && question.getUsageCount() > 0
+                        ? "Teacher updated question after it had been used."
+                        : "Teacher updated question.");
+        saveAudit(
+                saved,
+                oldVersion.getVersionNo(),
+                newVersion.getVersionNo(),
+                "UPDATE",
+                oldState,
+                serializeQuestionState(saved));
         log.info("Teacher {} updated question {} type={}", me.userId(), questionId, saved.getType());
         return withDuplicateWarning(QuestionResponse.fromEntity(saved, objectMapper), duplicate);
     }
@@ -191,16 +212,58 @@ public class QuestionService {
     @Transactional
     public void deleteQuestion(UUID questionId, AuthenticatedUser me) {
         teacherAccessService.requireApprovedTeacher(me);
-        Question question = loadAndVerifyOwner(questionId, me.userId());
+        Question question = loadAndVerifyOwnerForUpdate(questionId, me.userId());
+        String oldState = serializeQuestionState(question);
+        QuestionVersion oldVersion = ensureCurrentVersion(question, "Snapshot before deletion.");
 
-        if (question.getUsageCount() > 0) {
+        if (question.getUsageCount() != null && question.getUsageCount() > 0) {
+            if ("inactive".equals(question.getStatus())) {
+                throw new BusinessException(
+                        "QUESTION_ALREADY_ARCHIVED",
+                        "Cau hoi da duoc luu tru truoc do.",
+                        HttpStatus.CONFLICT);
+            }
             question.deactivate();
-            questionRepository.save(question);
+            Question saved = questionRepository.save(question);
+            QuestionVersion archivedVersion = saveVersion(
+                    saved, oldVersion.getVersionNo() + 1, "Question archived after it was used.");
+            saveAudit(
+                    saved,
+                    oldVersion.getVersionNo(),
+                    archivedVersion.getVersionNo(),
+                    "ARCHIVE",
+                    oldState,
+                    serializeQuestionState(saved));
             log.info("Deactivate question {} usage={}", questionId, question.getUsageCount());
         } else {
+            saveAudit(
+                    question,
+                    oldVersion.getVersionNo(),
+                    null,
+                    "DELETE",
+                    oldState,
+                    null);
             questionRepository.delete(question);
             log.info("Delete question {}", questionId);
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<QuestionVersionResponse> listQuestionVersions(UUID questionId, AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
+        loadAndVerifyOwner(questionId, me.userId());
+        return questionVersionRepository.findByQuestionIdOrderByVersionNoDesc(questionId).stream()
+                .map(version -> QuestionVersionResponse.fromEntity(version, objectMapper))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<QuestionAuditLogResponse> listQuestionAuditLogs(UUID questionId, AuthenticatedUser me) {
+        teacherAccessService.requireApprovedTeacher(me);
+        loadAndVerifyOwner(questionId, me.userId());
+        return questionAuditLogRepository.findByQuestionIdOrderByCreatedAtDesc(questionId).stream()
+                .map(audit -> QuestionAuditLogResponse.fromEntity(audit, objectMapper))
+                .toList();
     }
 
     public BulkImportResult bulkCreateQuestions(AuthenticatedUser me, List<CreateQuestionRequest> requests) {
@@ -306,6 +369,114 @@ public class QuestionService {
         }
     }
 
+    private String serializeTags(List<String> tags) {
+        try {
+            if (tags == null || tags.isEmpty()) {
+                return "[]";
+            }
+            List<String> normalized = tags.stream()
+                    .filter(value -> value != null && !value.isBlank())
+                    .map(String::trim)
+                    .collect(java.util.stream.Collectors.collectingAndThen(
+                            java.util.stream.Collectors.toCollection(LinkedHashSet::new),
+                            ArrayList::new));
+            return objectMapper.writeValueAsString(normalized);
+        } catch (Exception ex) {
+            throw new BusinessException("QUESTION_TAGS_INVALID",
+                    "Khong the luu tag cau hoi.");
+        }
+    }
+
+    private QuestionVersion ensureCurrentVersion(Question question, String reason) {
+        String choicesJson = serializeChoices(question);
+        var latestVersion = questionVersionRepository
+                .findTopByQuestionIdOrderByVersionNoDesc(question.getId());
+        if (latestVersion.isPresent() && latestVersion.get().matches(question, choicesJson)) {
+            return latestVersion.get();
+        }
+        int nextVersion = latestVersion.map(QuestionVersion::getVersionNo).orElse(0) + 1;
+        return questionVersionRepository.save(
+                QuestionVersion.snapshot(question, nextVersion, choicesJson, reason));
+    }
+
+    private QuestionVersion saveVersion(Question question, int versionNo, String reason) {
+        return questionVersionRepository.save(
+                QuestionVersion.snapshot(question, versionNo, serializeChoices(question), reason));
+    }
+
+    private void saveAudit(
+            Question question,
+            Integer oldVersion,
+            Integer newVersion,
+            String action,
+            String oldState,
+            String newState) {
+        questionAuditLogRepository.save(QuestionAuditLog.record(
+                question.getTeacher().getId(),
+                question.getId(),
+                oldVersion,
+                newVersion,
+                action,
+                oldState,
+                newState));
+    }
+
+    private String serializeQuestionState(Question question) {
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode state = objectMapper.createObjectNode();
+            state.put("questionId", question.getId().toString());
+            putUuid(state, "questionBankId",
+                    question.getQuestionBank() != null ? question.getQuestionBank().getId() : null);
+            putUuid(state, "categoryId",
+                    question.getCategory() != null ? question.getCategory().getId() : null);
+            if (question.getGrade() != null) state.put("grade", question.getGrade());
+            else state.putNull("grade");
+            putUuid(state, "chapterId",
+                    question.getChapter() != null ? question.getChapter().getId() : null);
+            state.put("content", question.getContent());
+            if (question.getExplanation() != null) state.put("explanation", question.getExplanation());
+            else state.putNull("explanation");
+            if (question.getDefaultPoints() != null) state.put("defaultPoints", question.getDefaultPoints());
+            else state.putNull("defaultPoints");
+            if (question.getTagsJson() != null && !question.getTagsJson().isBlank()) {
+                state.set("tags", objectMapper.readTree(question.getTagsJson()));
+            } else {
+                state.putArray("tags");
+            }
+            if (question.getMetadataJson() != null && !question.getMetadataJson().isBlank()) {
+                state.set("metadata", objectMapper.readTree(question.getMetadataJson()));
+            } else {
+                state.putNull("metadata");
+            }
+            state.put("difficulty", question.getDifficulty());
+            state.put("type", question.getType());
+            state.put("status", question.getStatus());
+            state.put("usageCount", question.getUsageCount() != null ? question.getUsageCount() : 0);
+
+            com.fasterxml.jackson.databind.node.ArrayNode choices = state.putArray("choices");
+            question.getChoices().forEach(choice -> {
+                com.fasterxml.jackson.databind.node.ObjectNode choiceState = choices.addObject();
+                choiceState.put("id", choice.getId().toString());
+                choiceState.put("content", choice.getContent());
+                choiceState.put("isCorrect", Boolean.TRUE.equals(choice.getIsCorrect()));
+                choiceState.put("position", choice.getPosition());
+            });
+            return objectMapper.writeValueAsString(state);
+        } catch (Exception ex) {
+            throw new BusinessException(
+                    "QUESTION_AUDIT_FAILED",
+                    "Khong the ghi nhat ky thay doi cau hoi.");
+        }
+    }
+
+    private void putUuid(
+            com.fasterxml.jackson.databind.node.ObjectNode state,
+            String field,
+            UUID value) {
+        if (value != null) state.put(field, value.toString());
+        else state.putNull(field);
+    }
+
     private boolean hasDuplicateContent(UUID teacherId, String content, UUID excludeQuestionId) {
         if (content == null || content.isBlank()) {
             return false;
@@ -328,6 +499,18 @@ public class QuestionService {
             throw new BusinessException("FORBIDDEN", "Ban khong co quyen chinh sua cau hoi nay.", HttpStatus.FORBIDDEN);
         }
         return q;
+    }
+
+    private Question loadAndVerifyOwnerForUpdate(UUID questionId, UUID teacherId) {
+        Question question = questionRepository.findByIdForUpdate(questionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Question", questionId));
+        if (!question.getTeacher().getId().equals(teacherId)) {
+            throw new BusinessException(
+                    "FORBIDDEN",
+                    "Ban khong co quyen chinh sua cau hoi nay.",
+                    HttpStatus.FORBIDDEN);
+        }
+        return question;
     }
 
     private Profile loadProfile(UUID id) {

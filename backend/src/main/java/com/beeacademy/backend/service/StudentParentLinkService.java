@@ -39,12 +39,15 @@ public class StudentParentLinkService {
     public List<StudentParentLinkInvitationResponse> listPendingInvitations(AuthenticatedUser me) {
         log.info("Student {} requested pending parent link invitations", me.userId());
 
-        return linkRepository.findByIdStudentIdAndStatusOrderByInvitedAtDesc(
+        return linkRepository.findByIdStudentIdAndStatusesOrderByInvitedAtDesc(
                         me.userId(),
-                        ParentStudentLinkStatus.PENDING.toDbValue())
+                        List.of(
+                                ParentStudentLinkStatus.PENDING.toDbValue(),
+                                ParentStudentLinkStatus.EXPIRED.toDbValue()))
                 .stream()
                 .map(link -> expireIfPending(link, me.userId(), "expire_invitation"))
-                .filter(link -> link.getStatus() == ParentStudentLinkStatus.PENDING)
+                .filter(link -> link.getStatus() == ParentStudentLinkStatus.PENDING
+                        || link.getStatus() == ParentStudentLinkStatus.EXPIRED)
                 .map(this::toResponse)
                 .toList();
     }
@@ -55,7 +58,7 @@ public class StudentParentLinkService {
 
         return linkRepository.findByIdStudentIdAndStatusOrderByInvitedAtDesc(
                         me.userId(),
-                        ParentStudentLinkStatus.ACCEPTED.toDbValue())
+                        ParentStudentLinkStatus.ACTIVE.toDbValue())
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -239,7 +242,7 @@ public class StudentParentLinkService {
     }
 
     private void requireRevocableStatus(ParentStudentLink link) {
-        if (link.getStatus() == ParentStudentLinkStatus.ACCEPTED) {
+        if (link.getStatus() == ParentStudentLinkStatus.ACTIVE) {
             return;
         }
 
@@ -265,7 +268,7 @@ public class StudentParentLinkService {
                         "Không tìm thấy liên kết phụ huynh này.",
                         HttpStatus.NOT_FOUND));
 
-        if (link.getStatus() != ParentStudentLinkStatus.ACCEPTED) {
+        if (link.getStatus() != ParentStudentLinkStatus.ACTIVE) {
             throw new BusinessException(
                     "PARENT_LINK_NOT_ACTIVE",
                     "Liên kết phụ huynh này không còn hoạt động.",
@@ -288,7 +291,7 @@ public class StudentParentLinkService {
                 link.getStatus().toApiValue(),
                 link.getInvitedAt(),
                 expiresAt(link),
-                isExpired(link),
+                link.getStatus() == ParentStudentLinkStatus.EXPIRED || isExpired(link),
                 link.getRespondedAt(),
                 link.getUnlinkRequestedBy(),
                 resolveUnlinkRequestedByRole(link),

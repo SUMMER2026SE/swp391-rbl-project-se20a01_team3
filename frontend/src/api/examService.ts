@@ -8,6 +8,7 @@ export type ExamType = 'quiz' | 'chapter_test' | 'final_exam';
 
 export interface ExamQuestionPayload {
   id: string;
+  questionVersionId?: string | null;
   text: string;
   type: ExamQuestionType;
   options: string[];

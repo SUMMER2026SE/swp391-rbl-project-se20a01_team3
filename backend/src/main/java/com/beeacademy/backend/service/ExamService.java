@@ -40,6 +40,7 @@ import com.beeacademy.backend.repository.ExamConfigRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
 import com.beeacademy.backend.repository.GradeAuditLogRepository;
 import com.beeacademy.backend.repository.QuestionRepository;
+import com.beeacademy.backend.repository.QuestionVersionRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import com.beeacademy.backend.client.SupabaseStorageClient;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -114,6 +115,7 @@ public class ExamService {
     private final ProfileRepository profileRepository;
     private final GradeAuditLogRepository gradeAuditLogRepository;
     private final QuestionRepository questionRepository;
+    private final QuestionVersionRepository questionVersionRepository;
     private final ExamAiAuditLogRepository examAiAuditLogRepository;
     private final ObjectMapper objectMapper;
     private final SupabaseStorageClient storageClient;
@@ -198,6 +200,7 @@ public class ExamService {
         ExamAttempt attempt = getOrCreateOpenAttempt(student, config, submittedCount);
         attempt.submit(toJson(request.answers()), scoringSummary.autoScorePercent(), passed);
         ExamAttempt saved = examAttemptRepository.save(attempt);
+        incrementQuestionUsageForExam(questions);
 
         if (scoringSummary.hasEssay()) {
             try {
@@ -1026,6 +1029,7 @@ public class ExamService {
 
     private record SnapshotExamQuestion(
             String id,
+            String questionVersionId,
             String text,
             String type,
             List<String> options,
@@ -1602,6 +1606,7 @@ public class ExamService {
                 .toList();
         return new ExamConfigResponse.ExamQuestionResponse(
                 question.getId().toString(),
+                currentQuestionVersionId(question),
                 question.getContent(),
                 question.getType(),
                 options,
@@ -1611,6 +1616,32 @@ public class ExamService {
                 pointsPerQuestion,
                 question.getDifficulty()
         );
+    }
+
+    private UUID currentQuestionVersionId(Question question) {
+        return questionVersionRepository.findTopByQuestionIdOrderByVersionNoDesc(question.getId())
+                .map(version -> version.getId())
+                .orElse(null);
+    }
+
+    private void incrementQuestionUsageForExam(List<SnapshotExamQuestion> questions) {
+        List<UUID> questionIds = questions.stream()
+                .map(SnapshotExamQuestion::id)
+                .map(this::tryParseUuid)
+                .filter(Objects::nonNull)
+                .toList();
+        if (!questionIds.isEmpty()) {
+            questionRepository.incrementUsageCount(questionIds);
+        }
+    }
+
+    private UUID tryParseUuid(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     private UUID courseCategoryId(Course course) {
