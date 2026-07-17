@@ -35,6 +35,7 @@ public record ExamConfigResponse(
 ) {
     public record ExamQuestionResponse(
             String id,
+            UUID questionVersionId,
             String text,
             String type,
             List<String> options,

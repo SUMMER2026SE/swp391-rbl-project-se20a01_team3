@@ -1,6 +1,7 @@
 import type {
   ChildProgressReportResponse,
   ParentAssessmentRecord,
+  ParentCertificateRecord,
   ParentCourseProgressItem,
   ParentRequiredExamStatus,
 } from '../types/api';
@@ -65,6 +66,21 @@ function requiredExamSummary(course: ParentCourseProgressItem): string {
     .join('; ');
 }
 
+function certificateStatusLabel(status: ParentCertificateRecord['status']): string {
+  switch (status) {
+    case 'ISSUED':
+      return 'Da cap';
+    case 'REISSUED':
+      return 'Da cap lai';
+    case 'NEEDS_REVIEW':
+      return 'Can xem xet';
+    case 'REVOKED':
+      return 'Da thu hoi';
+    default:
+      return 'Chua cap';
+  }
+}
+
 function progressAccessReasonLabel(reason: string | null | undefined): string {
   switch (reason) {
     case 'DOB_MISSING_REQUIRE_CONSENT':
@@ -97,6 +113,19 @@ function averageProgress(report: ChildProgressReportResponse): string {
   if (report.courses.length === 0) return '0.0';
   const avg = report.courses.reduce((sum, item) => sum + item.progressPct, 0) / report.courses.length;
   return avg.toFixed(1);
+}
+
+function weeklyTrendLabel(trend: string): string {
+  switch (trend) {
+    case 'increasing':
+      return 'Tang so voi tuan truoc';
+    case 'decreasing':
+      return 'Giam so voi tuan truoc';
+    case 'stable':
+      return 'On dinh so voi tuan truoc';
+    default:
+      return 'Chua du du lieu so sanh';
+  }
 }
 
 export function printParentProgressReport(
@@ -133,6 +162,25 @@ export function printParentProgressReport(
       </tr>
     `).join('');
 
+  const completedLessons = report.courses.flatMap(course =>
+    (course.completedLessons ?? []).map(lesson => ({ course, lesson })),
+  );
+  const lessonRows = completedLessons.length === 0
+    ? `
+      <tr>
+        <td colspan="5" class="empty">Chua co bai hoc da hoan thanh.</td>
+      </tr>
+    `
+    : completedLessons.map(({ course, lesson }) => `
+      <tr>
+        <td>${escapeHtml(course.courseTitle)}</td>
+        <td>${escapeHtml(lesson.chapterTitle)}</td>
+        <td>${escapeHtml(lesson.lessonTitle)}</td>
+        <td>${escapeHtml(lesson.durationSec != null ? `${Math.round(lesson.durationSec / 60)} phut` : '---')}</td>
+        <td>${escapeHtml(formatDateTime(lesson.completedAt))}</td>
+      </tr>
+    `).join('');
+
   const assessmentRows = report.assessments.length === 0
     ? `
       <tr>
@@ -147,6 +195,24 @@ export function printParentProgressReport(
         <td>${escapeHtml(record.assessmentType.toUpperCase())}</td>
         <td>${escapeHtml(formatScore(record))}</td>
         <td>${escapeHtml(formatNormalizedScore(record))}</td>
+      </tr>
+    `).join('');
+
+  const certificates = report.certificates ?? [];
+  const certificateRows = certificates.length === 0
+    ? `
+      <tr>
+        <td colspan="6" class="empty">Chua co chung chi nao.</td>
+      </tr>
+    `
+    : certificates.map(certificate => `
+      <tr>
+        <td>${escapeHtml(certificate.courseTitle)}</td>
+        <td>${escapeHtml(certificate.teacherName ?? '-')}</td>
+        <td>${escapeHtml(certificateStatusLabel(certificate.status))}</td>
+        <td>${escapeHtml(certificate.certificateNo)}</td>
+        <td>${escapeHtml(certificate.verificationCode)}</td>
+        <td>${escapeHtml(formatDateTime(certificate.issuedAt))}</td>
       </tr>
     `).join('');
 
@@ -341,6 +407,50 @@ export function printParentProgressReport(
         </section>
 
         <section class="section">
+          <h2>Bao cao 7 ngay</h2>
+          <p>${escapeHtml(report.weeklySummary.periodStart)} den ${escapeHtml(report.weeklySummary.periodEnd)} · ${escapeHtml(weeklyTrendLabel(report.weeklySummary.progressTrend))}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Hoan thanh tuan nay</th>
+                <th>Tuan truoc</th>
+                <th>Diem trung binh</th>
+                <th>Bai chua hoan thanh</th>
+                <th>Ngay khong hoc</th>
+                <th>Khuyen nghi</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>${report.weeklySummary.currentWeekCompletedItems}</td>
+                <td>${report.weeklySummary.previousWeekCompletedItems}</td>
+                <td>${report.weeklySummary.averageScore == null ? '---' : `${report.weeklySummary.averageScore.toFixed(1)}/10`}</td>
+                <td>${report.weeklySummary.incompleteLearningItems}</td>
+                <td>${report.weeklySummary.inactiveDays}/7</td>
+                <td>${escapeHtml(report.weeklySummary.actionSuggestion)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="section">
+          <h2>Bai da hoc</h2>
+          <p>Cac bai hoc da duoc ghi nhan hoan thanh trong tung khoa hoc.</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Khoa hoc</th>
+                <th>Chuong</th>
+                <th>Bai hoc</th>
+                <th>Thoi luong</th>
+                <th>Hoan thanh luc</th>
+              </tr>
+            </thead>
+            <tbody>${lessonRows}</tbody>
+          </table>
+        </section>
+
+        <section class="section">
           <h2>Bang diem gan day</h2>
           <p>Cac cot diem quiz, exam va assignment duoc ghi nhan theo thu tu moi nhat.</p>
           <table>
@@ -355,6 +465,24 @@ export function printParentProgressReport(
               </tr>
             </thead>
             <tbody>${assessmentRows}</tbody>
+          </table>
+        </section>
+
+        <section class="section">
+          <h2>Chung chi</h2>
+          <p>Trang thai chung chi cua hoc sinh theo tung khoa hoc.</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Khoa hoc</th>
+                <th>Giao vien</th>
+                <th>Trang thai</th>
+                <th>So chung chi</th>
+                <th>Ma xac thuc</th>
+                <th>Ngay cap</th>
+              </tr>
+            </thead>
+            <tbody>${certificateRows}</tbody>
           </table>
         </section>
 

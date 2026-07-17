@@ -309,7 +309,8 @@ export interface LinkStudentRequest {
   code: string;
 }
 
-export type ParentLinkStatus = 'pending' | 'accepted' | 'active' | 'rejected' | 'expired' | 'revoked';
+/** UC28 parent-link API contract: PENDING -> ACTIVE/REJECTED/EXPIRED, ACTIVE -> REVOKED. */
+export type ParentLinkStatus = 'pending' | 'active' | 'rejected' | 'expired' | 'revoked';
 export type ParentLinkParticipantRole = 'parent' | 'student';
 
 export interface SendParentLinkInvitationPayload {
@@ -384,12 +385,26 @@ export type ParentRequiredExamStatus =
 export interface ParentRequiredExamResult {
   slotIndex: number;
   label: string;
+  examName: string | null;
+  examType: 'chapter_test' | 'final_exam' | 'quiz' | string | null;
   status: ParentRequiredExamStatus;
   examConfigId: string | null;
+  courseVersionId: string | null;
   scorePercent: number | null;
   normalizedScore: number | null;
   passed: boolean | null;
   submittedAt: string | null;
+}
+
+export interface ParentLessonProgressItem {
+  lessonId: string;
+  chapterId: string;
+  chapterTitle: string;
+  chapterPosition: number | null;
+  lessonTitle: string;
+  lessonPosition: number | null;
+  durationSec: number | null;
+  completedAt: string | null;
 }
 
 export interface ParentCourseProgressItem {
@@ -400,13 +415,17 @@ export interface ParentCourseProgressItem {
   status: 'active' | 'completed';
   progressPct: number;
   enrolledAt: string | null;
+  progressUpdatedAt: string | null;
   grades: number[];
+  lessonCompletedCount: number;
+  lessonTotalCount: number;
   quizCompletedCount: number;
   quizTotalCount: number;
   averageQuizScore: number | null;
   latestQuizScore: number | null;
   latestExamScore: number | null;
   latestAssignmentScore: number | null;
+  completedLessons: ParentLessonProgressItem[];
   requiredExams: ParentRequiredExamResult[];
 }
 
@@ -425,12 +444,40 @@ export interface ParentAssessmentRecord {
   submittedAt: string | null;
 }
 
+export type ParentCertificateStatus =
+  | 'NOT_ISSUED'
+  | 'ISSUED'
+  | 'REISSUED'
+  | 'NEEDS_REVIEW'
+  | 'REVOKED'
+  | string;
+
+export interface ParentCertificateRecord {
+  certificateId: string;
+  courseId: string | null;
+  courseTitle: string;
+  teacherName: string | null;
+  status: ParentCertificateStatus;
+  certificateNo: string;
+  verificationCode: string;
+  versionNo: number;
+  issuedAt: string | null;
+  revokedAt: string | null;
+  reviewNote: string | null;
+}
+
 export interface ParentWeeklySummary {
-  progressTrend: 'no_data' | 'inactive' | 'needs_support' | 'on_track' | string;
+  periodStart: string;
+  periodEnd: string;
+  progressTrend: 'no_data' | 'increasing' | 'decreasing' | 'stable' | string;
+  currentWeekCompletedItems: number;
+  previousWeekCompletedItems: number;
   averageScore: number | null;
   completedAssessments: number;
   incompleteCourses: number;
+  incompleteLearningItems: number;
   inactiveDays: number;
+  actionRule: 'no_data' | 'inactive' | 'needs_support' | 'decreasing' | 'on_track' | string;
   actionSuggestion: string;
 }
 
@@ -445,6 +492,7 @@ export interface ChildProgressReportResponse {
   weeklySummary: ParentWeeklySummary;
   courses: ParentCourseProgressItem[];
   assessments: ParentAssessmentRecord[];
+  certificates: ParentCertificateRecord[];
 }
 
 export type ParentPaymentStatus = 'PENDING' | 'PAID' | 'CANCELLED' | 'EXPIRED';

@@ -323,8 +323,8 @@ function QuizModal({ lesson, prevScore, onClose, onComplete }: QuizModalProps) {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.1 * i }}
                       className={`rounded-2xl border-2 overflow-hidden ${isCorrect
-                          ? 'border-green-500/30 bg-green-500/5'
-                          : 'border-red-500/30 bg-red-500/5'
+                        ? 'border-green-500/30 bg-green-500/5'
+                        : 'border-red-500/30 bg-red-500/5'
                         }`}
                     >
                       <div className="flex items-start gap-3 p-4">
@@ -457,13 +457,13 @@ function QuizModal({ lesson, prevScore, onClose, onComplete }: QuizModalProps) {
                       whileTap={{ scale: 0.99 }}
                       onClick={() => handleSelect(i)}
                       className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${isSelected
-                          ? 'border-primary bg-primary/10 shadow-sm shadow-primary/20'
-                          : 'border-outline-variant/40 hover:border-primary/40 hover:bg-surface-container'
+                        ? 'border-primary bg-primary/10 shadow-sm shadow-primary/20'
+                        : 'border-outline-variant/40 hover:border-primary/40 hover:bg-surface-container'
                         }`}
                     >
                       <div className={`w-9 h-9 rounded-full flex items-center justify-center font-extrabold text-sm flex-shrink-0 transition-colors ${isSelected
-                          ? 'bg-primary text-on-primary'
-                          : 'bg-surface-container-high text-on-surface-variant'
+                        ? 'bg-primary text-on-primary'
+                        : 'bg-surface-container-high text-on-surface-variant'
                         }`}>
                         {letter}
                       </div>
@@ -495,10 +495,10 @@ function QuizModal({ lesson, prevScore, onClose, onComplete }: QuizModalProps) {
                 onClick={() => setCurrentIdx(i)}
                 title={`Câu ${i + 1}`}
                 className={`rounded-full transition-all duration-200 ${i === currentIdx
-                    ? 'w-6 h-3 bg-primary'
-                    : answers[i] !== null
-                      ? 'w-3 h-3 bg-primary/50 hover:bg-primary/70'
-                      : 'w-3 h-3 bg-surface-container-high hover:bg-outline-variant'
+                  ? 'w-6 h-3 bg-primary'
+                  : answers[i] !== null
+                    ? 'w-3 h-3 bg-primary/50 hover:bg-primary/70'
+                    : 'w-3 h-3 bg-surface-container-high hover:bg-outline-variant'
                   }`}
               />
             ))}
@@ -532,8 +532,8 @@ function QuizModal({ lesson, prevScore, onClose, onComplete }: QuizModalProps) {
                 onClick={handleSubmit}
                 disabled={!allAnswered}
                 className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${allAnswered
-                    ? 'bg-green-500 text-white hover:bg-green-600 shadow-md shadow-green-500/30'
-                    : 'bg-surface-container-high text-on-surface-variant cursor-not-allowed opacity-60'
+                  ? 'bg-green-500 text-white hover:bg-green-600 shadow-md shadow-green-500/30'
+                  : 'bg-surface-container-high text-on-surface-variant cursor-not-allowed opacity-60'
                   }`}
               >
                 <Trophy className="w-4 h-4" />
@@ -906,8 +906,8 @@ function MarketingView({
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex-1 py-3 px-6 rounded-2xl font-bold text-sm md:text-base whitespace-nowrap transition-all ${activeTab === tab.id
-                      ? 'bg-primary text-on-primary shadow-md'
-                      : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
+                    ? 'bg-primary text-on-primary shadow-md'
+                    : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
                     }`}
                 >
                   {tab.label}
@@ -1988,18 +1988,18 @@ function MarketingSyllabusList({
                           }}
                           disabled={!canOpen}
                           className={`w-full rounded-2xl border px-4 py-3 text-left transition-all disabled:cursor-default ${isLessonCompleted
-                              ? 'border-green-500/25 bg-green-500/5 text-green-700'
-                              : canPreviewLesson
-                                ? 'border-primary/30 bg-primary/5 text-primary hover:bg-primary/10'
-                                : 'border-transparent bg-surface hover:bg-surface-container disabled:hover:bg-surface'
+                            ? 'border-green-500/25 bg-green-500/5 text-green-700'
+                            : canPreviewLesson
+                              ? 'border-primary/30 bg-primary/5 text-primary hover:bg-primary/10'
+                              : 'border-transparent bg-surface hover:bg-surface-container disabled:hover:bg-surface'
                             }`}
                         >
                           <div className="flex items-start gap-3">
                             <div className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${isLessonCompleted
-                                ? 'bg-green-500/15 text-green-600'
-                                : canPreviewLesson
-                                  ? 'bg-primary/10 text-primary'
-                                  : 'bg-surface-container-high text-on-surface-variant'
+                              ? 'bg-green-500/15 text-green-600'
+                              : canPreviewLesson
+                                ? 'bg-primary/10 text-primary'
+                                : 'bg-surface-container-high text-on-surface-variant'
                               }`}>
                               {isLessonCompleted
                                 ? <CheckCircle2 className="h-4 w-4" />
@@ -3040,7 +3040,7 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
 
   function handleVideoPlaybackError() {
     if (!usingVideoFallback && activeLesson?.videoFallbackUrl
-        && activeLesson.videoFallbackUrl !== activeLesson.url) {
+      && activeLesson.videoFallbackUrl !== activeLesson.url) {
       setUsingVideoFallback(true);
       setVideoUrlExpired(false);
       notify.info('Nguồn chính gặp sự cố. Đang chuyển sang nguồn video dự phòng.');
@@ -3381,9 +3381,9 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
             ) : activeLesson?.type === 'video' && playableVideoUrl && playableVideoUrl !== '#' ? (
               // Kiểm tra embed URL (YouTube/Vimeo) hay direct video
               playableVideoUrl.includes('youtube.com') ||
-              playableVideoUrl.includes('youtu.be') ||
-              playableVideoUrl.includes('vimeo.com') ||
-              playableVideoUrl.includes('/embed/') ? (
+                playableVideoUrl.includes('youtu.be') ||
+                playableVideoUrl.includes('vimeo.com') ||
+                playableVideoUrl.includes('/embed/') ? (
                 <div className="absolute inset-0">
                   <EmbeddedVideoPlayer
                     key={`${activeLesson.id}-${playbackRate}-${usingVideoFallback ? 'fallback' : 'primary'}`}
@@ -3555,14 +3555,14 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                       className="absolute inset-0 h-full w-full bg-white"
                     />
                   ) : (
-                  <button
-                    type="button"
-                    onClick={() => activeLesson.documents?.[0]?.id && handleDownloadDocument(activeLesson.documents[0].id)}
-                    disabled={!activeLesson.documents?.[0]?.id || downloadingDocumentId === activeLesson.documents[0].id}
-                    className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold transition-colors relative z-10"
-                  >
-                    Mở tài liệu
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => activeLesson.documents?.[0]?.id && handleDownloadDocument(activeLesson.documents[0].id)}
+                      disabled={!activeLesson.documents?.[0]?.id || downloadingDocumentId === activeLesson.documents[0].id}
+                      className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold transition-colors relative z-10"
+                    >
+                      Mở tài liệu
+                    </button>
                   )
                 ) : (
                   <p className="mt-4 text-sm text-white/60 relative z-10">Tài liệu đang được chuẩn bị</p>
@@ -3733,18 +3733,18 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                 .filter(tab => tab.id !== 'assignments'
                   || (user?.role === 'student' && course.isEnrolled))
                 .map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`pb-4 font-bold text-sm md:text-base transition-colors relative ${activeTab === tab.id ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'
-                    }`}
-                >
-                  {tab.label}
-                  {activeTab === tab.id && (
-                    <motion.div layoutId="learningTabIndicator" className="absolute bottom-0 inset-x-0 h-1 bg-primary rounded-t-full" />
-                  )}
-                </button>
-              ))}
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`pb-4 font-bold text-sm md:text-base transition-colors relative ${activeTab === tab.id ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
+                  >
+                    {tab.label}
+                    {activeTab === tab.id && (
+                      <motion.div layoutId="learningTabIndicator" className="absolute bottom-0 inset-x-0 h-1 bg-primary rounded-t-full" />
+                    )}
+                  </button>
+                ))}
             </div>
 
             <div className="min-h-[200px]">
@@ -3763,10 +3763,10 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                               {activeLesson.completionRule === 'DOCUMENT_OPENED'
                                 ? 'Bài học được hoàn thành khi tài liệu được mở.'
                                 : activeLesson.completionRule === 'MARK_AS_COMPLETE'
-                                ? 'Hãy đánh dấu hoàn thành sau khi học xong nội dung.'
-                                : activeLesson.completionRule
-                                ? 'Bài học được hoàn thành sau khi bài tập đạt điều kiện.'
-                                : 'Bài học chưa được cấu hình điều kiện hoàn thành.'}
+                                  ? 'Hãy đánh dấu hoàn thành sau khi học xong nội dung.'
+                                  : activeLesson.completionRule
+                                    ? 'Bài học được hoàn thành sau khi bài tập đạt điều kiện.'
+                                    : 'Bài học chưa được cấu hình điều kiện hoàn thành.'}
                             </p>
                           </div>
                           {activeLesson.completionRule === 'MARK_AS_COMPLETE' && !completedList.includes(activeLesson.id) && (
@@ -4285,10 +4285,10 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                                       key={lesson.id}
                                       onClick={() => handleLessonClick(lesson)}
                                       className={`w-full text-left rounded-xl border px-3 py-2.5 flex gap-3 transition-all ${isLocked
-                                          ? 'bg-surface-container/40 border-transparent opacity-75 hover:opacity-100'
-                                          : isActive
-                                            ? 'bg-primary/10 border-primary/30 shadow-sm'
-                                            : 'bg-surface hover:bg-surface-container border-transparent'
+                                        ? 'bg-surface-container/40 border-transparent opacity-75 hover:opacity-100'
+                                        : isActive
+                                          ? 'bg-primary/10 border-primary/30 shadow-sm'
+                                          : 'bg-surface hover:bg-surface-container border-transparent'
                                         }`}
                                     >
                                       <div className="mt-0.5 flex-shrink-0">
@@ -4337,8 +4337,8 @@ function LearningView({ course, rawChapters, courseId, initialLessonId, onExitPr
                                       className="w-full text-left rounded-xl border border-transparent px-3 py-2.5 flex items-center gap-3 bg-surface hover:bg-amber-500/5 hover:border-amber-500/20 transition-all group"
                                     >
                                       <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isChapterQuizCompleted
-                                          ? 'bg-green-500/10 text-green-600'
-                                          : 'bg-amber-500/10 text-amber-500 group-hover:bg-amber-500/20'
+                                        ? 'bg-green-500/10 text-green-600'
+                                        : 'bg-amber-500/10 text-amber-500 group-hover:bg-amber-500/20'
                                         }`}>
                                         {isChapterQuizCompleted
                                           ? <CheckCircle2 className="w-4 h-4" />

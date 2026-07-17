@@ -72,6 +72,9 @@ public class Enrollment {
     @Column(name = "progress_pct")
     private Integer progressPct;
 
+    @Column(name = "progress_updated_at", nullable = false)
+    private Instant progressUpdatedAt;
+
     public static Enrollment create(UUID studentId, UUID courseId, UUID courseVersionId) {
         if (courseVersionId == null) {
             throw new IllegalArgumentException("courseVersionId is required");
@@ -82,6 +85,7 @@ public class Enrollment {
         e.courseId = courseId;
         e.courseVersionId = courseVersionId;
         e.progressPct = 0;
+        e.progressUpdatedAt = Instant.now();
         return e;
     }
 
@@ -96,5 +100,6 @@ public class Enrollment {
     public void updateProgress(Integer progressPct) {
         int normalized = progressPct != null ? progressPct : 0;
         this.progressPct = Math.max(0, Math.min(100, normalized));
+        this.progressUpdatedAt = Instant.now();
     }
 }

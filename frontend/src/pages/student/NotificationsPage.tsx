@@ -38,7 +38,7 @@ function formatDateTime(value: string | null): string {
 }
 
 function invitationStatusText(invitation: StudentParentLinkInvitationResponse): string {
-  if (invitation.expired) return 'Yeu cau da het han';
+  if (invitation.expired || invitation.status === 'expired') return 'Yeu cau da het han';
   return 'Dang cho xac nhan';
 }
 
@@ -198,10 +198,11 @@ export default function NotificationsPage() {
           ) : (
             <div className="pt-5 space-y-4">
               {invitations.map(invitation => {
-                const expired = invitation.expired;
+                const expired = invitation.expired || invitation.status === 'expired';
                 return (
                 <div
                   key={invitation.parentId}
+                  data-testid={`parent-link-invitation-${invitation.parentId}`}
                   className={`p-4 rounded-2xl border border-outline-variant/20 bg-surface-container-low/40 ${expired ? 'opacity-75' : ''}`}
                 >
                   <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -238,11 +239,15 @@ export default function NotificationsPage() {
                         Đang chờ xác nhận
                       </span>
                       {expired && (
-                        <span className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-slate-500/10 text-slate-700 text-xs font-extrabold">
+                        <span
+                          data-testid={`parent-link-expired-${invitation.parentId}`}
+                          className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-slate-500/10 text-slate-700 text-xs font-extrabold"
+                        >
                           {invitationStatusText(invitation)}
                         </span>
                       )}
                       <button
+                        data-testid={`reject-parent-link-${invitation.parentId}`}
                         onClick={() => handleInvitationAction(invitation, 'reject')}
                         disabled={actionKey !== null || expired}
                         className="h-10 px-4 rounded-xl border border-red-200/50 bg-red-50 text-red-600 text-xs font-extrabold hover:bg-red-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
@@ -255,6 +260,7 @@ export default function NotificationsPage() {
                         Từ chối
                       </button>
                       <button
+                        data-testid={`accept-parent-link-${invitation.parentId}`}
                         onClick={() => handleInvitationAction(invitation, 'accept')}
                         disabled={actionKey !== null || expired}
                         className="h-10 px-4 rounded-xl bg-primary text-on-primary text-xs font-extrabold hover:bg-primary/95 transition-colors shadow-md shadow-primary/20 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"

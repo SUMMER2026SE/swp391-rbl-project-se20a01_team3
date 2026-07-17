@@ -9,6 +9,7 @@ import * as questionBankService from '../../api/questionBankService';
 import { isApiError } from '../../api/client';
 import type {
   QuestionResponse, Difficulty, QuestionStatus, CreateQuestionRequest, QuestionMetadata, MatchingPair,
+  QuestionVersionResponse, QuestionAuditLogResponse,
 } from '../../api/questionService';
 import type { QuestionBankResponse } from '../../api/questionBankService';
 import { listCategories } from '../../api/courseService';
@@ -180,6 +181,8 @@ interface FormState {
   chapterId: string;
   content: string;
   explanation: string;
+  defaultPoints: string;
+  tagsText: string;
   difficulty: Difficulty;
   type: BankQuestionType;
   choices: ChoiceRow[];
@@ -205,6 +208,8 @@ function emptyForm(): FormState {
     questionBankId: '',
     categoryId: '', grade: '', courseId: '', chapterId: '',
     content: '', explanation: '',
+    defaultPoints: '1',
+    tagsText: '',
     difficulty: 'medium', type: 'multiple_choice',
     choices: emptyChoices('multiple_choice'),
     acceptedAnswersText: '',
@@ -235,6 +240,8 @@ function formFromQuestion(q: QuestionResponse): FormState {
     chapterId:   q.chapterId   ?? '',
     content:     q.content,
     explanation: q.explanation ?? '',
+    defaultPoints: q.defaultPoints != null ? String(q.defaultPoints) : '1',
+    tagsText: q.tags?.join(', ') ?? '',
     difficulty:  q.difficulty,
     type:        normalizeQuestionType(q.type),
     choices:     q.choices.map(c => ({ content: c.content, isCorrect: !!c.isCorrect })),
@@ -626,6 +633,13 @@ function QuestionFormPanel({ open, editing, categories, courses, banks, question
     if (!form.categoryId) { notify.error('Vui lòng chọn môn học'); return; }
     if (!form.grade) { notify.error('Vui lòng chọn lớp'); return; }
     if (!form.content.trim()) { notify.error('Vui lòng nhập nội dung câu hỏi'); return; }
+    if (form.defaultPoints.trim()) {
+      const points = Number(form.defaultPoints);
+      if (!Number.isFinite(points) || points <= 0 || points > 100) {
+        notify.error('Điểm mặc định phải từ 0.01 đến 100');
+        return;
+      }
+    }
     if (OBJECTIVE_TYPES.includes(form.type) && form.choices.some(c => !c.content.trim())) { notify.error('Vui lòng điền đầy đủ nội dung các đáp án'); return; }
     if (OBJECTIVE_TYPES.includes(form.type) && !form.choices.some(c => c.isCorrect)) { notify.error('Vui lòng chọn ít nhất 1 đáp án đúng'); return; }
     if (form.type === 'true_false' && form.choices.filter(c => c.isCorrect).length !== 1) { notify.error('Câu đúng/sai phải có đúng 1 đáp án đúng'); return; }
@@ -651,6 +665,11 @@ function QuestionFormPanel({ open, editing, categories, courses, banks, question
       explanation: form.explanation.trim() || undefined,
       difficulty:  form.difficulty,
       type:        normalizeQuestionType(form.type),
+      defaultPoints: form.defaultPoints.trim() ? Number(form.defaultPoints) : null,
+      tags: form.tagsText
+        .split(',')
+        .map(value => value.trim())
+        .filter(Boolean),
       metadata,
       choices:     OBJECTIVE_TYPES.includes(form.type)
         ? form.choices.map(c => ({ content: c.content.trim(), isCorrect: c.isCorrect }))
@@ -967,6 +986,32 @@ function QuestionFormPanel({ open, editing, categories, courses, banks, question
                   placeholder="Nhập nội dung câu hỏi..."
                   className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary resize-none"
                 />
+              </div>
+
+              {/* Difficulty */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-bold text-on-surface mb-1.5">Điểm mặc định</label>
+                  <input
+                    type="number"
+                    min={0.01}
+                    max={100}
+                    step={0.25}
+                    value={form.defaultPoints}
+                    onChange={e => set('defaultPoints', e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-on-surface mb-1.5">Tag</label>
+                  <input
+                    type="text"
+                    value={form.tagsText}
+                    onChange={e => set('tagsText', e.target.value)}
+                    placeholder="Ví dụ: đại số, nhận biết"
+                    className="w-full px-3 py-2.5 text-sm bg-surface-container border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
               </div>
 
               {/* Difficulty */}
@@ -1450,6 +1495,95 @@ function ConfirmDeleteDialog({
   );
 }
 
+function QuestionHistoryDialog({
+  question,
+  versions,
+  audits,
+  loading,
+  onClose,
+}: {
+  question: QuestionResponse | null;
+  versions: QuestionVersionResponse[];
+  audits: QuestionAuditLogResponse[];
+  loading: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <AnimatePresence>
+      {question && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/50"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
+            className="fixed z-50 top-1/2 left-1/2 w-full max-w-3xl max-h-[82vh] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl bg-surface shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-outline-variant/30 px-5 py-4">
+              <div>
+                <h3 className="font-extrabold text-on-surface">Lịch sử câu hỏi</h3>
+                <p className="mt-0.5 text-xs text-on-surface-variant">{truncate(question.content, 90)}</p>
+              </div>
+              <button onClick={onClose} className="rounded-xl p-2 text-on-surface-variant hover:bg-surface-container">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="grid max-h-[68vh] grid-cols-1 gap-5 overflow-y-auto p-5 md:grid-cols-2">
+              {loading ? (
+                <div className="md:col-span-2 flex items-center justify-center py-12 text-primary">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                </div>
+              ) : (
+                <>
+                  <section>
+                    <h4 className="mb-3 text-sm font-extrabold text-on-surface">Phiên bản</h4>
+                    <div className="space-y-2">
+                      {versions.length === 0 ? (
+                        <p className="text-sm text-on-surface-variant">Chưa có phiên bản.</p>
+                      ) : versions.map(version => (
+                        <div key={version.id} className="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-sm font-extrabold text-on-surface">v{version.versionNo}</span>
+                            <span className="text-xs text-on-surface-variant">{formatDate(version.createdAt)}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-on-surface">{truncate(version.content, 120)}</p>
+                          <p className="mt-1 text-xs text-on-surface-variant">
+                            {[version.defaultPoints != null ? `${version.defaultPoints} điểm` : null, version.tags?.map(tag => `#${tag}`).join(' ')].filter(Boolean).join(' · ')}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                  <section>
+                    <h4 className="mb-3 text-sm font-extrabold text-on-surface">Audit log</h4>
+                    <div className="space-y-2">
+                      {audits.length === 0 ? (
+                        <p className="text-sm text-on-surface-variant">Chưa có audit log.</p>
+                      ) : audits.map(audit => (
+                        <div key={audit.id} className="rounded-xl border border-outline-variant/40 bg-surface-container/40 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-sm font-extrabold text-primary">{audit.action}</span>
+                            <span className="text-xs text-on-surface-variant">{formatDate(audit.createdAt)}</span>
+                          </div>
+                          <p className="mt-1 text-xs text-on-surface-variant">
+                            v{audit.oldVersion ?? '-'} → v{audit.newVersion ?? '-'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </>
+              )}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
 function ConfirmBulkDeleteDialog({
   count, deleting, onConfirm, onCancel,
 }: { count: number; deleting: boolean; onConfirm: () => void; onCancel: () => void }) {
@@ -1739,6 +1873,10 @@ export default function QuestionBankPage() {
   const [aiScanOpen,     setAiScanOpen]     = useState(false);
   const [editingQ,       setEditingQ]       = useState<QuestionResponse | null>(null);
   const [deleteTarget,   setDeleteTarget]   = useState<QuestionResponse | null>(null);
+  const [historyTarget,  setHistoryTarget]  = useState<QuestionResponse | null>(null);
+  const [historyVersions,setHistoryVersions]= useState<QuestionVersionResponse[]>([]);
+  const [historyAudits,  setHistoryAudits]  = useState<QuestionAuditLogResponse[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting,   setBulkDeleting]   = useState(false);
   const [selectedIds,    setSelectedIds]    = useState<string[]>([]);
@@ -1852,6 +1990,24 @@ export default function QuestionBankPage() {
   // Actions
   function openAdd()  { setEditingQ(null); setPanelOpen(true); }
   function openEdit(q: QuestionResponse) { setEditingQ(q); setPanelOpen(true); }
+  async function openHistory(q: QuestionResponse) {
+    setHistoryTarget(q);
+    setHistoryLoading(true);
+    setHistoryVersions([]);
+    setHistoryAudits([]);
+    try {
+      const [versions, audits] = await Promise.all([
+        questionService.listQuestionVersions(q.id),
+        questionService.listQuestionAuditLogs(q.id),
+      ]);
+      setHistoryVersions(versions);
+      setHistoryAudits(audits);
+    } catch {
+      notify.error('Không tải được lịch sử câu hỏi');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
   function handleQuestionBankCreated(bank: QuestionBankResponse) {
     setBankFilter(bank.id);
     setBankRefreshKey(key => key + 1);
@@ -2379,7 +2535,11 @@ export default function QuestionBankPage() {
                             <td className="px-5 py-3">
                               <p className="text-on-surface font-medium leading-snug">{truncate(q.content, 100)}</p>
                               <p className="text-xs text-on-surface-variant mt-0.5">
-                                {q.choices.length > 0 && `${q.choices.length} đáp án`}
+                                {[
+                                  q.choices.length > 0 ? `${q.choices.length} đáp án` : null,
+                                  q.defaultPoints != null ? `${q.defaultPoints} điểm` : null,
+                                  q.tags?.length ? q.tags.map(tag => `#${tag}`).join(' ') : null,
+                                ].filter(Boolean).join(' · ')}
                               </p>
                             </td>
                             <td className="px-4 py-3">
@@ -2422,6 +2582,11 @@ export default function QuestionBankPage() {
                                   className="px-2.5 py-1.5 text-xs font-bold text-blue-500 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg transition-colors"
                                 >
                                   Sửa
+                                </button>
+                                <button onClick={() => openHistory(q)}
+                                  className="px-2.5 py-1.5 text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors"
+                                >
+                                  Lịch sử
                                 </button>
                                 <button onClick={() => setDeleteTarget(q)}
                                   className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -2467,6 +2632,14 @@ export default function QuestionBankPage() {
         question={deleteTarget}
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <QuestionHistoryDialog
+        question={historyTarget}
+        versions={historyVersions}
+        audits={historyAudits}
+        loading={historyLoading}
+        onClose={() => setHistoryTarget(null)}
       />
 
       <ConfirmBulkDeleteDialog

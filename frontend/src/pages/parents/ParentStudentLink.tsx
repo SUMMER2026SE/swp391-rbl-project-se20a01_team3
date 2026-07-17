@@ -41,7 +41,6 @@ function formatDateTime(value: string | null): string {
 function statusLabel(status: ParentLinkInvitationResponse['status']): string {
   switch (status) {
     case 'active':
-    case 'accepted':
       return 'Đã chấp nhận';
     case 'rejected':
       return 'Đã từ chối';

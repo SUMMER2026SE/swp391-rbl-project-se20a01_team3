@@ -17,6 +17,7 @@ import com.beeacademy.backend.repository.ChapterRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
 import com.beeacademy.backend.repository.QuestionRepository;
+import com.beeacademy.backend.repository.QuestionVersionRepository;
 import com.beeacademy.backend.repository.QuizAttemptRepository;
 import com.beeacademy.backend.repository.QuizConfigRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
@@ -63,6 +64,7 @@ public class QuizService {
     private final QuizConfigRepository  configRepository;
     private final QuizAttemptRepository attemptRepository;
     private final QuestionRepository    questionRepository;
+    private final QuestionVersionRepository questionVersionRepository;
     private final ChapterRepository     chapterRepository;
     private final EnrollmentRepository  enrollmentRepository;
     private final ProfileRepository     profileRepository;
@@ -374,6 +376,7 @@ public class QuizService {
      * Field names phải khớp khi deserialize.
      */
     private record SnapshotQuestion(
+            String questionVersionId,
             String content,
             String explanation,
             List<UUID> correctChoiceIds,
@@ -442,6 +445,7 @@ public class QuizService {
             }).collect(Collectors.toList());
 
             Map<String, Object> qMap = new HashMap<>();
+            qMap.put("questionVersionId", currentQuestionVersionId(q));
             qMap.put("content", q.getContent());
             qMap.put("explanation", q.getExplanation());
             qMap.put("correctChoiceIds", correctIds.stream().map(UUID::toString).toList());
@@ -473,6 +477,12 @@ public class QuizService {
         }).toList();
     }
 
+    private String currentQuestionVersionId(Question question) {
+        return questionVersionRepository.findTopByQuestionIdOrderByVersionNoDesc(question.getId())
+                .map(version -> version.getId().toString())
+                .orElse(null);
+    }
+
     @SuppressWarnings("unchecked")
     private Map<UUID, SnapshotQuestion> deserializeSnapshot(String json) {
         try {
@@ -496,6 +506,7 @@ public class QuizService {
                         ))
                         .toList();
                 result.put(qId, new SnapshotQuestion(
+                        q.get("questionVersionId") instanceof String versionId ? versionId : null,
                         (String) q.get("content"),
                         (String) q.get("explanation"),
                         correctIds, choices));

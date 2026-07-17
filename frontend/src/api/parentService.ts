@@ -128,6 +128,24 @@ export async function getChildProgressReport(
   return unwrap(res.data);
 }
 
+export async function exportChildProgressReport(
+  studentId: string,
+  filters?: ParentReportFilters,
+): Promise<Blob> {
+  const res = await apiClient.get(
+    `/api/parent/children/${encodeURIComponent(studentId)}/progress-report/export`,
+    {
+      params: reportFilterParams(filters),
+      responseType: 'blob',
+      timeout: 60000,
+      headers: {
+        Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      },
+    },
+  );
+  return res.data;
+}
+
 /**
  * GET /api/parent/children/{studentId}/payment-history
  * Lấy lịch sử thanh toán UC26 của con, gồm giao dịch của học sinh/phụ huynh và tiến độ hiện tại.

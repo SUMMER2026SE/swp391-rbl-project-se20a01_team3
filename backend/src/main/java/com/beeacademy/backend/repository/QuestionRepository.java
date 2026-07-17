@@ -5,13 +5,16 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import jakarta.persistence.LockModeType;
 
 /**
  * Truy vấn bảng {@code questions}.
@@ -24,6 +27,10 @@ import java.util.UUID;
  */
 @Repository
 public interface QuestionRepository extends JpaRepository<Question, UUID>, JpaSpecificationExecutor<Question> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT q FROM Question q WHERE q.id = :questionId")
+    Optional<Question> findByIdForUpdate(@Param("questionId") UUID questionId);
 
     // ─── Teacher side ────────────────────────────────────────────────────────
     //

@@ -20,7 +20,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -48,6 +50,30 @@ class StudentParentLinkServiceTest {
 
     @InjectMocks
     private StudentParentLinkService service;
+
+    @Test
+    void listPendingInvitationsKeepsExpiredInvitationVisible() {
+        UUID parentId = UUID.randomUUID();
+        UUID studentId = UUID.randomUUID();
+        ParentStudentLink expired = pendingLink(parentId, studentId);
+        ReflectionTestUtils.setField(expired, "invitedAt", Instant.now().minus(Duration.ofDays(8)));
+        when(linkRepository.findByIdStudentIdAndStatusesOrderByInvitedAtDesc(
+                studentId,
+                List.of(
+                        ParentStudentLinkStatus.PENDING.toDbValue(),
+                        ParentStudentLinkStatus.EXPIRED.toDbValue())))
+                .thenReturn(List.of(expired));
+        when(linkRepository.saveAndFlush(expired)).thenReturn(expired);
+        when(profileRepository.findEmailByUserId(parentId)).thenReturn(Optional.of("parent@example.com"));
+
+        var invitations = service.listPendingInvitations(studentUser(studentId));
+
+        assertThat(invitations).hasSize(1);
+        assertThat(invitations.get(0).status()).isEqualTo("expired");
+        assertThat(invitations.get(0).expired()).isTrue();
+        verify(auditLogRepository).save(any());
+        verify(notificationService, never()).notify(any(), any(), any(), any(), any());
+    }
 
     @Test
     void acceptInvitationRejectsExpiredPendingLink() {
@@ -81,9 +107,10 @@ class StudentParentLinkServiceTest {
         when(linkRepository.saveAndFlush(link)).thenReturn(link);
         when(profileRepository.findEmailByUserId(parentId)).thenReturn(Optional.of("parent@example.com"));
 
+        Instant decisionStartedAt = Instant.now();
         var response = service.acceptInvitation(studentUser(studentId), parentId);
 
-        assertThat(response.status()).isEqualTo(ParentStudentLinkStatus.ACCEPTED.toApiValue());
+        assertThat(response.status()).isEqualTo(ParentStudentLinkStatus.ACTIVE.toApiValue());
         assertThat(response.expired()).isFalse();
         assertThat(response.expiresAt()).isEqualTo(link.getInvitedAt().plusSeconds(7 * 24 * 60 * 60));
 
@@ -101,6 +128,37 @@ class StudentParentLinkServiceTest {
                 "Hoc sinh da chap nhan lien ket",
                 "Student One da chap nhan loi moi lien ket phu huynh.",
                 "/parent/link");
+        assertThat(Duration.between(decisionStartedAt, Instant.now()))
+                .isLessThanOrEqualTo(Duration.ofSeconds(30));
+    }
+
+    @Test
+    void rejectInvitationWritesAuditLogAndNotifiesParent() {
+        UUID parentId = UUID.randomUUID();
+        UUID studentId = UUID.randomUUID();
+        ParentStudentLink link = pendingLink(parentId, studentId);
+        when(linkRepository.findByIdParentIdAndIdStudentId(parentId, studentId))
+                .thenReturn(Optional.of(link));
+        when(linkRepository.saveAndFlush(link)).thenReturn(link);
+        when(profileRepository.findEmailByUserId(parentId)).thenReturn(Optional.of("parent@example.com"));
+
+        Instant decisionStartedAt = Instant.now();
+        var response = service.rejectInvitation(studentUser(studentId), parentId);
+
+        assertThat(response.status()).isEqualTo("rejected");
+        ArgumentCaptor<ParentLinkAuditLog> auditCaptor = ArgumentCaptor.forClass(ParentLinkAuditLog.class);
+        verify(auditLogRepository).save(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().getAction()).isEqualTo("reject_invitation");
+        assertThat(auditCaptor.getValue().getOldStatus()).isEqualTo("pending");
+        assertThat(auditCaptor.getValue().getNewStatus()).isEqualTo("rejected");
+        verify(notificationService).notify(
+                parentId,
+                "parent_link_rejected",
+                "Hoc sinh da tu choi lien ket",
+                "Student One da tu choi loi moi lien ket phu huynh.",
+                "/parent/link");
+        assertThat(Duration.between(decisionStartedAt, Instant.now()))
+                .isLessThanOrEqualTo(Duration.ofSeconds(30));
     }
 
     @Test
@@ -188,7 +246,7 @@ class StudentParentLinkServiceTest {
     private ParentStudentLink activeLink(UUID parentId, UUID studentId) {
         Profile parent = Profile.createNew(parentId, UserRole.PARENT, "Parent One");
         Profile student = Profile.createNew(studentId, UserRole.STUDENT, "Student One");
-        return ParentStudentLink.createAcceptedLink(parent, student);
+        return ParentStudentLink.createActiveLink(parent, student);
     }
 
     private AuthenticatedUser studentUser(UUID studentId) {
