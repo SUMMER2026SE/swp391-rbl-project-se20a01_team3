@@ -11,7 +11,7 @@ import type { TeacherCourseResponse } from '../../api/teacherCourseService';
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle,
   TrendingUp, TrendingDown, DollarSign, Users,
-  ChevronRight, Bell, LogOut, Menu, X,
+  ChevronRight, LogOut, Menu, X,
   CheckCircle2, PlusCircle,
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, Megaphone, Database, Loader2, PackageOpen,

@@ -5,7 +5,6 @@ import { motion } from 'motion/react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart2,
-  Bell,
   BookOpen,
   CheckCheck,
   CheckCircle2,

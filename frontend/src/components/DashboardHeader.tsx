@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCartStore } from '../store/useCartStore';
 import { useAuthStore } from '../store/useAuthStore';
-import type { Course } from '../data/mockCourses';
+import type { Course } from '../types/course';
 import { inferGradeFromSearchQuery, searchCourses } from '../api/courseService';
 import { adaptCourseSummary } from '../api/adapter';
 import { getStudentParentLinkInvitations } from '../api/studentParentLinkService';
@@ -192,7 +192,6 @@ export default function DashboardHeader() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Lọc kết quả tìm kiếm từ MOCK_COURSES
   // Click outside: đóng search dropdown
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {

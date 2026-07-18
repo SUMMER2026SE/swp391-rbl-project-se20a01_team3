@@ -16,7 +16,7 @@ import type {
   CourseSummary as ApiCourseSummary,
   LessonDetail as ApiLesson,
 } from '../types/api';
-import type { Course as UiCourse, Lesson as UiLesson, Subject, Grade } from '../data/mockCourses';
+import type { Course as UiCourse, Lesson as UiLesson, Subject, Grade } from '../types/course';
 
 // ---------------------------------------------------------------------------
 //  Helpers chuyển kiểu giá / lớp / category

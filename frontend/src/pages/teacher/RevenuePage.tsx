@@ -24,7 +24,7 @@ import { exportPayoutPeriod, getRevenueSplits, getPayoutPeriods } from '../../ap
 import type { RevenueSplitResponse, PayoutPeriodResponse } from '../../api/revenueService';
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle,
-  Bell, LogOut, Menu, X,
+  LogOut, Menu, X,
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, DollarSign, Clock, CheckCircle2,
   TrendingUp, Calendar, Receipt, ArrowRight, Megaphone, Database, UserCircle, Lock, Star, Download,

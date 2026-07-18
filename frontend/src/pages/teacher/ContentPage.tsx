@@ -17,7 +17,7 @@ import type {
 } from '../../api/teacherCourseService';
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle,
-  Bell, LogOut, Menu, X, Plus, Pencil, Trash2,
+  LogOut, Menu, X, Plus, Pencil, Trash2,
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, ChevronDown, ChevronRight, Save,
   Upload, Link2, Video, FileImage, Presentation,

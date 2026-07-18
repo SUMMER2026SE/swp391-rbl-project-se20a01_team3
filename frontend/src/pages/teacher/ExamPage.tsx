@@ -43,7 +43,7 @@ import type {
 import type { QuestionMetadata, QuestionType } from '../../api/questionService';
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle,
-  Bell, LogOut, Menu, X, Trash2,
+  LogOut, Menu, X, Trash2,
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, Save, CheckCircle2, Circle,
   ChevronDown, ChevronRight, Shuffle, Eye, Repeat,
@@ -210,11 +210,6 @@ const OBJECTIVE_EXAM_TYPES: QuestionType[] = [
   'audio_question',
 ];
 
-const TEXT_ANSWER_EXAM_TYPES: QuestionType[] = [
-  'fill_in_blank',
-  'matching',
-];
-
 const MANUAL_EXAM_TYPES: QuestionType[] = [
   'essay',
   'essay_short',
@@ -238,10 +233,6 @@ const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
 
 function isObjectiveExamType(type: QuestionType) {
   return OBJECTIVE_EXAM_TYPES.includes(type);
-}
-
-function isTextAnswerExamType(type: QuestionType) {
-  return TEXT_ANSWER_EXAM_TYPES.includes(type);
 }
 
 function isManualExamType(type: QuestionType) {

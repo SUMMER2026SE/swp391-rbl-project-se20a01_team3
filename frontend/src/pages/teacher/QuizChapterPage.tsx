@@ -9,7 +9,7 @@ import TeacherNotificationBell from '../../components/TeacherNotificationBell';
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { notify } from '../../lib/toast';
@@ -21,10 +21,10 @@ import * as questionService from '../../api/questionService';
 import type { QuestionResponse } from '../../api/questionService';
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle,
-  Bell, LogOut, Menu, X, Save, Loader2,
+  LogOut, Menu, X, Save, Loader2,
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, Megaphone, Database, CheckCircle2,
-  ChevronDown, Shuffle, Timer, AlertTriangle,
+  ChevronDown, Shuffle, AlertTriangle,
   Circle, ListChecks, Zap, TrendingUp, Minus, UserCircle, Lock, Star,
 } from 'lucide-react';
 

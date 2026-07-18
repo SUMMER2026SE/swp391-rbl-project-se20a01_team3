@@ -9,7 +9,7 @@
 //     - Nếu đã mua: xem bài học trong LearningView
 //
 // LUỒNG PHÂN NHÁNH CHÍNH (CourseDetailPage — default export):
-//   1. Đọc :id từ URL params → tìm course trong MOCK_COURSES
+//   1. Đọc :id từ URL params → tải thông tin khóa học từ backend
 //   2. Kiểm tra quyền truy cập: isEnrolled = course.isEnrolled || purchasedIds.includes(id)
 //   3. Nếu isEnrolled=true  → render <LearningView>  (giao diện học bài)
 //      Nếu isEnrolled=false → render <MarketingView> (trang giới thiệu + mua)
@@ -34,7 +34,7 @@ import {
 import DashboardHeader from '../../components/DashboardHeader';
 import EmbeddedVideoPlayer from '../../components/EmbeddedVideoPlayer';
 import QaImagePicker from '../../components/QaImagePicker';
-import type { Course, Lesson, QuizQuestion } from '../../data/mockCourses';
+import type { Course, Lesson, QuizQuestion } from '../../types/course';
 import { notify } from '../../lib/toast';
 import { useCartStore } from '../../store/useCartStore';
 import { useAuthStore } from '../../store/useAuthStore';

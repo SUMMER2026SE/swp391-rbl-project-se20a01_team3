@@ -24,7 +24,7 @@ import { useCartStore } from '../../store/useCartStore';
 import { notify } from '../../lib/toast';
 import { getCourseDetail, getEnrolledCourses } from '../../api/courseService';
 import { adaptCourseDetail, adaptCourseSummary } from '../../api/adapter';
-import type { Course as UiCourse } from '../../data/mockCourses';
+import type { Course as UiCourse } from '../../types/course';
 
 export default function FavoritesPage() {
   const navigate = useNavigate();
