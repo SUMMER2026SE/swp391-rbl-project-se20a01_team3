@@ -5,7 +5,6 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
   BarChart2,
-  Bell,
   BookOpen,
   CheckCircle2,
   ClipboardList,

@@ -1,62 +1,77 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import LandingPage from './pages/common/LandingPage';
-import QuizPage from './pages/teacher/QuizPage';
-import Login from './pages/common/Login';
-import Register from './pages/common/Register';
-import ForgotPassword from './pages/common/ForgotPassword';
-import CoursesPage from './pages/student/CoursesPage';
-import CourseDetailPage from './pages/student/CourseDetailPage';
-import CheckoutPage from './pages/student/CheckoutPage';
-import PaymentResultPage from './pages/student/PaymentResultPage';
-import OrdersPage from './pages/student/OrdersPage';
-import ComingSoonPage from './pages/student/ComingSoonPage';
-import MessagesPage from './pages/student/MessagesPage';
-import ProfilePage from './pages/student/ProfilePage';
-import FavoritesPage from './pages/student/FavoritesPage';
-import AccountPage from './pages/student/AccountPage';
-import AvatarPage from './pages/student/AvatarPage';
-import ComplaintsPage from './pages/student/ComplaintsPage';
-import ProgressPage from './pages/student/ProgressPage';
-import RewardsPage from './pages/student/RewardsPage';
-import StudentQuizPage from './pages/student/StudentQuizPage';
-import StudentExamPage from './pages/student/StudentExamPage';
-import NotificationsPage from './pages/student/NotificationsPage';
-import CertificatesPage from './pages/student/CertificatesPage';
-import AiTutorPage from './pages/student/AiTutorPage';
-import DashboardAdmin from './pages/admin/DashboardAdmin';
-import DashboardTeacher from './pages/teacher/DashboardTeacher';
-import TeacherCoursesPage from './pages/teacher/CoursesPage';
-import TeacherContentPage from './pages/teacher/ContentPage';
-import TeacherQuizChapterPage from './pages/teacher/QuizChapterPage';
-import TeacherExamPage from './pages/teacher/ExamPage';
-import TeacherGradesPage from './pages/teacher/GradesPage';
-import TeacherQAPage from './pages/teacher/QAPage';
-import TeacherRevenuePage from './pages/teacher/RevenuePage';
-import TeacherBankPage from './pages/teacher/BankPage';
-import TeacherComplaintsPage from './pages/teacher/ComplaintsPage';
-import TeacherReviewsPage from './pages/teacher/ReviewsPage';
-import QuestionBankPage from './pages/teacher/QuestionBankPage';
-import TeacherProfilePage from './pages/teacher/ProfilePage';
-import TeacherAccountPage from './pages/teacher/AccountPage';
-import ApprovalsPage from './pages/admin/ApprovalsPage';
-import CourseReviewPage from './pages/admin/CourseReviewPage';
-import OAuthCallbackPage from './pages/common/OAuthCallbackPage';
-import CertificateVerifyPage from './pages/common/CertificateVerifyPage';
-import ParentDashboard from './pages/parents/ParentDashboard';
-import ParentCourses from './pages/parents/ParentCourses';
-import ParentProgress from './pages/parents/ParentProgress';
-import ParentMessages from './pages/parents/ParentMessages';
-import ParentStudentLink from './pages/parents/ParentStudentLink';
-import ParentPayments from './pages/parents/ParentPayments';
 import ProtectedRoute from './components/ProtectedRoute';
 import MaintenanceGate from './components/MaintenanceGate';
+
+const LandingPage = lazy(() => import('./pages/common/LandingPage'));
+const Login = lazy(() => import('./pages/common/Login'));
+const Register = lazy(() => import('./pages/common/Register'));
+const ForgotPassword = lazy(() => import('./pages/common/ForgotPassword'));
+const OAuthCallbackPage = lazy(() => import('./pages/common/OAuthCallbackPage'));
+const CertificateVerifyPage = lazy(() => import('./pages/common/CertificateVerifyPage'));
+
+const CoursesPage = lazy(() => import('./pages/student/CoursesPage'));
+const CourseDetailPage = lazy(() => import('./pages/student/CourseDetailPage'));
+const CheckoutPage = lazy(() => import('./pages/student/CheckoutPage'));
+const PaymentResultPage = lazy(() => import('./pages/student/PaymentResultPage'));
+const OrdersPage = lazy(() => import('./pages/student/OrdersPage'));
+const ComingSoonPage = lazy(() => import('./pages/student/ComingSoonPage'));
+const MessagesPage = lazy(() => import('./pages/student/MessagesPage'));
+const ProfilePage = lazy(() => import('./pages/student/ProfilePage'));
+const FavoritesPage = lazy(() => import('./pages/student/FavoritesPage'));
+const AccountPage = lazy(() => import('./pages/student/AccountPage'));
+const AvatarPage = lazy(() => import('./pages/student/AvatarPage'));
+const ComplaintsPage = lazy(() => import('./pages/student/ComplaintsPage'));
+const ProgressPage = lazy(() => import('./pages/student/ProgressPage'));
+const RewardsPage = lazy(() => import('./pages/student/RewardsPage'));
+const StudentQuizPage = lazy(() => import('./pages/student/StudentQuizPage'));
+const StudentExamPage = lazy(() => import('./pages/student/StudentExamPage'));
+const NotificationsPage = lazy(() => import('./pages/student/NotificationsPage'));
+const CertificatesPage = lazy(() => import('./pages/student/CertificatesPage'));
+const AiTutorPage = lazy(() => import('./pages/student/AiTutorPage'));
+
+const ParentDashboard = lazy(() => import('./pages/parents/ParentDashboard'));
+const ParentCourses = lazy(() => import('./pages/parents/ParentCourses'));
+const ParentProgress = lazy(() => import('./pages/parents/ParentProgress'));
+const ParentMessages = lazy(() => import('./pages/parents/ParentMessages'));
+const ParentStudentLink = lazy(() => import('./pages/parents/ParentStudentLink'));
+const ParentPayments = lazy(() => import('./pages/parents/ParentPayments'));
+
+const QuizPage = lazy(() => import('./pages/teacher/QuizPage'));
+const DashboardTeacher = lazy(() => import('./pages/teacher/DashboardTeacher'));
+const TeacherCoursesPage = lazy(() => import('./pages/teacher/CoursesPage'));
+const TeacherContentPage = lazy(() => import('./pages/teacher/ContentPage'));
+const TeacherQuizChapterPage = lazy(() => import('./pages/teacher/QuizChapterPage'));
+const TeacherExamPage = lazy(() => import('./pages/teacher/ExamPage'));
+const TeacherGradesPage = lazy(() => import('./pages/teacher/GradesPage'));
+const TeacherQAPage = lazy(() => import('./pages/teacher/QAPage'));
+const TeacherRevenuePage = lazy(() => import('./pages/teacher/RevenuePage'));
+const TeacherBankPage = lazy(() => import('./pages/teacher/BankPage'));
+const TeacherComplaintsPage = lazy(() => import('./pages/teacher/ComplaintsPage'));
+const TeacherReviewsPage = lazy(() => import('./pages/teacher/ReviewsPage'));
+const QuestionBankPage = lazy(() => import('./pages/teacher/QuestionBankPage'));
+const TeacherProfilePage = lazy(() => import('./pages/teacher/ProfilePage'));
+const TeacherAccountPage = lazy(() => import('./pages/teacher/AccountPage'));
+
+const DashboardAdmin = lazy(() => import('./pages/admin/DashboardAdmin'));
+const ApprovalsPage = lazy(() => import('./pages/admin/ApprovalsPage'));
+const CourseReviewPage = lazy(() => import('./pages/admin/CourseReviewPage'));
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-surface" role="status" aria-label="Đang tải">
+      <div className="h-9 w-9 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+    </div>
+  );
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <Toaster />
       <MaintenanceGate>
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         {/* ── Public ── */}
         <Route path="/" element={<LandingPage />} />
@@ -128,6 +143,7 @@ export default function App() {
         <Route path="/admin/reports"    element={<ProtectedRoute role="admin"><ComingSoonPage title="Báo cáo & Thống kê"   subtitle="Phân tích dữ liệu và báo cáo tổng hợp" /></ProtectedRoute>} />
         <Route path="/admin/settings"   element={<ProtectedRoute role="admin"><ComingSoonPage title="Cài đặt hệ thống"     subtitle="Cấu hình và tuỳ chỉnh hệ thống" /></ProtectedRoute>} />
       </Routes>
+      </Suspense>
       </MaintenanceGate>
     </BrowserRouter>
   );

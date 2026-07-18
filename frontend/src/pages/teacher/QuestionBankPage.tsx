@@ -1,5 +1,5 @@
 ﻿import TeacherNotificationBell from '../../components/TeacherNotificationBell';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -18,15 +18,16 @@ import type { TeacherCourseResponse, TeacherChapterResponse } from '../../api/te
 import type { Category } from '../../types/api';
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle,
-  Bell, LogOut, Menu, X, Plus, Trash2,
+  LogOut, Menu, X, Plus, Trash2,
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, Megaphone, RefreshCcw, Filter,
   ChevronDown, Zap, TrendingUp, Minus, Database,
   Save, Loader2, CheckCircle2, Circle, FileSpreadsheet, Sparkles, Lock, UserCircle, Star,
   Image as ImageIcon, Headphones, ExternalLink,
 } from 'lucide-react';
-import ExcelImportModal from './ExcelImportModal';
-import AIScanModal from './AIScanModal';
+
+const ExcelImportModal = lazy(() => import('./ExcelImportModal'));
+const AIScanModal = lazy(() => import('./AIScanModal'));
 
 // Navigation and helpers
 
@@ -46,6 +47,14 @@ const NAV_ITEMS = [
   { icon: UserCircle,      label: 'Hồ sơ',              path: '/teacher/profile'    },
   { icon: Lock,            label: 'Tài khoản',          path: '/teacher/account'    },
 ];
+
+function ModalLoadingFallback() {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" role="status" aria-label="Đang tải">
+      <div className="h-9 w-9 animate-spin rounded-full border-4 border-white/30 border-t-white" />
+    </div>
+  );
+}
 
 // Small reusable components
 
@@ -68,12 +77,6 @@ function truncate(text: string, n: number) {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-function correctChoiceCount(
-  choices: Array<{ isCorrect: boolean | null | undefined }>,
-) {
-  return choices.filter(choice => Boolean(choice.isCorrect)).length;
 }
 
 // Question form panel
@@ -1853,7 +1856,6 @@ export default function QuestionBankPage() {
   // Loading
   const [loadingQ,    setLoadingQ]    = useState(true);
   const [loadingBanks,setLoadingBanks]= useState(true);
-  const [loadingMeta, setLoadingMeta] = useState(true);
 
   // Filters
   const [diffFilter,    setDiffFilter]    = useState<Difficulty | 'all'>('all');
@@ -1894,8 +1896,7 @@ export default function QuestionBankPage() {
         setCategories(cats);
         setCourses(crs);
       })
-      .catch(() => { if (!cancelled) notify.error('Không tải được danh sách môn học / khóa học'); })
-      .finally(() => { if (!cancelled) setLoadingMeta(false); });
+      .catch(() => { if (!cancelled) notify.error('Không tải được danh sách môn học / khóa học'); });
     return () => { cancelled = true; };
   }, []);
 
@@ -2649,21 +2650,27 @@ export default function QuestionBankPage() {
         onCancel={() => setBulkDeleteOpen(false)}
       />
 
-      {/* Excel Import Modal */}
-      <ExcelImportModal
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        onImported={reloadPageData}
-        selectedQuestionBank={selectedBank}
-      />
+      {importOpen && (
+        <Suspense fallback={<ModalLoadingFallback />}>
+          <ExcelImportModal
+            open
+            onClose={() => setImportOpen(false)}
+            onImported={reloadPageData}
+            selectedQuestionBank={selectedBank}
+          />
+        </Suspense>
+      )}
 
-      {/* AI Scan Modal */}
-      <AIScanModal
-        open={aiScanOpen}
-        onClose={() => setAiScanOpen(false)}
-        onImported={reloadPageData}
-        selectedQuestionBank={selectedBank}
-      />
+      {aiScanOpen && (
+        <Suspense fallback={<ModalLoadingFallback />}>
+          <AIScanModal
+            open
+            onClose={() => setAiScanOpen(false)}
+            onImported={reloadPageData}
+            selectedQuestionBank={selectedBank}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
