@@ -61,6 +61,23 @@ public class EnrollmentSchemaMigration implements ApplicationRunner {
                 """);
         jdbcTemplate.execute("""
                 ALTER TABLE public.enrollments
+                ADD COLUMN IF NOT EXISTS progress_pct INTEGER,
+                ADD COLUMN IF NOT EXISTS progress_updated_at TIMESTAMPTZ
+                """);
+        jdbcTemplate.execute("""
+                UPDATE public.enrollments
+                SET progress_pct = COALESCE(progress_pct, 0),
+                    progress_updated_at = COALESCE(progress_updated_at, enrolled_at, NOW())
+                WHERE progress_pct IS NULL OR progress_updated_at IS NULL
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.enrollments
+                ALTER COLUMN progress_pct SET DEFAULT 0,
+                ALTER COLUMN progress_updated_at SET DEFAULT NOW(),
+                ALTER COLUMN progress_updated_at SET NOT NULL
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.enrollments
                 ADD COLUMN IF NOT EXISTS course_version_id UUID
                 """);
         jdbcTemplate.execute("""

@@ -45,6 +45,9 @@ public class QaThread {
     @JoinColumn(name = "lesson_id")
     private Lesson lesson;
 
+    @Column(name = "title", length = 180)
+    private String title;
+
     @Convert(converter = QaThreadStatusConverter.class)
     @Column(name = "status", nullable = false)
     private QaThreadStatus status;
@@ -94,6 +97,17 @@ public class QaThread {
                                   String visibility) {
         return createWithAuthor(student, course, lesson, student, content,
                 attachmentUrl, attachmentName, attachmentType, attachmentSizeBytes, visibility);
+    }
+
+    public static QaThread createStudentQuestion(Profile student, Course course, Lesson lesson,
+                                                 String title, String content,
+                                                 String attachmentUrl, String attachmentName,
+                                                 String attachmentType, Long attachmentSizeBytes,
+                                                 String visibility) {
+        QaThread thread = createWithAuthor(student, course, lesson, student, content,
+                attachmentUrl, attachmentName, attachmentType, attachmentSizeBytes, visibility);
+        thread.title = title;
+        return thread;
     }
 
     public static QaThread createWithAuthor(Profile student, Course course, Lesson lesson,

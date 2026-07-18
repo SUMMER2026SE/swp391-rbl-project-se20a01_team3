@@ -9,7 +9,6 @@ import com.beeacademy.backend.model.Lesson;
 import com.beeacademy.backend.model.Profile;
 import com.beeacademy.backend.repository.ChapterRepository;
 import com.beeacademy.backend.repository.CourseRepository;
-import com.beeacademy.backend.repository.CourseVersionRepository;
 import com.beeacademy.backend.repository.ExamConfigRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
 import com.beeacademy.backend.repository.QuestionRepository;
@@ -42,7 +41,7 @@ class ExamServiceTest {
     private CourseRepository courseRepository;
 
     @Mock
-    private CourseVersionRepository courseVersionRepository;
+    private ExamConfigVersionService examConfigVersionService;
 
     @Mock
     private ProfileRepository profileRepository;
@@ -145,8 +144,8 @@ class ExamServiceTest {
                 .thenReturn(List.of(scopeChapter, placementChapter, thirdChapter, lastChapter));
         when(chapterRepository.findByCourseIdOrderByPositionAsc(courseId))
                 .thenReturn(List.of(scopeChapter, placementChapter, thirdChapter, lastChapter));
-        when(examRepository.findByCourseIdOrderBySlotIndexAsc(courseId)).thenReturn(List.of());
-        when(examRepository.findByCourseIdAndSlotIndex(courseId, 0)).thenReturn(Optional.empty());
+        when(examConfigVersionService.currentForAuthoring(courseId)).thenReturn(List.of());
+        when(examConfigVersionService.ensureDraftSet(courseId)).thenReturn(List.of());
         when(examRepository.save(any(ExamConfig.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.saveExam(
@@ -186,8 +185,8 @@ class ExamServiceTest {
                 existingExam(0, chapter1, chapter2),
                 existingExam(1, chapter3, chapter3),
                 existingExam(2, chapter4, chapter4));
-        when(examRepository.findByCourseIdOrderBySlotIndexAsc(courseId)).thenReturn(existingExams);
-        when(examRepository.findByCourseIdAndSlotIndex(courseId, 3)).thenReturn(Optional.empty());
+        when(examConfigVersionService.currentForAuthoring(courseId)).thenReturn(existingExams);
+        when(examConfigVersionService.ensureDraftSet(courseId)).thenReturn(existingExams);
         when(examRepository.save(any(ExamConfig.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.saveExam(
@@ -219,7 +218,7 @@ class ExamServiceTest {
         when(chapterRepository.findWithLessonsByCourseId(courseId)).thenReturn(chapters);
         when(chapterRepository.findByCourseIdOrderByPositionAsc(courseId)).thenReturn(chapters);
         ExamConfig firstExam = existingExam(0, chapter1, chapter1);
-        when(examRepository.findByCourseIdOrderBySlotIndexAsc(courseId))
+        when(examConfigVersionService.currentForAuthoring(courseId))
                 .thenReturn(List.of(firstExam));
 
         assertThatThrownBy(() -> service.saveExam(
@@ -257,7 +256,7 @@ class ExamServiceTest {
         ExamConfig firstExam = existingExam(0, chapter1, chapter1);
         ExamConfig secondExam = existingExam(1, chapter2, chapter2);
         ExamConfig thirdExam = existingExam(2, chapter3, chapter3);
-        when(examRepository.findByCourseIdOrderBySlotIndexAsc(courseId))
+        when(examConfigVersionService.currentForAuthoring(courseId))
                 .thenReturn(List.of(firstExam, secondExam, thirdExam));
 
         assertThatThrownBy(() -> service.saveExam(
@@ -280,7 +279,9 @@ class ExamServiceTest {
         Course course = mock(Course.class);
         when(course.getTeacher()).thenReturn(teacherProfile);
         when(courseRepository.findWithCategoryAndTeacherById(courseId)).thenReturn(Optional.of(course));
-        lenient().when(courseVersionRepository.findByCourseIdOrderByVersionNoDesc(courseId))
+        lenient().when(examConfigVersionService.currentForAuthoring(courseId))
+                .thenReturn(List.of());
+        lenient().when(examConfigVersionService.ensureDraftSet(courseId))
                 .thenReturn(List.of());
         lenient().when(teacherAccessService.requireApprovedTeacher(any(AuthenticatedUser.class)))
                 .thenReturn(teacherProfile);

@@ -249,10 +249,15 @@ export interface TeacherRetakeRequest {
   studentId: string;
   studentName: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  examEnrollmentStatus: 'AVAILABLE' | 'RETAKE_LOCKED' | 'RETAKE_APPROVED';
   requestedReason: string;
   extraAttempts: number | null;
   decidedReason: string | null;
   retakeExpireAt: string | null;
+  requestCount: number;
+  approvalCount: number;
+  rejectedAt: string | null;
+  cooldownUntil: string | null;
   createdAt: string;
   decidedAt: string | null;
   attemptsUsed: number;

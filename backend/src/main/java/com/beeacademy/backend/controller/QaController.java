@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -45,6 +46,19 @@ public class QaController {
     @PreAuthorize("hasRole('student')")
     public ApiResponse<List<QaThreadResponse>> listStudentThreads() {
         return ApiResponse.ok(qaService.listStudentThreads(CurrentUser.required()));
+    }
+
+    @GetMapping("/student/courses/{courseId}/qa/public")
+    @PreAuthorize("hasRole('student')")
+    public ApiResponse<List<QaThreadResponse>> listCoursePublicThreads(@PathVariable UUID courseId) {
+        return ApiResponse.ok(
+                qaService.listCoursePublicThreads(courseId, CurrentUser.required()));
+    }
+
+    @GetMapping("/student/qa/{threadId}")
+    @PreAuthorize("hasRole('student')")
+    public ApiResponse<QaThreadResponse> getStudentThread(@PathVariable UUID threadId) {
+        return ApiResponse.ok(qaService.getStudentThread(threadId, CurrentUser.required()));
     }
 
     @PostMapping("/student/qa")
@@ -107,6 +121,19 @@ public class QaController {
     @PreAuthorize("hasRole('teacher')")
     public ApiResponse<QaKpiReportResponse> getTeacherQaReport() {
         return ApiResponse.ok(qaService.getTeacherKpiReport(CurrentUser.required()));
+    }
+
+    @GetMapping("/admin/qa")
+    @PreAuthorize("hasRole('admin')")
+    public ApiResponse<List<QaThreadResponse>> listAdminThreads(
+            @RequestParam(required = false) UUID courseId) {
+        return ApiResponse.ok(qaService.listAdminThreads(courseId, CurrentUser.required()));
+    }
+
+    @GetMapping("/admin/qa/{threadId}")
+    @PreAuthorize("hasRole('admin')")
+    public ApiResponse<QaThreadResponse> getAdminThread(@PathVariable UUID threadId) {
+        return ApiResponse.ok(qaService.getAdminThread(threadId, CurrentUser.required()));
     }
 
     @PutMapping("/teacher/qa/{threadId}/status")
