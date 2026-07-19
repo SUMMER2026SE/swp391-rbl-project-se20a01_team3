@@ -178,8 +178,11 @@ apiClient.interceptors.response.use(
       const msg = offline
         ? 'Mất kết nối Internet. Vui lòng kiểm tra mạng.'
         : 'Không thể kết nối tới máy chủ. Vui lòng thử lại sau.';
-      notify.error(msg);
-      return Promise.reject(new Error(msg));
+      const wrapped: ApiError = Object.assign(new Error(msg), {
+        code: offline ? 'OFFLINE' : 'NETWORK_ERROR',
+        status: 0,
+      });
+      return Promise.reject(wrapped);
     }
 
     const status = error.response.status;
