@@ -134,11 +134,52 @@ class ParentServiceTest {
     @Mock
     private ParentTeacherMessageEmailService parentTeacherMessageEmailService;
 
-    @InjectMocks
     private ParentService service;
 
     @BeforeEach
     void defaultExamConfigs() {
+        ParentLinkService parentLinkService = new ParentLinkService(
+                profileRepository,
+                linkRepository,
+                enrollmentRepository,
+                courseRepository,
+                parentLinkAuditLogRepository,
+                parentLinkInvitationEmailService,
+                notificationService);
+        ParentProgressService parentProgressService = new ParentProgressService(
+                linkRepository,
+                enrollmentRepository,
+                courseRepository,
+                quizConfigRepository,
+                examConfigRepository,
+                examConfigVersionService,
+                quizAttemptRepository,
+                examAttemptRepository,
+                assignmentSubmissionRepository,
+                progressAccessAuditRepository,
+                certificateRepository,
+                chapterRepository,
+                courseProgressItemRepository);
+        ParentPaymentService parentPaymentService = new ParentPaymentService(
+                profileRepository,
+                linkRepository,
+                enrollmentRepository,
+                courseRepository,
+                orderRepository);
+        ParentTeacherMessagingService messagingService = new ParentTeacherMessagingService(
+                profileRepository,
+                linkRepository,
+                enrollmentRepository,
+                courseRepository,
+                qaThreadRepository,
+                storageClient,
+                notificationService,
+                parentTeacherMessageEmailService);
+        service = new ParentService(
+                parentLinkService,
+                parentProgressService,
+                parentPaymentService,
+                messagingService);
         lenient().when(examConfigVersionService.forEnrollment(any(Enrollment.class)))
                 .thenReturn(List.of());
     }

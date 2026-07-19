@@ -229,10 +229,19 @@ export default function DashboardAdmin() {
   const setGlobalMaintenanceMode = useSystemStore(state => state.setMaintenanceMode);
   const setGlobalMaintenanceUntil = useSystemStore(state => state.setMaintenanceUntil);
 
-  // Lấy tab hoạt động từ URL query (?tab=...), mặc định là 'overview'
-  const activeTab = location.pathname === '/admin/complaints'
-    ? 'complaints'
-    : searchParams.get('tab') || 'overview';
+  // Lấy tab hoạt động từ URL path hoặc query (?tab=...), mặc định là 'overview'
+  const pathTabMap: Record<string, string> = {
+    '/admin/users': 'users',
+    '/admin/courses': 'courses',
+    '/admin/payouts': 'payouts',
+    '/admin/accounting': 'payouts',
+    '/admin/complaints': 'complaints',
+    '/admin/qa': 'qa',
+    '/admin/reviews': 'reviews',
+    '/admin/notifications': 'announcements',
+    '/admin/settings': 'settings',
+  };
+  const activeTab = pathTabMap[location.pathname] ?? searchParams.get('tab') ?? 'overview';
 
   // State quản lý dữ liệu động của toàn trang
   const [users, setUsers] = useState<UserAccount[]>(INITIAL_USERS);

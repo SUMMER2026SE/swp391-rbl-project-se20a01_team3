@@ -29,8 +29,12 @@ import com.beeacademy.backend.repository.QuizAttemptRepository;
 import com.beeacademy.backend.repository.QuizConfigRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import com.beeacademy.backend.service.ParentLinkInvitationEmailService;
+import com.beeacademy.backend.service.ParentLinkService;
+import com.beeacademy.backend.service.ParentPaymentService;
+import com.beeacademy.backend.service.ParentProgressService;
 import com.beeacademy.backend.service.ParentService;
 import com.beeacademy.backend.service.ParentTeacherMessageEmailService;
+import com.beeacademy.backend.service.ParentTeacherMessagingService;
 import com.beeacademy.backend.service.CertificateService;
 import com.beeacademy.backend.service.CourseProgressService;
 import com.beeacademy.backend.service.CourseVersionSnapshotService;
@@ -111,7 +115,6 @@ class ParentProgressReportControllerTest {
     @Mock private LearningProgressPdfService learningProgressPdfService;
     @Mock private ExamConfigVersionService examConfigVersionService;
 
-    @InjectMocks
     private ParentService parentService;
 
     @InjectMocks
@@ -119,6 +122,48 @@ class ParentProgressReportControllerTest {
 
     @BeforeEach
     void defaultExamConfigs() {
+        ParentLinkService parentLinkService = new ParentLinkService(
+                profileRepository,
+                linkRepository,
+                enrollmentRepository,
+                courseRepository,
+                parentLinkAuditLogRepository,
+                parentLinkInvitationEmailService,
+                notificationService);
+        ParentProgressService parentProgressService = new ParentProgressService(
+                linkRepository,
+                enrollmentRepository,
+                courseRepository,
+                quizConfigRepository,
+                examConfigRepository,
+                examConfigVersionService,
+                quizAttemptRepository,
+                examAttemptRepository,
+                assignmentSubmissionRepository,
+                progressAccessAuditRepository,
+                certificateRepository,
+                chapterRepository,
+                courseProgressItemRepository);
+        ParentPaymentService parentPaymentService = new ParentPaymentService(
+                profileRepository,
+                linkRepository,
+                enrollmentRepository,
+                courseRepository,
+                orderRepository);
+        ParentTeacherMessagingService messagingService = new ParentTeacherMessagingService(
+                profileRepository,
+                linkRepository,
+                enrollmentRepository,
+                courseRepository,
+                qaThreadRepository,
+                storageClient,
+                notificationService,
+                parentTeacherMessageEmailService);
+        parentService = new ParentService(
+                parentLinkService,
+                parentProgressService,
+                parentPaymentService,
+                messagingService);
         lenient().when(examConfigVersionService.forEnrollment(any(Enrollment.class)))
                 .thenReturn(List.of());
     }
