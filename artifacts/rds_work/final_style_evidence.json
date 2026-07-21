@@ -1,0 +1,171 @@
+{
+  "input": "E:\\swp391-rbl-project-se20a01_team3\\Group3_BeeAcademy_RDS_Completed.docx",
+  "fonts_by_char_count": {
+    "Times New Roman": 216335,
+    "Consolas": 8292
+  },
+  "direct_run_formatting_runs": 6593,
+  "direct_paragraph_formatting_paragraphs": 2986,
+  "heading_like_paragraphs_not_heading_style": [
+    {
+      "para_index": 6,
+      "text": "Bee Academy (E-learning)",
+      "style": "Normal"
+    },
+    {
+      "para_index": 7,
+      "text": "Version: 1.1",
+      "style": "Normal"
+    },
+    {
+      "para_index": 224,
+      "text": "Figure 1: Authentication and Account",
+      "style": "Normal"
+    },
+    {
+      "para_index": 226,
+      "text": "Figure 2: Search and Courses",
+      "style": "Normal"
+    },
+    {
+      "para_index": 232,
+      "text": "Figure 3: Purchase and Payment",
+      "style": "Normal"
+    },
+    {
+      "para_index": 234,
+      "text": "Figure 4: Learning",
+      "style": "Normal"
+    },
+    {
+      "para_index": 236,
+      "text": "Figure 5: Interaction and Support",
+      "style": "Normal"
+    },
+    {
+      "para_index": 239,
+      "text": "Figure 6: Parent",
+      "style": "Normal"
+    },
+    {
+      "para_index": 241,
+      "text": "Figure 7: Teacher",
+      "style": "Normal"
+    },
+    {
+      "para_index": 245,
+      "text": "Figure 8: Admin",
+      "style": "Normal"
+    },
+    {
+      "para_index": 264,
+      "text": "Figure 9: Authentication and Account",
+      "style": "Normal"
+    },
+    {
+      "para_index": 267,
+      "text": "Figure 10: Search and Courses",
+      "style": "Normal"
+    },
+    {
+      "para_index": 270,
+      "text": " Figure 11: Purchase and Payment",
+      "style": "Normal"
+    },
+    {
+      "para_index": 273,
+      "text": "Figure 12: Learning",
+      "style": "Normal"
+    },
+    {
+      "para_index": 276,
+      "text": "Figure 13: Interaction and Support",
+      "style": "Normal"
+    },
+    {
+      "para_index": 279,
+      "text": "Figure 14 :Parent",
+      "style": "Normal"
+    },
+    {
+      "para_index": 282,
+      "text": "Figure 15: Teacher",
+      "style": "Normal"
+    },
+    {
+      "para_index": 285,
+      "text": "Figure 16: Admin",
+      "style": "Normal"
+    },
+    {
+      "para_index": 319,
+      "text": "Package descriptions",
+      "style": "Normal"
+    },
+    {
+      "para_index": 984,
+      "text": "#",
+      "style": "Normal"
+    }
+  ],
+  "examples": {
+    "direct_paragraph_formatting": [
+      {
+        "para_index": 1,
+        "text": " ",
+        "style": "Normal"
+      },
+      {
+        "para_index": 2,
+        "text": " ",
+        "style": "Normal"
+      },
+      {
+        "para_index": 3,
+        "text": " ",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "text": " ",
+        "style": "Normal"
+      },
+      {
+        "para_index": 5,
+        "text": "Requirement & Design Specification",
+        "style": "Normal"
+      }
+    ],
+    "direct_run_formatting": [
+      {
+        "para_index": 1,
+        "run_text": " ",
+        "style": "Normal"
+      },
+      {
+        "para_index": 2,
+        "run_text": " ",
+        "style": "Normal"
+      },
+      {
+        "para_index": 3,
+        "run_text": " ",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "run_text": " ",
+        "style": "Normal"
+      },
+      {
+        "para_index": 5,
+        "run_text": "Requirement & Design Specification",
+        "style": "Normal"
+      }
+    ]
+  },
+  "notes": [
+    "Direct formatting is not always wrong, but it often causes inconsistent output when templates change.",
+    "Heading-like paragraphs not using Heading styles can break TOC and accessibility."
+  ]
+}
