@@ -258,8 +258,8 @@ export default function CertificatesPage() {
                           ) : certificate ? (
                             <p className="max-w-xs self-center text-xs font-semibold text-amber-700">
                               {certificate.status === 'NEEDS_REVIEW'
-                                ? 'Chung chi dang duoc ra soat do ket qua hoc tap da thay doi.'
-                                : 'Chung chi da bi thu hoi va khong con hieu luc.'}
+                                ? 'Chứng chỉ đang được rà soát do kết quả học tập đã thay đổi.'
+                                : 'Chứng chỉ đã bị thu hồi và không còn hiệu lực.'}
                             </p>
                           ) : (
                             <p className="max-w-xs self-center text-xs font-semibold text-amber-700">

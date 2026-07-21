@@ -127,13 +127,13 @@ const EDITABLE_STATUSES: CourseStatus[] = ['draft', 'rejected', 'needs_revision'
 function courseEditLockMessage(status: CourseStatus): string {
   switch (status) {
     case 'pending_review':
-      return 'Dang cho Admin duyet, khong the chinh sua.';
+      return 'Đang chờ Admin duyệt, không thể chỉnh sửa.';
     case 'approved':
-      return 'Khoa hoc da duyet, khong the chinh sua luc nay.';
+      return 'Khóa học đã duyệt, không thể chỉnh sửa lúc này.';
     case 'published':
-      return 'Khoa hoc da xuat ban, khong the chinh sua truc tiep.';
+      return 'Khóa học đã xuất bản, không thể chỉnh sửa trực tiếp.';
     default:
-      return 'Trang thai hien tai khong cho phep chinh sua.';
+      return 'Trạng thái hiện tại không cho phép chỉnh sửa.';
   }
 }
 
@@ -1222,7 +1222,7 @@ export default function TeacherCoursesPage() {
                                     }}
                                     disabled={!canEdit}
                                     title={canEdit ? 'Chinh sua' : courseEditLockMessage(course.status)}
-                                    aria-label={canEdit ? 'Chinh sua khoa hoc' : courseEditLockMessage(course.status)}
+                                    aria-label={canEdit ? 'Chỉnh sửa khóa học' : courseEditLockMessage(course.status)}
                                     className={`p-2 rounded-lg transition-colors ${
                                       canEdit
                                         ? 'text-blue-500 hover:bg-blue-500/10'

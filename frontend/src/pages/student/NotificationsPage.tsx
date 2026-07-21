@@ -19,8 +19,8 @@ import type { StudentParentLinkInvitationResponse } from '../../types/api';
 
 const relationshipLabels = {
   father: 'Cha',
-  mother: 'Me',
-  guardian: 'Nguoi giam ho',
+  mother: 'Mẹ',
+  guardian: 'Người giám hộ',
 } as const;
 
 function fallbackAvatar(name: string): string {
@@ -38,8 +38,8 @@ function formatDateTime(value: string | null): string {
 }
 
 function invitationStatusText(invitation: StudentParentLinkInvitationResponse): string {
-  if (invitation.expired || invitation.status === 'expired') return 'Yeu cau da het han';
-  return 'Dang cho xac nhan';
+  if (invitation.expired || invitation.status === 'expired') return 'Yêu cầu đã hết hạn';
+  return 'Đang chờ xác nhận';
 }
 
 export default function NotificationsPage() {
@@ -164,7 +164,7 @@ export default function NotificationsPage() {
               </h2>
               <p className="mt-2 text-sm leading-6 text-on-surface-variant max-w-2xl">
                 Quản lý lời mời liên kết và xác nhận hủy liên kết với phụ huynh trên Bee Academy.
-                {expiredInvitationCount > 0 && ` ${expiredInvitationCount} loi moi da het han.`}
+                {expiredInvitationCount > 0 && ` ${expiredInvitationCount} lời mời đã hết hạn.`}
               </p>
             </div>
 
@@ -219,7 +219,7 @@ export default function NotificationsPage() {
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-on-surface-variant">
                           <span>{invitation.parentEmail}</span>
                           <span>{relationshipLabels[invitation.relationship]}</span>
-                          <span>Het han: {formatDateTime(invitation.expiresAt)}</span>
+                          <span>Hết hạn: {formatDateTime(invitation.expiresAt)}</span>
                           <span className="inline-flex items-center gap-1">
                             <Clock3 className="w-3.5 h-3.5" />
                             Gửi lúc: {formatDateTime(invitation.invitedAt)}
