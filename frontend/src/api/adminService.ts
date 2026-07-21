@@ -168,37 +168,141 @@ export async function confirmPayout(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Duyệt TK ngân hàng GV — TK PENDING giữ (hold) chi trả cho tới khi Admin duyệt
-//  GET   /api/admin/bank-accounts/pending
-//  PATCH /api/admin/bank-accounts/:teacherId/review
+//  Báo cáo & Thống kê (UC37) — biểu đồ time-series + phân bố
+//  GET /api/admin/analytics/{revenue-trend,enrollment-trend,user-growth,courses-by-category}
+//  GET /api/admin/users/stats — phân bố vai trò người dùng
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface AdminBankAccount {
-  teacherId: string;
-  teacherName: string;
-  bankName: string;
-  accountNumber: string;
-  accountHolder: string;
-  branch: string | null;
-  verifyStatus: BankVerifyStatus;
-  updatedAt: string;
+/** Điểm doanh thu theo tháng (toàn hệ thống) — month định dạng "yyyy-MM". */
+export interface RevenueTrendPoint {
+  month: string;
+  gross: number;
+  teacherAmount: number;
+  platformFee: number;
+  count: number;
 }
 
-export async function getPendingBankAccounts(): Promise<AdminBankAccount[]> {
-  const res = await apiClient.get<ApiResponse<AdminBankAccount[]>>(
-    '/api/admin/bank-accounts/pending',
+/** Điểm dạng (nhãn, số lượng) — trend đăng ký/người dùng, phân bố danh mục. */
+export interface CountPoint {
+  label: string;
+  count: number;
+}
+
+/** Số lượng user theo vai trò — cho donut phân bố. */
+export interface AdminUserStats {
+  students: number;
+  teachers: number;
+  parents: number;
+  total: number;
+}
+
+export async function getAdminRevenueTrend(): Promise<RevenueTrendPoint[]> {
+  const res = await apiClient.get<ApiResponse<RevenueTrendPoint[]>>(
+    '/api/admin/analytics/revenue-trend',
   );
   return unwrap(res.data) ?? [];
 }
 
-export async function reviewBankAccount(
-  teacherId: string,
-  approve: boolean,
-  note?: string,
-): Promise<AdminBankAccount> {
-  const res = await apiClient.patch<ApiResponse<AdminBankAccount>>(
-    `/api/admin/bank-accounts/${teacherId}/review`,
-    { approve, note },
+export async function getAdminEnrollmentTrend(): Promise<CountPoint[]> {
+  const res = await apiClient.get<ApiResponse<CountPoint[]>>(
+    '/api/admin/analytics/enrollment-trend',
+  );
+  return unwrap(res.data) ?? [];
+}
+
+export async function getUserGrowth(): Promise<CountPoint[]> {
+  const res = await apiClient.get<ApiResponse<CountPoint[]>>(
+    '/api/admin/analytics/user-growth',
+  );
+  return unwrap(res.data) ?? [];
+}
+
+export async function getCoursesByCategory(): Promise<CountPoint[]> {
+  const res = await apiClient.get<ApiResponse<CountPoint[]>>(
+    '/api/admin/analytics/courses-by-category',
+  );
+  return unwrap(res.data) ?? [];
+}
+
+export async function getAdminUserStats(): Promise<AdminUserStats> {
+  const res = await apiClient.get<ApiResponse<AdminUserStats>>('/api/admin/users/stats');
+  return unwrap(res.data);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Quản lý tài khoản giáo viên (UC35)
+//  Giáo viên không đăng ký công khai được — họ liên hệ Bee Academy qua mạng xã
+//  hội, Admin thẩm định rồi tạo tài khoản và cấp mật khẩu tạm tại đây.
+//  POST  /api/admin/users/teachers
+//  POST  /api/admin/users/:id/reset-password
+//  PATCH /api/admin/users/:id/teacher-approval
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CreateTeacherAccountPayload {
+  email: string;
+  fullName: string;
+  phone?: string;
+  contactNote?: string;
+}
+
+/**
+ * Mật khẩu tạm chỉ xuất hiện đúng một lần trong response này — không có endpoint
+ * nào đọc lại được. UI phải hiển thị ngay cho Admin copy.
+ */
+export interface TemporaryPasswordResult {
+  id: string;
+  email: string;
+  fullName: string | null;
+  temporaryPassword: string;
+  /** false = SMTP lỗi, Admin bắt buộc gửi tay qua Zalo/Facebook. */
+  emailSent: boolean;
+}
+
+export type TeacherApprovalStatus = 'pending' | 'approved' | 'rejected';
+
+export async function createTeacherAccount(
+  payload: CreateTeacherAccountPayload,
+): Promise<TemporaryPasswordResult> {
+  const res = await apiClient.post<ApiResponse<TemporaryPasswordResult>>(
+    '/api/admin/users/teachers',
+    payload,
+  );
+  return unwrap(res.data);
+}
+
+export async function resetUserPassword(userId: string): Promise<TemporaryPasswordResult> {
+  const res = await apiClient.post<ApiResponse<TemporaryPasswordResult>>(
+    `/api/admin/users/${userId}/reset-password`,
+  );
+  return unwrap(res.data);
+}
+
+export async function updateTeacherApproval(
+  userId: string,
+  status: TeacherApprovalStatus,
+): Promise<void> {
+  await apiClient.patch(`/api/admin/users/${userId}/teacher-approval`, null, {
+    params: { status },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Duyệt khóa học (UC36) — admin xem thử tài liệu bài học trước khi duyệt
+//  GET /api/admin/courses/{courseId}/documents/{documentId}/download
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Signed URL ngắn hạn (10 phút) — expiresAt null nếu là public URL legacy. */
+export interface AdminDocumentUrl {
+  url: string;
+  expiresAt: string | null;
+}
+
+export async function getAdminDocumentUrl(
+  courseId: string,
+  documentId: string,
+): Promise<AdminDocumentUrl> {
+  const res = await apiClient.get<ApiResponse<AdminDocumentUrl>>(
+    `/api/admin/courses/${courseId}/documents/${documentId}/download`,
   );
   return unwrap(res.data);
 }

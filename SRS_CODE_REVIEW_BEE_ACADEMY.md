@@ -1,99 +1,204 @@
-# Báo cáo review code theo SRS Bee Academy 4.14
+# Bao cao review code theo SRS Bee Academy 4.10
 
-Ngày review: 18/07/2026
+Ngay review: 09/07/2026
 
-Nguồn đối chiếu:
+Nguon doi chieu:
 
-- SRS: `C:\Users\ASUS\Downloads\SRS_4.14_final.docx`, phiên bản 4.14.
-- Code hiện tại: workspace `E:\swp391-rbl-project-se20a01_team3`, commit `cf8e202`.
-- Phạm vi quét: `backend/src/main/java`, `backend/db/migrations`, `frontend/src`, route/API/page frontend và test hiện có.
+- SRS: `C:\Users\ASUS\Downloads\SRS_Bee_Academy.docx`, phien ban 4.10, ngay ban hanh 08/07/2026.
+- Code hien tai: workspace `E:\swp391-rbl-project-se20a01_team3`.
+- Pham vi quet: `backend/src/main/java`, `backend/db/migrations`, `frontend/src`, cac file route/API/frontend page, test hien co.
 
-## 1. Kết luận nhanh
+## 1. Ket luan nhanh
 
-Hệ thống đã có triển khai thực tế cho hầu hết 8 module trong SRS, không chỉ riêng Phụ huynh và Giáo viên. Backend test hiện tại chạy xanh:
+He thong Bee Academy hien tai da vuot xa muc "prototype": co backend Spring Boot, frontend React/Vite, Supabase/PostgreSQL, JWT, PayOS, upload storage, course workflow, parent portal, teacher portal, admin dashboard, complaints, quiz/exam, Q&A va revenue/payout.
 
-| Lệnh | Kết quả |
+Tuy nhien, neu cham nghiem ngat theo SRS 4.10 thi nhieu chuc nang moi o ban SRS sau review van chi moi hoan thanh phan loi chinh, chua du state machine, audit log, quy tac nghiep vu va dieu kien chap nhan. Cac khoang thieu lon nhat nam o:
+
+- Teacher onboarding: chua co `teacher_profile_state` va phe duyet ho so giao vien truoc khi truy cap `REQ-TCH-*`.
+- Payment state machine: chua co `PaymentAttempt`, `refund_status`, `reconciliation_status`, `PAYMENT_REVIEW`, retry/partial refund dung SRS.
+- Certificate: chua co sinh/cham soc vong doi chung chi PDF QR.
+- Exam retake/anti-cheat: chua co `ExamEnrollment/RetakeApproval`, fullscreen/tab tracking, autosave 15s, approve mo them luot.
+- Admin security: doi role/khoa user chua co 2FA, dual approval, audit log, rule chong tu khoa/chong vo hieu Admin cuoi cung.
+- AI chat/AI roadmap: chua co luong chat AI ho tro hoc sinh va de xuat lo trinh ca nhan hoa; hien moi co AI scan PDF cho giao vien.
+- NFR: chua co bang chung coverage 70%, load test 5.000 VU, backup/PITR, WCAG audit, security scan.
+
+## 2. Bang tong hop theo module
+
+Quy uoc trang thai:
+
+- Hoan thanh: co UI/API/service chinh va luong chay co the dung duoc theo muc tieu UC.
+- Hoan thanh mot phan: co nen tang hoac luong chinh, nhung thieu acceptance criteria/state/audit/edge case quan trong cua SRS.
+- Chua lam: chua thay luong chinh trong code, hoac chi co thanh phan khong phuc vu UC do.
+
+| Module | Pham vi | Danh gia tong quan |
+| --- | --- | --- |
+| 1. Xac thuc & Tai khoan | UC01-UC05 | Hoan thanh mot phan: co Supabase auth, OTP, login/logout/reset/profile; thieu account_status chuan, lock 5 lan sai, teacher onboarding state. |
+| 2. Tim kiem & Khoa hoc | UC06-UC08 | Gan hoan thanh: co list/search/detail/free lesson, API that; can ra soat permission hoc thu va data public/private. |
+| 3. Mua hang & Thanh toan | UC09-UC12 | Hoan thanh mot phan: co PayOS/order/webhook/revenue split/complaint; thieu payment attempt, refund/reconcile, phu huynh mua cho con, coupon. |
+| 4. Hoc tap | UC13-UC20 | Hoan thanh mot phan: co khoa da mua, video/tai lieu, progress, quiz/exam, review; thieu submit assignment cho student, unlock rule day du, certificate. |
+| 5. Tuong tac & Ho tro | UC21-UC23 | Mot phan nho: Q&A hoc sinh-giao vien co; AI chat va AI roadmap chua co. |
+| 6. Phu huynh | UC24-UC29 | Hoan thanh kha tot phan loi: co link, accept/reject/unlink, progress, payment history, message; can bo sung privacy consent va audit day du hon. |
+| 7. Giao vien | UC30-UC37 | Hoan thanh mot phan: co course/content/question/exam/grading/Q&A/revenue/bank; thieu teacher approval gate, rule 3 chuong/final exam, audit/versioning day du. |
+| 8. Admin | UC38-UC44 | Hoan thanh mot phan: co dashboard/user/course approval/complaint/payout; thieu security rule, reconcile/refund, broadcast notification dung SRS. |
+
+## 3. Doi chieu chi tiet 44 use case
+
+### Module 1: Xac thuc & Tai khoan
+
+| UC | REQ | Yeu cau SRS | Trang thai | Bang chung code | Phan thieu/chua khop |
+| --- | --- | --- | --- | --- | --- |
+| UC01 | REQ-AUTH-001 | Dang ky tai khoan HS/PH/GV, xac thuc email, GV co ho so chuyen mon/bank/tai lieu va `teacher_profile_state`. | Hoan thanh mot phan | `AuthController`, `AuthService`, `OtpService`, `Register.tsx`. | Dang ky GV chua thu thap/cham duyet ho so theo SRS; chua co `account_status`, `teacher_profile_state`; OTP 5 phut khac flow email activation 24h trong SRS. |
+| UC02 | REQ-AUTH-002 | Dang nhap, JWT/refresh, lock tam sau 5 lan sai/15 phut, chan account bi khoa. | Hoan thanh mot phan | `AuthService.login`, `JwtAuthenticationFilter`, `Login.tsx`. | Chua thay `failed_login_lock_until`; `Profile.isBlocked` co nhung chua thay filter enforce trong auth flow; token/session invalidation sau khoa user chua day du. |
+| UC03 | REQ-AUTH-003 | Dang xuat, huy phien/token. | Hoan thanh mot phan | `AuthController.logout`, `AuthService.logout`, `useAuthStore`. | Logout revoke provider refresh token, nhung comment code ghi access token van song den het TTL; SRS yeu cau vo hieu hoa phien ro hon. |
+| UC04 | REQ-AUTH-004 | Dat lai mat khau an toan, OTP/link, token cu bi rotate/vo hieu. | Hoan thanh mot phan | `ForgotPassword.tsx`, `requestPasswordResetOtp`, `verifyOtpAndResetPassword`. | Co anti-enumeration va OTP; chua co bang chung rotate/invalidate toan bo session cu sau reset. |
+| UC05 | REQ-AUTH-005 | Cap nhat ho so ca nhan, avatar, rieng GV co thong tin ngan hang/ho so. | Hoan thanh mot phan | `ProfileController`, `ProfileService`, `TeacherBankController`, `TeacherBankService`. | Ho so chung co; bank GV co audit co ban; thieu bank review state `BANK_INFO_PENDING_REVIEW`, OTP xac thuc thay doi bank, ma hoa AES-256 theo SRS. |
+
+### Module 2: Tim kiem & Khoa hoc
+
+| UC | REQ | Yeu cau SRS | Trang thai | Bang chung code | Phan thieu/chua khop |
+| --- | --- | --- | --- | --- | --- |
+| UC06 | REQ-CRS-001 | Tim/loc khoa hoc theo tu khoa, linh vuc, cap lop, gia. | Hoan thanh | `CourseController`, `CourseService`, `CoursesPage.tsx`, `courseService.ts`. | Can bo sung test E2E/coverage; comment code van nhac mock seed nhung page chinh da goi API. |
+| UC07 | REQ-CRS-002 | Xem chi tiet khoa hoc public. | Hoan thanh | `GET /api/courses/{id}`, `CourseDetailPage.tsx`. | Can tiep tuc ra soat cac tab trong page vi file van co comment lich su `MOCK_COURSES`; nhung luong API da ton tai. |
+| UC08 | REQ-CRS-003 | Hoc thu bai free `isFree = true`. | Hoan thanh mot phan | `Lesson.isFree`, public route `/courses/:id`, signed URL chi tra khi co quyen. | Can kiem chung chi bai `isFree=true` duoc xem khi chua login va bai khong free bi khoa trong moi truong that; chua co test SRS rieng. |
+
+### Module 3: Mua hang & Thanh toan
+
+| UC | REQ | Yeu cau SRS | Trang thai | Bang chung code | Phan thieu/chua khop |
+| --- | --- | --- | --- | --- | --- |
+| UC09 | REQ-PAY-001 | Mua khoa hoc, HS/PH, chon con ACTIVE, coupon server-side, tao Order PENDING 30 phut. | Hoan thanh mot phan | `OrderController`, `OrderService.createOrder`, `CheckoutPage.tsx`. | Chi cho role student mua; chua co PH mua cho con; chua co coupon/snapshot discount; order expire 15 phut thay vi 30 phut trong SRS. |
+| UC10 | REQ-PAY-002 | Thanh toan VNPay/MoMo, payment_attempt, webhook idempotent, revenue_splits, cap quyen. | Hoan thanh mot phan | PayOS integration trong `OrderService`, `PayOSWebhookController`, `RevenueSplit`, `Enrollment`. | SRS yeu cau VNPay/MoMo nhung code dung PayOS; chua co `PaymentAttempt`, `PAYMENT_REVIEW`, `reconciliation_status`, retry theo attempt, amount/currency/gateway mismatch day du; co `devMode` bypass signature can canh bao khi deploy. |
+| UC11 | REQ-PAY-003 | Lich su mua hang, loc, chi tiet, hoa don. | Hoan thanh mot phan | `OrdersPage.tsx`, `OrderController.listOrders`, parent payment history. | Chua thay filter nang cao, hoa don PDF, reconciliation/refund view. |
+| UC12 | REQ-PAY-004 | Gui khieu nai lien quan giao dich/khoa hoc/doanh thu. | Hoan thanh | `ComplaintController`, `ComplaintService`, `ComplaintsPage.tsx`, `AdminComplaintController`. | Chua gan sau voi refund workflow va payment review theo SRS 4.10. |
+
+### Module 4: Hoc tap
+
+| UC | REQ | Yeu cau SRS | Trang thai | Bang chung code | Phan thieu/chua khop |
+| --- | --- | --- | --- | --- | --- |
+| UC13 | REQ-LRN-001 | Xem danh sach khoa da mua. | Hoan thanh | `ProfileController /api/me/courses`, `Enrollment`, `CoursesPage`, `ProgressPage`. | Enrollment chua gan `course_version_id` tai thoi diem mua theo SRS. |
+| UC14 | REQ-LRN-002 | Xem bai giang/tai lieu, tinh tien do hoc. | Hoan thanh mot phan | `CourseDetailPage.tsx`, `CourseService`, `StudentVideoProgressService`, signed URL video. | `BRULE-WATCH-001` yeu cau unique watched duration; code hien luu position/duration, chua thay tracking segment unique. |
+| UC15 | REQ-LRN-003 | Tai tai lieu hoc tap. | Hoan thanh mot phan | `CourseDocument`, `ContentUploadService`, UI download trong `CourseDetailPage.tsx`. | Tai lieu co public/signed URL tuy loai; chua thay watermark PDF/log download/TTL 5 phut cho document nhu SRS phu luc. |
+| UC16 | REQ-LRN-004 | Nop bai tap, deadline, file, late policy. | Chua lam day du | Co model `Assignment`, `AssignmentSubmission` va teacher grading. | Chua thay student controller/page submit assignment; chua co deadline/resubmit/late policy theo `BRULE-ASSIGN-001`, `BRULE-LATE-001`. |
+| UC17 | REQ-LRN-005 | Lam quiz/chapter test/final exam, unlock 100%, anti-cheat, retake approval. | Hoan thanh mot phan | `QuizService`, `ExamService`, `StudentQuizPage`, `StudentExamPage`. | Co quiz/exam va cham objective/essay; chua enforce unlock 100% day du, fullscreen/tab tracking, autosave 15s, `RETAKE_LOCKED`, `RetakeApproval`, final exam la dieu kien certificate. |
+| UC18 | REQ-LRN-006 | Xem diem va tien do hoc tap. | Hoan thanh | `CourseProgressService`, `ProgressPage.tsx`, parent progress report. | Chua gan voi AI roadmap suggestion UC23. |
+| UC19 | REQ-LRN-007 | Danh gia khoa hoc. | Hoan thanh | `CourseReviewController`, `CourseReviewService`, UI review trong `CourseDetailPage.tsx`, `ReviewsPage.tsx`. | Can bo sung test spam/one-review-per-enrollment neu SRS yeu cau. |
+| UC20 | REQ-LRN-008 | Xem/tai chung chi PDF QR sau 100% va final exam PASSED. | Chua lam | Khong thay model/controller/page certificate. | Can them certificate lifecycle `NOT_ISSUED/ISSUED/NEEDS_REVIEW/REISSUED/REVOKED`, PDF QR verify, signed URL 10 phut. |
+
+### Module 5: Tuong tac & Ho tro
+
+| UC | REQ | Yeu cau SRS | Trang thai | Bang chung code | Phan thieu/chua khop |
+| --- | --- | --- | --- | --- | --- |
+| UC21 | REQ-INT-001 | Hoc sinh gui cau hoi cho giao vien, public/private, dinh kem anh. | Hoan thanh mot phan | `QaController`, `QaService`, `MessagesPage`, Q&A tab trong `CourseDetailPage`. | Can kiem tra visibility public/private co enforce day du o list/detail/notification; SRS yeu cau pending va notification trong 5 phut. |
+| UC22 | REQ-INT-002 | Chat AI ho tro hoc sinh, consent/opt-out/fallback. | Chua lam | Chi thay `AiScanService` cho giao vien scan PDF tao cau hoi. | Chua co chat widget, AI Engine REST, timeout 15s, opt-out, xoa lich su. |
+| UC23 | REQ-INT-003 | AI de xuat lo trinh hoc ca nhan hoa. | Chua lam | Khong thay API/page roadmap AI. | Can thiet ke AI context toi thieu, consent, luu lich su/xoa lich su, fallback. |
+
+### Module 6: Phu huynh
+
+| UC | REQ | Yeu cau SRS | Trang thai | Bang chung code | Phan thieu/chua khop |
+| --- | --- | --- | --- | --- | --- |
+| UC24 | REQ-PRN-001 | Theo doi tien do hoc tap cua con khi link ACTIVE. | Hoan thanh mot phan | `ParentController`, `ParentService.getChildOverview/getChildProgressReport`, `ParentProgress.tsx`, `ParentDashboard.tsx`. | Code dung status `ACCEPTED` map sang active; thieu privacy consent chi tiet theo `BRULE-PRIVACY-001`. |
+| UC25 | REQ-PRN-002 | Lien he va nhan thong bao tu giao vien. | Hoan thanh | `ParentMessages.tsx`, `ParentService`, email service, notification. | Can bo sung audit/visibility theo chinh sach rieng tu neu SRS can. |
+| UC26 | REQ-PRN-003 | Xem lich su thanh toan cua con. | Hoan thanh | `ParentPayments.tsx`, `ParentService.getChildPaymentHistory`. | Chua co phan PH thanh toan mua khoa cho con trong UC09; lich su dua tren order/enrollment hien co. |
+| UC27 | REQ-PRN-004 | Gui loi moi lien ket con. | Hoan thanh | `ParentStudentLink.tsx`, `ParentController`, `ParentService.sendLinkInvitation`, email/notification. | Can them audit log o moi thao tac parent side; hien audit ro hon o student service. |
+| UC28 | REQ-PRN-005 | Hoc sinh chap nhan/tu choi link. | Hoan thanh | `StudentParentLinkController`, `StudentParentLinkService`. | Ten status `ACCEPTED/REJECTED` khac SRS `ACTIVE/REJECTED` nhung API co map. |
+| UC29 | REQ-PRN-006 | Huy lien ket hai phia. | Hoan thanh | Parent/student unlink request/confirm trong `ParentService`, `StudentParentLinkService`. | Can bo sung expire job 7 ngay va privacy audit day du. |
+
+### Module 7: Giao vien
+
+| UC | REQ | Yeu cau SRS | Trang thai | Bang chung code | Phan thieu/chua khop |
+| --- | --- | --- | --- | --- | --- |
+| UC30 | REQ-TCH-001 | Tao khoa moi, luu nhap/gui duyet, toi thieu 3 chuong va final exam hop le. | Hoan thanh mot phan | `TeacherCourseController`, `TeacherCourseService`, `CoursesPage.tsx`. | Submit chi validate co it nhat 1 chuong va moi chuong co bai; chua bat buoc 3 chuong/final exam; chua gate `TEACHER_APPROVED`. |
+| UC31 | REQ-TCH-002 | Cap nhat bai giang/tai lieu, upload video/PDF/slide, versioning/audit. | Hoan thanh mot phan | `ContentUploadService`, `UploadController`, `TeacherCourseService`, `ContentPage.tsx`. | Co upload va course_versions khi submit; chua co encode video 30 phut, video original retention 12 thang, major/minor change audit va migration enrollment version day du. |
+| UC32 | REQ-TCH-004 | Tao question bank. | Hoan thanh mot phan | `QuestionController`, `QuestionService`, `QuestionBankPage.tsx`. | Code quan ly cau hoi truc tiep; chua thay entity "ngan hang" rieng voi ten bank unique va trang thai ACTIVE/0 cau hoi nhu SRS. |
+| UC33 | REQ-TCH-005 | Cap nhat question bank, them/sua/xoa/import. | Hoan thanh | `QuestionService` CRUD, `bulkCreateQuestions`, `ExcelImportModal.tsx`. | AI-generated question audit/review chua day du. |
+| UC34 | REQ-TCH-003 | Tao bai kiem tra/quiz/chapter test/final exam. | Hoan thanh mot phan | `ExamService`, `QuizService`, `ExamPage.tsx`, `QuizChapterPage.tsx`. | Co cau hinh bai kiem tra va random tu question bank; chua phan biet day du quiz/chapter test/final exam cho certificate; chua anti-cheat/retake. |
+| UC35 | REQ-TCH-006 | Cham diem bai tap/cau tu luan, sua diem co audit, retake approval. | Hoan thanh mot phan | `AssignmentService.gradeSubmission`, `ExamService.gradeExamAttempt`, `GradesPage.tsx`. | Chua co audit old_score/new_score/reason trong 24h; chua tinh lai certificate `NEEDS_REVIEW`; chua danh sach/approve `RETAKE_LOCKED`. |
+| UC36 | REQ-TCH-007 | Tra loi cau hoi hoc sinh. | Hoan thanh | `QaService`, `QAPage.tsx`, notifications. | Can kiem tra visibility private/public bang test. |
+| UC37 | REQ-TCH-008 | Xem lich su doanh thu/ky da nhan tien, export Excel phap ly. | Hoan thanh mot phan | `TeacherRevenueController`, `TeacherRevenueService`, `RevenuePage.tsx`, `RevenueSplit`, `PayoutPeriod`. | Co stats/splits/periods; SRS 4.10 khong yeu cau doanh thu realtime tam tinh, nhung can trace nguon, export Excel day du, luu 5 nam va reconcile only. |
+
+### Module 8: Admin
+
+| UC | REQ | Yeu cau SRS | Trang thai | Bang chung code | Phan thieu/chua khop |
+| --- | --- | --- | --- | --- | --- |
+| UC38 | REQ-ADM-001 | Dashboard quan tri: GMV, platform fee, teacher amount, funds held. | Hoan thanh | `AdminDashboardController`, `AdminDashboardService`, `DashboardAdmin.tsx`. | Can loai bo/phan biet du lieu mock con trong `DashboardAdmin.tsx`; them test voi data that. |
+| UC39 | REQ-ADM-002 | Xem danh sach tai khoan nguoi dung. | Hoan thanh | `AdminUserController`, `ProfileRepository.findAllWithEmail`, UI dashboard users. | Chua co trang rieng `/admin/teachers` vi route dang `ComingSoon`; nhung user list nam trong dashboard. |
+| UC40 | REQ-ADM-003 | Khoa/mo khoa, doi role, reset password an toan, teacher approval, anti privilege escalation. | Hoan thanh mot phan | `AdminUserController.toggleBlock/changeRole`, UI change role/block. | Thieu audit log, 2FA, dual approval, chong tu khoa/xoa/ha quyen Admin dang login, chong vo hieu Admin cuoi cung, teacher_profile_state, reset link one-time tu Admin. |
+| UC41 | REQ-ADM-004 | Duyet khoa hoc approve/reject/needs revision, lich su. | Hoan thanh | `AdminApprovalController`, `ApprovalService`, `ApprovalsPage`, `CourseReviewPage`. | Chua validate chat che dieu kien SRS truoc publish: toi thieu 3 chuong, final exam hop le, version/migration anh huong HS/PH. |
+| UC42 | REQ-ADM-005 | Xem va tra loi khieu nai. | Hoan thanh | `AdminComplaintController`, `ComplaintService`, `ComplaintsInbox`. | Chua ket noi hoan tien/partial refund/payment review. |
+| UC43 | REQ-ADM-006 | Xac nhan da chuyen khoan GV, UNC, hold bank info, adjustment. | Hoan thanh mot phan | `AdminPayoutController`, `AdminPayoutService`, `PayoutsPanel`. | Co confirm payout; chua co payout cycle state machine day du, UNC file upload, `HOLD_BANK_INFO`, refund adjustment, reconciliation only, bank dual approval. |
+| UC44 | REQ-ADM-007 | Gui thong bao den nguoi dung/nhom nguoi dung. | Hoan thanh mot phan | `UserNotificationService`, `AdminNotificationService`. | Co notification noi bo theo su kien; chua thay API/UI broadcast Admin gui den nhom HS/PH/GV, schedule, email/push channel. |
+
+## 4. Cac phan chua lam hoac can bo sung uu tien cao
+
+1. Bo sung state machine dung SRS 4.10
+
+- `profiles`: them `account_status`, `failed_login_lock_until`, `teacher_profile_state`.
+- `orders/payments`: them `payment_status`, `refund_status`, `reconciliation_status`, `payment_attempts`.
+- `enrollments/course_access`: them `course_version_id`, `access_state`.
+- `certificates`: them lifecycle `NOT_ISSUED/ISSUED/NEEDS_REVIEW/REISSUED/REVOKED`.
+- `exam_enrollments/retake_approvals`: them retake state, approval audit.
+- `teacher_bank_info`: them `BANK_INFO_PENDING_REVIEW/BANK_INFO_REJECTED/ACTIVE`.
+
+2. Hoan thien payment theo SRS
+
+- Tach Order va PaymentAttempt.
+- Retry thanh toan giu Order PENDING nhung tao attempt moi.
+- Webhook mismatch phai vao `PAYMENT_REVIEW`, khong cap quyen hoc.
+- Them refund/partial refund va adjustment revenue/payout.
+- Them luong phu huynh mua khoa cho con ACTIVE.
+- Neu van dung PayOS thay VNPay/MoMo, can cap nhat SRS/UC hoac them adapter VNPay/MoMo.
+
+3. Hoan thien hoc tap/chung chi
+
+- Student submit assignment co deadline, file, so lan nop, late policy.
+- Unlock quiz/chapter test/final exam theo 100% progress dung pham vi.
+- Anti-cheat fullscreen/tab tracking, autosave 15s.
+- Certificate PDF QR sau 100% + final exam PASSED.
+- Khi sua diem final exam, certificate phai `NEEDS_REVIEW` roi `REISSUED/REVOKED`.
+
+4. Hoan thien Admin security
+
+- Audit log cho block/unblock/change role/reset password/teacher approval.
+- Khong cho Admin tu khoa/xoa/ha quyen chinh minh.
+- Khong cho vo hieu hoa Admin ACTIVE cuoi cung.
+- Doi sang/tu role Admin can 2FA + dual approval + reason.
+- Token/session cua user bi khoa phai bi revoke hoac bi filter chan ngay.
+
+5. Hoan thien AI
+
+- Tach `AI Scan PDF` cua giao vien voi `AI Chat`/`AI Roadmap` cua hoc sinh.
+- Them consent/opt-out/xoa lich su.
+- Timeout 15s co fallback sang hoi giao vien hoac lo trinh mac dinh.
+- Log prompt/action/source_refs cho cau hoi AI sinh ra va bat buoc GV review/edit/approve.
+
+## 5. Rui ro ky thuat phat hien khi review
+
+- `PayOSWebhookController` co `app.dev-mode=true` se bypass signature. Neu deploy nham production voi co nay, request gia co the tao thanh toan gia.
+- Maven wrapper `backend/mvnw.cmd` bi thieu `org.apache.maven.wrapper.MavenWrapperMain`; phai dung `mvn test` he thong. Nen sua wrapper neu team yeu cau lenh chuan.
+- `frontend/src/pages/admin/DashboardAdmin.tsx` van co khoi du lieu khoi tao mock, du da co API that cho user/dashboard/payout/complaints. Nen tach mock fallback ro rang hoac xoa khi nop/deploy.
+- Frontend auth store luu token trong `localStorage`; comment code cung ghi nhan rui ro XSS. Neu theo NFR security cao hon, nen chuyen refresh token sang HttpOnly cookie/SameSite.
+- SRS 4.10 yeu cau Java/Spring Boot nhung README ghi Java 17, `pom.xml` dung Java 21. Can thong nhat moi truong nop/chay.
+
+## 6. Ket qua kiem tra build/test
+
+Da chay cac lenh sau:
+
+| Lenh | Ket qua |
 | --- | --- |
-| `mvn test` trong `backend` | Thành công: 110 tests, 0 failures, 0 errors |
-| `npm run build` trong `frontend` | Thành công; Vite build hoàn tất (có cảnh báo chunk lớn, không làm build thất bại) |
+| `cmd /c npm run lint` trong `frontend` | Thanh cong, `tsc --noEmit` khong bao loi. |
+| `cmd /c npm run build` trong `frontend` | Thanh cong, Vite build xong; co canh bao chunk lon hon 500 kB. |
+| `mvn test` trong `backend` | Thanh cong: 21 tests, 0 failures, 0 errors. |
 
-Tổng hợp theo module:
+Ghi chu moi truong:
 
-| Module | Phạm vi UC | Mức hoàn thành ước lượng | Nhận xét ngắn |
-| --- | --- | ---: | --- |
-| Xác thực & Tài khoản | UC01-UC05 | ~79% | Có auth/profile/OTP/reset và logout phía server; còn thiếu khóa đăng nhập 5 lần, audit và quản lý session đầy đủ theo SRS. |
-| Tìm kiếm & Khóa học | UC06-UC08 | ~87% | Search/detail/free preview đã có; cần củng cố test quyền xem nội dung miễn phí. |
-| Mua hàng & Thanh toán | UC09-UC12 | ~78% | Có PayOS/order/webhook/history/complaint; lệch gateway VNPay/MoMo và thiếu PaymentAttempt/refund/reconciliation đầy đủ. |
-| Học tập | UC13-UC20 | 100% chức năng theo SRS | Đã hoàn thiện danh sách khóa đã mua, quy tắc hoàn thành, tải tài liệu bảo mật, assignment, 4 bài thi/thi lại, báo cáo tiến độ, moderation đánh giá và chứng chỉ đủ 4 bài thi. |
-| Tương tác & Hỗ trợ | UC21-UC23 | ~75% | Q&A tốt; AI chat/roadmap có nền tảng nhưng thiếu consent/opt-out/delete history đầy đủ. |
-| Phụ huynh | UC24-UC29 | ~88% | Parent portal mạnh, có link/consent/audit/report; UC29 đã hỗ trợ một bên hủy trực tiếp đúng SRS. |
-| Giáo viên | UC30-UC37 | ~88% | Teacher portal mạnh; gate giáo viên đã duyệt đã phủ các service chính, có version migration và audit tốt hơn; còn thiếu HLS, retention/export chuẩn. |
-| Admin | UC38-UC44 | ~83% | Dashboard/user/course/complaint/payout/notification đã có; quản lý user đã có khóa/mở, đổi role và duyệt GV; còn thiếu audit bảo mật, reconcile/refund. |
+- `npm run lint` truc tiep trong PowerShell bi chan do execution policy cua `npm.ps1`, da chay lai bang `cmd /c`.
+- `.\mvnw.cmd test` that bai vi Maven wrapper thieu main class, da chay lai bang Maven he thong `mvn test`.
+- Lan dau `mvn test` bi sandbox chan network khi tai dependency; sau khi cho phep network thi test thanh cong.
 
-## 2. Bảng đánh giá toàn bộ Use Case
+## 7. De xuat thu tu lam tiep
 
-| Tên UC | % hoàn thành | Phần đã hoàn thành | Phần chưa hoàn thành | Phần đã cải tiến thêm so với SRS |
-| --- | ---: | --- | --- | --- |
-| UC01 - Đăng ký tài khoản | 75% | Có flow đăng ký tài khoản, tạo profile/role, OTP/email theo tầng auth, frontend form và xử lý lỗi cơ bản. | Trạng thái tài khoản và hồ sơ giáo viên chưa khớp hoàn toàn SRS; chưa thấy đầy đủ rule chống spam/duplicate nâng cao và audit đăng ký. | Tích hợp Supabase/Auth provider, tự tạo profile theo role, có nhánh role phụ huynh/giáo viên/học sinh. |
-| UC02 - Đăng nhập hệ thống | 75% | Có login JWT/session, phân quyền route theo role, redirect theo vai trò, kiểm tra token và profile. | Chưa chứng minh đủ lock sau 5 lần sai/15 phút, trạng thái BLOCKED/SUSPENDED theo SRS chưa phủ hết, audit login chưa đầy đủ. | Có helper điều hướng tránh đưa GV/Admin/PH nhầm về trang course chung. |
-| UC03 - Đăng xuất hệ thống | 85% | Có endpoint `/api/auth/logout`, xác thực JWT, chuyển access token sang Auth provider để sign-out; frontend đồng thời xóa store/token và điều hướng khỏi session. | Chưa có audit logout chuyên biệt và chưa chứng minh đầy đủ lựa chọn revoke mọi refresh token trên tất cả thiết bị theo SRS. | Đồng bộ logout backend với state auth frontend, tránh giữ role/profile cũ và không còn chỉ logout phía client. |
-| UC04 - Đặt lại mật khẩu | 80% | Có forgot/reset password, OTP/email, cập nhật mật khẩu qua Auth provider admin API. | Chưa thấy chính sách vô hiệu hóa toàn bộ session cũ sau reset và rate limit/audit đầy đủ theo SRS. | Dùng admin API để đổi mật khẩu có kiểm soát thay vì chỉ client-side reset. |
-| UC05 - Cập nhật hồ sơ cá nhân | 80% | Có cập nhật profile/avatar/thông tin cá nhân, trang tài khoản giáo viên, ngân hàng giáo viên có audit và trạng thái xác minh. | Dữ liệu nhạy cảm như bank/card chưa có mã hóa/audit/security rule đầy đủ theo SRS; teacher profile state cần chuẩn hóa hơn. | Có module tài khoản ngân hàng giáo viên, audit thay đổi và reset trạng thái chờ admin xác minh. |
-| UC06 - Tìm kiếm khóa học | 90% | Có danh sách khóa học, tìm kiếm/lọc theo từ khóa, danh mục, cấp lớp, giá/trạng thái, API và UI public. | Cần thêm test hiệu năng/phân trang và xác nhận rule chỉ hiển thị khóa đã approved/published trong mọi ngữ cảnh. | Có dữ liệu summary, đánh giá/giá/thumbnail hỗ trợ trải nghiệm tìm khóa tốt hơn. |
-| UC07 - Xem chi tiết khóa học | 90% | Có trang chi tiết khóa, thông tin chương/bài, giáo viên, giá, đánh giá, trạng thái đã mua/được truy cập. | Cần kiểm thử đầy đủ quyền xem nội dung private với guest/user chưa mua. | Có hiển thị enrollment/access state, review summary và preview nội dung. |
-| UC08 - Xem bài học thử | 80% | Có cơ chế `isFree`/free preview và frontend cho xem bài miễn phí. | Cần test chặn tài liệu/video không free, signed URL và route deep-link cho guest chưa mua. | Tích hợp preview vào course detail thay vì tách flow riêng. |
-| UC09 - Mua khóa học | 75% | Có tạo order, checkout, áp dụng voucher/reward, xử lý role học sinh/phụ huynh ở một số luồng, tạo enrollment sau thanh toán. | Phụ huynh mua cho con ACTIVE cần E2E rõ hơn; chưa có đầy đủ rule số lượng, duplicate purchase, cancel/expire theo SRS. | Có reward/voucher ngoài SRS, tăng khả năng khuyến mãi và giữ chân người học. |
-| UC10 - Thanh toán khóa học | 70% | Có tích hợp PayOS, tạo link thanh toán, webhook, kiểm tra chữ ký, verify/reconcile đơn pending ở mức dịch vụ, ghi revenue split. | SRS nêu payment gateway kiểu VNPay/MoMo; code dùng PayOS nên cần ghi rõ thay thế. Thiếu bảng/flow PaymentAttempt, refund_status, reconciliation_status và hoàn tiền đầy đủ. | Có DEV_MODE cảnh báo khi bypass signature, có revenue split phục vụ payout giáo viên. |
-| UC11 - Xem lịch sử mua khóa học | 80% | Có lịch sử order/payment, trạng thái, thông tin khóa, frontend payment result/history; phụ huynh có lịch sử theo con. | Hóa đơn điện tử/PDF pháp lý và bộ lọc nâng cao chưa hoàn chỉnh; refund linkage chưa đầy đủ. | Có phân biệt payer role, pending count, tổng tiền và thông tin invoice in ra frontend. |
-| UC12 - Gửi khiếu nại đến Admin | 85% | Có ComplaintController, ComplaintService, trang khiếu nại, admin xử lý trạng thái/trả lời. | Chưa gắn hoàn chỉnh với refund/payment review và SLA xử lý; attachment/moderation/audit nâng cao cần kiểm thử. | Có dashboard/admin inbox cho khiếu nại, tốt hơn mức form gửi đơn giản. |
-| UC13 - Xem danh sách khóa học đã mua | 100% | Có đủ metadata, ba trạng thái/lọc, empty state, điều hướng vào học, sắp xếp theo lần học gần nhất; trạng thái hoàn thành yêu cầu 100% nội dung và đạt đủ 4 bài thi. | Không còn khoảng trống chức năng phát hiện trong phạm vi code. | Có hydrate tiến độ/offline sync và tiếp tục từ hoạt động gần nhất. |
-| UC14 - Xem bài giảng & tài liệu | 100% | Có video/tài liệu/transcript/subtitle/tốc độ/tua; chỉ tính đoạn xem duy nhất, đạt 90% mới hoàn thành; đủ bốn completion rule cho nội dung không video; fallback sau 3 giây và offline queue. | Không còn khoảng trống chức năng phát hiện trong phạm vi code. | Có video fallback, slide cue, ghi chú theo bài và đồng bộ tiến độ đa thiết bị. |
-| UC15 - Tải tài liệu học tập | 100% | Kiểm tra enrollment/ownership; mọi định dạng dùng token một lần 5 phút; file legacy được chuyển khỏi bucket public; PDF đóng dấu tên/email; audit và giới hạn 10 lần/giờ/file; xử lý 403/404/link hết hạn. | Không còn khoảng trống chức năng phát hiện trong phạm vi code. | Có migration nền sang private bucket và dọn file watermark tạm tự động. |
-| UC16 - Nộp bài tập | 100% | Hỗ trợ text/file tối đa 25 MB, whitelist định dạng, tối đa 3 lượt mặc định, deadline/late penalty/đóng nhận bài, trạng thái SUBMITTED, thông báo GV, cam kết chấm trong 7 ngày, bản gốc và preview. | Không còn khoảng trống chức năng phát hiện trong phạm vi code. | Có grade audit, resubmit, expected grading date và tự cập nhật progress theo ASSIGNMENT_SUBMITTED/PASSED. |
-| UC17 - Làm bài kiểm tra | 100% | Đủ 4 bài thi theo phạm vi, mở khi hoàn thành 100%, objective+essay, fullscreen/cấm copy-paste, audit vi phạm server, cảnh báo 1–3 và tự nộp lần 4, autosave 15 giây/offline; 1 lượt chính + 2 thi lại/14 ngày; request/approve/reject/cooldown 12 giờ đầy đủ. | Không còn khoảng trống chức năng phát hiện trong phạm vi code. | Có idempotency cho sự kiện gian lận, versioned exam config, audit retake và notification hai chiều. |
-| UC18 - Xem điểm & tiến độ học tập | 100% | Hiển thị điểm/trạng thái 4 bài thi theo phạm vi, quiz, assignment, điểm trung bình, tiến độ khóa/từng chương, thời gian xem duy nhất, empty state và xuất PDF. | Không còn khoảng trống chức năng phát hiện trong phạm vi code. | Tích hợp nút gợi ý học tiếp sang lộ trình UC23 và báo cáo PDF chi tiết. |
-| UC19 - Đánh giá khóa học | 100% | Kiểm tra progress >=30%, rating bắt buộc 1–5, comment 20–1000, upsert, average/notify, nội dung vi phạm chuyển pending và ẩn; Admin có UI approve/reject kèm lý do. | Không còn khoảng trống chức năng phát hiện trong phạm vi code. | Có moderation queue tìm kiếm, thông báo kết quả và kiểm thử service đầy đủ. |
-| UC20 - Xem & tải chứng chỉ | 100% | Chỉ cấp khi tiến độ 100% và đạt đủ 4 bài thi; UI nêu rõ điều kiện thiếu; PDF có học sinh/khóa/GV/ngày hoàn thành/mã/QR, signed URL 10 phút, verify public, retry 30 giây, watermark và filename; lifecycle NEEDS_REVIEW/REISSUED/REVOKED áp dụng khi bất kỳ bài thi bắt buộc đổi điểm. | Không còn khoảng trống chức năng phát hiện trong phạm vi code. | Có xác minh QR công khai, version chứng chỉ và tự tái đánh giá sau thay đổi điểm. |
-| UC21 - Gửi câu hỏi cho giáo viên | 85% | Có Q&A thread, message, attachment, trạng thái pending/answered/resolved, notification cho giáo viên. | Visibility public/private và moderation/retention cần test đầy đủ. | Hỗ trợ cả luồng phụ huynh nhắn giáo viên qua cùng nền Q&A. |
-| UC22 - Chat AI hỗ trợ | 70% | Có AiChatService, AiStudentController, frontend AI Tutor và tích hợp Gemini/AI provider. | Consent/opt-out/delete history, fallback khi AI lỗi, rate limit và logging chính sách dữ liệu chưa đủ theo SRS. | Có AI tutor thực tế thay vì placeholder, có thể dùng dữ liệu học để trả lời cá nhân hóa. |
-| UC23 - Nhận đề xuất lộ trình từ AI | 70% | Có service/endpoint tạo roadmap và frontend liên quan đến AI gợi ý học tập. | Chưa đủ rule không gửi dữ liệu khi rút consent, giải thích lý do đề xuất, lưu/xóa lịch sử và audit AI. | Tận dụng progress/điểm để cá nhân hóa lộ trình, vượt mức gợi ý tĩnh. |
-| UC24 - Theo dõi tiến độ học tập của con | 85% | Có dashboard/report tiến độ, khóa học, bài đã học, exam/assignment, quyền xem theo link, privacy/consent, audit khi phụ huynh xem dữ liệu, weekly summary. | Chưa chứng minh SLA cập nhật <= 5 phút; báo cáo 4 bài cố định còn phụ thuộc dữ liệu exam thực tế; export báo cáo tuần chuẩn file chưa rõ. | Có masking lý do chi tiết, biểu đồ/print report frontend, weekly summary rule-based. |
-| UC25 - Liên hệ & nhận thông báo từ giáo viên | 85% | Có phụ huynh nhắn giáo viên theo khóa học của con, lưu hội thoại qua Q&A, gửi notification/email cho giáo viên và phụ huynh khi giáo viên trả lời. | Chưa thấy giới hạn 2000 ký tự enforce rõ; moderation và retention 12 tháng chưa có policy/job đầy đủ. | Có đính kèm file/tài liệu, hợp nhất luồng PH-GV vào Q&A để giáo viên xử lý cùng nơi. |
-| UC26 - Xem lịch sử thanh toán khóa học | 80% | Có API/payment history theo con ACTIVE, gồm giao dịch PH hoặc HS, trạng thái, khóa học, tiến độ hiện tại, lọc theo khóa/thời gian. | Hóa đơn điện tử pháp lý chưa hoàn chỉnh; chủ yếu là invoice info/print phía frontend. | Có thống kê tổng tiền, pending count, tiến độ trung bình, phân biệt payer role PH/HS. |
-| UC27 - Gửi lời mời liên kết con | 95% | Có nhập email HS, relationship/note, response trung lập chống dò email, giới hạn 5 con, rate limit, PENDING hết hạn 7 ngày, email/notification, hủy lời mời pending. | Chưa thấy system test E2E đầy đủ cho toàn flow email/in-app. | Có audit cả attempt thất bại/rate-limited và neutral response tốt hơn SRS. |
-| UC28 - Chấp nhận / từ chối liên kết | 90% | HS xem lời mời, accept/reject, tự expire sau 7 ngày, audit log, thông báo PH, cho phép nhiều PH liên kết 1 HS. | DB/API dùng `ACCEPTED` nội bộ rồi map active; cần thống nhất thuật ngữ với SRS dùng `ACTIVE`. | Có flow consent dữ liệu nhạy cảm theo từng phụ huynh. |
-| UC29 - Hủy liên kết tài khoản | 95% | Cả PH và HS có thể tự hủy liên kết ACTIVE; service chuyển ngay sang `REVOKED`, thu hồi consent, ghi audit/lý do và thông báo bên còn lại; quyền UC24/25/26 bị chặn sau hủy. | Cần thêm system test chạy trên DB migration thật và kiểm tra đồng thời/race condition khi hai bên cùng hủy. | Có operation id/idempotency, audit chi tiết và notification hai bên ngoài yêu cầu tối thiểu. |
-| UC30 - Tạo khóa học mới | 90% | Có draft, chương/bài, lưu/gửi duyệt, kiểm tra tối thiểu 4 chương, mỗi chương có bài, đủ 4 bài kiểm tra và coverage liên tục, version snapshot, thông báo Admin; mọi thao tác chính trong `TeacherCourseService` đều yêu cầu GV đã được duyệt. | Cần system test toàn luồng submit/approve/migrate và rà soát chênh lệch quy tắc số chương giữa các phần SRS. | Có validation giá/sale price, thumbnail/video intro và snapshot JSON chi tiết khi submit. |
-| UC31 - Cập nhật bài giảng & tài liệu | 85% | Có CRUD/reorder chapter/lesson, upload video/tài liệu, completion rule/metadata học tập, version snapshot và migration enrollment có lý do/audit/thông báo; upload cũng kiểm tra GV approved. | Chưa có HLS encode thật <= 30 phút, chính sách lưu video gốc 12 tháng và audit ở mức mọi thay đổi nhỏ; cần E2E cho migration ảnh hưởng progress/chứng chỉ. | Có storage upload, video fallback/slide cue, transcript/subtitle và cơ chế migrate course version chi tiết. |
-| UC32 - Tạo question bank | 95% | Có entity question bank riêng, tạo bank ACTIVE với 0 câu hỏi, title unique theo GV, category/grade, chặn GV chưa approved qua TeacherAccessService, có test. | Chủ yếu cần E2E/UI test đầy đủ. | Có trạng thái active/inactive, grade/category rõ hơn yêu cầu tối thiểu. |
-| UC33 - Cập nhật question bank | 90% | Có thêm/sửa/xóa, bulk import, nhiều loại câu hỏi, cảnh báo trùng, archive câu hỏi đã dùng, snapshot `question_versions`; toàn bộ thao tác chính của `QuestionService` đã kiểm tra GV approved. | Audit old/new/action vẫn chưa đồng đều ở mọi thao tác và cần E2E chứng minh attempt cũ không bị thay đổi sau version/archive. | Có import Excel, nhiều question type mở rộng, duplicate warning và versioning khi câu hỏi đã dùng. |
-| UC34 - Tạo bài kiểm tra | 85% | Có 4 slot bài kiểm tra, chọn phạm vi chapter start/end, kiểm tra continuity/coverage, random từ question bank, objective/essay, AI draft + GV approve, anti-cheat config, unlock theo progress, autosave. | Chưa thấy `course_version_id` trong ExamConfig; chống gian lận mới ở mức cấu hình, chưa chứng minh enforcement UI đầy đủ; retake/exam enrollment chưa đúng toàn bộ SRS. | Có AI sinh câu hỏi, audit prompt/action/source_refs, upload ảnh/file đáp án. |
-| UC35 - Chấm điểm bài tập và câu tự luận | 82% | Có chấm assignment và exam essay, validate điểm, sửa điểm trong 24h bắt buộc lý do, grade audit old/new/grader/reason, notification HS, cập nhật reward/certificate, retake approve/reject. | Retake schema chưa đúng hoàn toàn SRS; cooldown/audit schema chưa đầy đủ; logic số lần duyệt cần thống nhất với SRS. | Gộp chấm assignment + exam essay, có grade audit và trigger certificate review/recalc. |
-| UC36 - Trả lời câu hỏi học sinh | 90% | Có list Q&A theo GV, trả lời, edit câu trả lời, update status, notify HS, notify PH nếu thread có PH, đính kèm ảnh, mark duplicate, KPI 48h/7 ngày. | Visibility public/private cần test enforce đầy đủ; báo cáo KPI cần UI/test xác nhận. | Có duplicate linking và KPI report vượt yêu cầu luồng chính. |
-| UC37 - Xem lịch sử doanh thu | 85% | Có xem kỳ chi trả đã PAID/confirmed, chi tiết giao dịch nguồn, transfer ref/content, UNC attachment URL, export CSV, chỉ cho GV xem period của mình. | SRS yêu cầu Excel/chứng từ pháp lý; hiện là CSV. Retention >= 5 năm chưa có policy rõ; thuật ngữ `PAID`/`CONFIRMED` cần thống nhất. | Có realtime revenue split/pending view ngoài phạm vi SRS và export có BOM UTF-8/UNC metadata. |
-| UC38 - Xem dashboard quản trị | 85% | Có admin dashboard, KPI vận hành, số liệu user/course/order/complaint/payout và cảnh báo cơ bản. | Realtime reconcile, số tiền đang giữ/phải chuyển theo kỳ và export báo cáo tổng cần kiểm thử đầy đủ. | Có nhiều chỉ số vận hành hơn dashboard tối thiểu. |
-| UC39 - Xem danh sách tài khoản người dùng | 80% | Có quản lý user/profile, tìm kiếm/lọc cơ bản, xem role/trạng thái và thông tin giáo viên. | Pagination/export Excel, teacher_profile_state chuẩn SRS và audit truy cập danh sách chưa đầy đủ. | Có liên kết sang quy trình xác minh ngân hàng/giáo viên. |
-| UC40 - Cập nhật tài khoản người dùng | 82% | Admin có API khóa/mở khóa, đổi role, duyệt/từ chối GV, chặn khóa tài khoản Admin và có giao diện quản lý; Auth provider hỗ trợ reset/change password. | Chưa có endpoint admin reset password khép kín, thu hồi trạng thái GV riêng, bắt xác thực lại cho hành động nhạy cảm và audit old/new/admin/reason đầy đủ. | Có state phê duyệt GV và quy trình xác minh tài khoản ngân hàng kết nối với quyền/payout. |
-| UC41 - Duyệt khóa học | 88% | Có submit review, admin approve/reject/needs revision, approval history, thông báo, version snapshot/migration và validation 4 bài kiểm tra/coverage; gate GV approved đã phủ TeacherCourseService. | Checklist review/diff version trực quan và audit chi tiết từng trường thay đổi cần hoàn thiện; cần system test toàn luồng. | Tự kiểm tra cấu trúc/coverage trước khi admin nhận duyệt và hỗ trợ migrate enrollment có kiểm soát sau thay đổi version. |
-| UC42 - Xử lý khiếu nại từ người dùng | 85% | Có admin complaint controller/service, danh sách khiếu nại, cập nhật trạng thái, phản hồi người dùng. | Chưa tích hợp hoàn chỉnh với refund/payment dispute, SLA và attachment evidence đầy đủ. | Có complaint dashboard và liên kết UC12 tốt hơn mức xử lý thủ công. |
-| UC43 - Xuất danh sách chi trả và xác nhận đã chuyển khoản GV | 80% | Có payout period, revenue split, admin xác nhận đã chuyển khoản, transfer ref/content, UNC URL, thông báo GV, giáo viên xem lịch sử đã paid. | Export Excel/chứng từ pháp lý và upload file UNC đầy đủ cần hoàn thiện; state machine payout/retry/audit chi tiết chưa đủ. | Có backfill revenue split và metadata chuyển khoản phục vụ đối soát. |
-| UC44 - Gửi thông báo đến người dùng | 80% | Có notification service, bell frontend, mark read, admin/system gửi thông báo cho người dùng/nhóm. | Lên lịch gửi, kênh email/push đầy đủ, template và audit broadcast chưa hoàn chỉnh. | Notification được dùng xuyên module: course review, parent link, Q&A, payout, grading. |
-
-## 3. Bằng chứng code chính
-
-- Auth/Profile: `AuthProviderClient`, `SupabaseAuthClient`, `Profile`, `TeacherApprovalStatus`, frontend auth store/routes.
-- Course/Search/Learning: `CourseController`, `CourseProgressService`, `StudentVideoProgress`, `StudentDocumentDownload`, các trang course/learning frontend.
-- Payment/Complaint: `OrderService`, `PayOSWebhookController`, `OrderController`, `ComplaintController`, `AdminComplaintController`, frontend checkout/payment/complaints.
-- Certificate/Review: `CertificateService`, `CertificateController`, course review API/frontend.
-- Interaction/AI: `QaService`, `AiChatService`, `AiStudentController`, `AiScanService`.
-- Parent: `ParentController`, `ParentService`, `StudentParentLinkController`, `StudentParentLinkService`, `ParentStudentLink`, `ParentLinkAuditLog`, `ParentProgressAccessAudit`.
-- Teacher: `TeacherCourseService`, `QuestionBankService`, `QuestionService`, `ExamService`, `AssignmentService`, `TeacherRevenueService`, `ExamRetakeService`.
-- Admin/Payout/Notification: `AdminPayoutService`, `PayoutPeriod`, `RevenueSplit`, `UserNotification`, admin dashboard/user/course/complaint APIs.
-
-## 4. Rủi ro ưu tiên xử lý
-
-1. Chuẩn hóa các điểm lệch còn lại: PayOS thay VNPay/MoMo và `ACCEPTED` nội bộ thay `ACTIVE` trong SRS.
-2. Hoàn thiện payment state machine: `PaymentAttempt`, refund, reconciliation, invoice pháp lý.
-4. Bổ sung consent/opt-out/delete history cho AI chat và AI roadmap.
-5. Hoàn thiện audit/versioning/export cho course content, question update, retake, payout, admin user action.
-6. Viết thêm E2E/system test cho 44 UC, ưu tiên payment, certificate, course version, 4 bài kiểm tra cố định và admin payout.
+1. Dong bo SRS voi cong nghe thanh toan thuc te: quyet dinh PayOS hay VNPay/MoMo, roi sua SRS/code cho khop.
+2. Them state machine payment/order/refund/reconciliation va payment_attempt truoc, vi anh huong mua hang, enrollment, revenue, payout.
+3. Them teacher onboarding state va Admin approval role GV, vi no la precondition cua tat ca `REQ-TCH-*`.
+4. Lam certificate + final exam eligibility, vi hien la UC chua co nhung de bi hoi khi demo SRS.
+5. Gia co Admin user security/audit truoc khi demo quan tri.
+6. Sau do moi lam AI chat/roadmap, vi hien chua co nen tang consent/privacy theo SRS.

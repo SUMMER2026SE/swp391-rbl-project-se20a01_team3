@@ -3,12 +3,14 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   AlertCircle,
   ArrowLeft,
+  ArrowRight,
   CheckSquare,
   Clock,
   FileText,
   ImagePlus,
   Loader2,
   Send,
+  Sparkles,
   Square,
   X,
 } from 'lucide-react';
@@ -19,6 +21,7 @@ import { notify } from '../../lib/toast';
 import {
   getLatestExamRetakeRequest,
   getStudentExam,
+  getStudentExamResult,
   recordExamIntegrityEvent,
   requestExamRetake,
   saveStudentExamDraft,
@@ -33,6 +36,7 @@ import {
   uploadStudentExamAnswerImage,
 } from '../../api/studentExamService';
 import type { MatchingPair } from '../../api/questionService';
+import { gradeExamWithAi, type AiExamGrade } from '../../api/aiService';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F'];
 const MAX_ANSWER_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -48,16 +52,16 @@ function formatPoints(value: number | null | undefined) {
 function questionTypeLabel(type: string) {
   switch (type) {
     case 'multiple_choice': return 'Trắc nghiệm';
-    case 'true_false': return 'Dung sai';
-    case 'fill_in_blank': return 'Dien cho trong';
-    case 'matching': return 'Noi cot';
+    case 'true_false': return 'Đúng/Sai';
+    case 'fill_in_blank': return 'Điền chỗ trống';
+    case 'matching': return 'Nối cột';
     case 'essay':
     case 'essay_short':
-    case 'essay_long': return 'Tu luan';
+    case 'essay_long': return 'Tự luận';
     case 'image_question': return 'Câu hỏi hình ảnh';
     case 'formula_question': return 'Câu hỏi công thức';
-    case 'audio_question': return 'Câu hỏi audio';
-    case 'file_upload': return 'Nop file / anh';
+    case 'audio_question': return 'Câu hỏi âm thanh';
+    case 'file_upload': return 'Nộp file / ảnh';
     default: return 'Câu hỏi';
   }
 }
@@ -202,6 +206,9 @@ export default function StudentExamPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submission, setSubmission] = useState<StudentExamSubmissionResponse | null>(null);
+  const [pastResult, setPastResult] = useState<StudentExamSubmissionResponse | null>(null);
+  const [aiGrade, setAiGrade] = useState<AiExamGrade | null>(null);
+  const [aiGrading, setAiGrading] = useState(false);
   const [retakeLocked, setRetakeLocked] = useState(false);
   const [retakeRequest, setRetakeRequest] = useState<ExamRetakeRequest | null>(null);
   const [retakeReason, setRetakeReason] = useState('');
@@ -265,6 +272,22 @@ export default function StudentExamPage() {
       cancelled = true;
     };
   }, [courseId, draftKey, parsedSlotIndex]);
+
+  useEffect(() => {
+    if (!courseId || !Number.isInteger(parsedSlotIndex)) return;
+    let cancelled = false;
+    setPastResult(null);
+    getStudentExamResult(courseId, parsedSlotIndex)
+      .then(result => {
+        if (!cancelled) setPastResult(result);
+      })
+      .catch(() => {
+        // Không có kết quả trước đó hoặc lỗi tải — bỏ qua, không chặn làm bài mới.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId, parsedSlotIndex]);
 
   const answeredCount = useMemo(() => {
     if (!exam) return 0;
@@ -443,6 +466,19 @@ export default function StudentExamPage() {
       setSubmitError(err instanceof Error ? err.message : 'Không thể nộp bài kiểm tra.');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleAiGrade() {
+    if (!submission || aiGrading) return;
+    setAiGrading(true);
+    try {
+      const result = await gradeExamWithAi(submission.attemptId);
+      setAiGrade(result);
+    } catch (err) {
+      notify.error(err instanceof Error ? err.message : 'Không thể nhờ AI chấm bài.');
+    } finally {
+      setAiGrading(false);
     }
   }
 
@@ -686,6 +722,37 @@ export default function StudentExamPage() {
           </div>
         )}
 
+        {!loading && exam && !submission && pastResult && (
+          <div className="mb-6 rounded-2xl border border-outline-variant/40 bg-surface-container-lowest p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-extrabold text-on-surface">
+                  Kết quả lần làm gần nhất (Lần {pastResult.attemptNumber})
+                </p>
+                {pastResult.status === 'graded' ? (
+                  <p className="mt-1 text-xs font-semibold text-on-surface-variant">
+                    Điểm: {pastResult.effectiveScorePercent}%
+                    {pastResult.passed != null && (
+                      <span className={pastResult.passed ? 'text-green-600' : 'text-red-500'}>
+                        {' '}- {pastResult.passed ? 'Đạt' : 'Chưa đạt'}
+                      </span>
+                    )}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs font-semibold text-amber-600">
+                    Đang chờ giáo viên chấm phần tự luận.
+                  </p>
+                )}
+                {pastResult.teacherFeedback && (
+                  <p className="mt-1 text-xs italic text-on-surface-variant">
+                    Nhận xét giáo viên: {pastResult.teacherFeedback}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {!loading && exam && (
           <div
             className="grid gap-6 lg:grid-cols-[1fr_280px]"
@@ -715,12 +782,12 @@ export default function StudentExamPage() {
                     {displayTime}
                   </p>
                   <p className="mt-1 text-xs font-medium text-on-surface-variant">
-                    Thời lượng tong: {exam.durationMinutes} phút
+                    Thời lượng tổng: {exam.durationMinutes} phút
                   </p>
                 </div>
                 <div className="rounded-2xl border border-outline-variant/40 bg-surface-container-lowest p-4">
                   <FileText className="mb-2 h-5 w-5 text-primary" />
-                  <p className="text-xs font-bold uppercase text-on-surface-variant">So câu</p>
+                  <p className="text-xs font-bold uppercase text-on-surface-variant">Số câu</p>
                   <p className="mt-1 text-xl font-extrabold text-on-surface">{exam.questionCount}</p>
                 </div>
               </div>
@@ -798,7 +865,7 @@ export default function StudentExamPage() {
                           )}
                         </div>
                         <span className="flex-shrink-0 rounded-xl bg-amber-500/10 px-3 py-1.5 text-xs font-extrabold text-amber-600">
-                          {formatPoints(question.points)} diem
+                          {formatPoints(question.points)} điểm
                         </span>
                       </div>
 
@@ -879,7 +946,7 @@ export default function StudentExamPage() {
                                     <div className="flex items-start justify-between gap-2 px-3 py-2">
                                       <div className="min-w-0">
                                         <p className="truncate text-xs font-bold text-on-surface">
-                                          {question.type === 'file_upload' ? `Tep ${imageIndex + 1}` : `Anh ${imageIndex + 1}`}
+                                          {question.type === 'file_upload' ? `Tệp ${imageIndex + 1}` : `Ảnh ${imageIndex + 1}`}
                                         </p>
                                         <p className="truncate text-[11px] text-on-surface-variant">
                                           {image.name}
@@ -890,7 +957,7 @@ export default function StudentExamPage() {
                                           type="button"
                                           onClick={() => removeEssayImage(question.id, image.url)}
                                           className="rounded-lg p-1 text-on-surface-variant hover:bg-surface-container hover:text-red-500"
-                                          title="Xoa anh"
+                                          title="Xóa ảnh"
                                         >
                                           <X className="h-4 w-4" />
                                         </button>
@@ -936,7 +1003,7 @@ export default function StudentExamPage() {
                                     };
                                   })}
                                   disabled={Boolean(submission)}
-                                  placeholder="Nhap ve ghep tuong ung..."
+                                  placeholder="Nhập vế ghép tương ứng..."
                                   className="rounded-2xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-sm text-on-surface outline-none focus:border-primary"
                                 />
                               </div>
@@ -987,7 +1054,7 @@ export default function StudentExamPage() {
 
             <aside className="lg:sticky lg:top-6 lg:self-start">
               <div className="rounded-2xl border border-outline-variant/40 bg-surface-container-lowest p-5">
-                <p className="text-sm font-extrabold text-on-surface">Tiến độ lam bai</p>
+                <p className="text-sm font-extrabold text-on-surface">Tiến độ làm bài</p>
                 <div className="mt-4 h-2 rounded-full bg-surface-container">
                   <div
                     className="h-full rounded-full bg-primary"
@@ -998,11 +1065,11 @@ export default function StudentExamPage() {
                   Đã trả lời {answeredCount}/{exam.questionCount} câu
                 </p>
                 <div className="mt-4 space-y-2 text-xs font-medium text-on-surface-variant">
-                  <p>Pham vi: {exam.scopeStartChapterTitle ?? 'Chương dau'} - {exam.placementChapterTitle ?? 'chuong dat bai kiem tra'}</p>
-                  <p>Tong diem: {formatPoints(exam.totalPoints)}</p>
-                  <p>So lan lam toi da: {exam.maxAttempts}</p>
+                  <p>Phạm vi: {exam.scopeStartChapterTitle ?? 'Chương đầu'} - {exam.placementChapterTitle ?? 'chương đặt bài kiểm tra'}</p>
+                  <p>Tổng điểm: {formatPoints(exam.totalPoints)}</p>
+                  <p>Số lần làm tối đa: {exam.maxAttempts}</p>
                   <p className={isTimeUrgent ? 'font-bold text-red-500' : ''}>
-                    Con lai: {displayTime}
+                    Còn lại: {displayTime}
                   </p>
                   {exam.requireFullscreen && (
                     <p className={integrityViolations > 0 ? 'font-bold text-red-500' : ''}>
@@ -1073,22 +1140,65 @@ export default function StudentExamPage() {
                   </div>
                 )}
                 {submission ? (
-                  <div className="mt-5 rounded-2xl border border-green-200 bg-green-50 p-4 text-green-800">
-                    <p className="text-sm font-extrabold">Đã nộp bài kiểm tra</p>
-                    <p className="mt-1 text-xs font-semibold">
-                      Trắc nghiệm đúng {submission.correctObjectiveCount}/{submission.totalObjectiveCount} câu.
-                    </p>
-                    {submission.status === 'pending' ? (
+                  <>
+                    <div className="mt-5 rounded-2xl border border-green-200 bg-green-50 p-4 text-green-800">
+                      <p className="text-sm font-extrabold">Đã nộp bài kiểm tra</p>
                       <p className="mt-1 text-xs font-semibold">
-                        Điểm trắc nghiệm đã được chấm máy: {submission.autoScorePercent}%.
-                        Phần tự luận đã được gửi sang giáo viên để chấm tiếp.
+                        Trắc nghiệm đúng {submission.correctObjectiveCount}/{submission.totalObjectiveCount} câu.
                       </p>
-                    ) : (
-                      <p className="mt-1 text-xs font-semibold">
-                        Điểm tự động: {submission.autoScorePercent}% - Bài đã được chấm xong.
-                      </p>
+                      {submission.status === 'pending' ? (
+                        <p className="mt-1 text-xs font-semibold">
+                          Điểm trắc nghiệm đã được chấm máy: {submission.autoScorePercent}%.
+                          Phần tự luận đã được gửi sang giáo viên để chấm tiếp.
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs font-semibold">
+                          Điểm tự động: {submission.autoScorePercent}% - Bài đã được chấm xong.
+                        </p>
+                      )}
+                    </div>
+
+                    {submission.status === 'pending' && !aiGrade && (
+                      <button
+                        type="button"
+                        onClick={handleAiGrade}
+                        disabled={aiGrading}
+                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary bg-primary/10 px-4 py-2.5 text-sm font-bold text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {aiGrading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                        {aiGrading ? 'AI đang chấm sơ bộ...' : 'Nhờ AI chấm sơ bộ'}
+                      </button>
                     )}
-                  </div>
+
+                    {aiGrade && (
+                      <div className="mt-4 rounded-2xl border border-outline-variant bg-surface-container-lowest p-4">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-primary" />
+                          <span className="text-[11px] font-extrabold uppercase tracking-wide text-primary">
+                            Kết quả sơ bộ (AI)
+                          </span>
+                        </div>
+                        <div className="mt-3 flex items-baseline gap-2">
+                          <span className="text-3xl font-extrabold text-on-surface">
+                            {(aiGrade.aiScorePercent / 10).toFixed(1).replace('.', ',')}
+                          </span>
+                          <span className="text-sm font-semibold text-on-surface-variant">/ 10</span>
+                        </div>
+                        {/* Nhận xét chi tiết dễ bị cắt trong sidebar khi cuộn (aside sticky trong grid
+                            cột hẹp) — chuyển sang trang riêng để luôn xem được đầy đủ. */}
+                        <button
+                          type="button"
+                          onClick={() => navigate(
+                            `/courses/${courseId}/exams/${parsedSlotIndex}/ai-result/${submission.attemptId}?returnTo=${encodeURIComponent(returnTo)}`,
+                          )}
+                          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-on-primary hover:bg-primary/90"
+                        >
+                          Xem nhận xét chi tiết
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <button
                     type="button"

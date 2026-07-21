@@ -65,6 +65,10 @@ export interface StudentExamSubmissionResponse {
   correctObjectiveCount: number;
   totalObjectiveCount: number;
   submittedAt: string;
+  manualScorePercent: number | null;
+  effectiveScorePercent: number | null;
+  teacherFeedback: string | null;
+  gradedAt: string | null;
 }
 
 export type ExamIntegrityEventType = 'TAB_HIDDEN' | 'FULLSCREEN_EXIT' | 'WINDOW_BLUR';
@@ -97,6 +101,16 @@ export async function submitStudentExam(
     { answers },
   );
   return unwrap(res.data);
+}
+
+export async function getStudentExamResult(
+  courseId: string,
+  slotIndex: number,
+): Promise<StudentExamSubmissionResponse | null> {
+  const res = await apiClient.get<ApiResponse<StudentExamSubmissionResponse | null>>(
+    `/api/student/courses/${encodeURIComponent(courseId)}/exams/${slotIndex}/result`,
+  );
+  return unwrap(res.data) ?? null;
 }
 
 export async function saveStudentExamDraft(

@@ -27,6 +27,7 @@ const ProgressPage = lazy(() => import('./pages/student/ProgressPage'));
 const RewardsPage = lazy(() => import('./pages/student/RewardsPage'));
 const StudentQuizPage = lazy(() => import('./pages/student/StudentQuizPage'));
 const StudentExamPage = lazy(() => import('./pages/student/StudentExamPage'));
+const ExamAiResultPage = lazy(() => import('./pages/student/ExamAiResultPage'));
 const NotificationsPage = lazy(() => import('./pages/student/NotificationsPage'));
 const CertificatesPage = lazy(() => import('./pages/student/CertificatesPage'));
 const AiTutorPage = lazy(() => import('./pages/student/AiTutorPage'));
@@ -57,6 +58,7 @@ const TeacherAccountPage = lazy(() => import('./pages/teacher/AccountPage'));
 const DashboardAdmin = lazy(() => import('./pages/admin/DashboardAdmin'));
 const ApprovalsPage = lazy(() => import('./pages/admin/ApprovalsPage'));
 const CourseReviewPage = lazy(() => import('./pages/admin/CourseReviewPage'));
+const AdminReportsPage = lazy(() => import('./pages/admin/AdminReportsPage'));
 
 function RouteFallback() {
   return (
@@ -94,6 +96,7 @@ export default function App() {
         <Route path="/courses/:courseId/chapters/:chapterId/quiz" element={<ProtectedRoute><StudentQuizPage /></ProtectedRoute>} />
         <Route path="/student/courses/:courseId/chapters/:chapterId/quiz" element={<ProtectedRoute role="student"><StudentQuizPage /></ProtectedRoute>} />
         <Route path="/courses/:courseId/exams/:slotIndex" element={<ProtectedRoute><StudentExamPage /></ProtectedRoute>} />
+        <Route path="/courses/:courseId/exams/:slotIndex/ai-result/:attemptId" element={<ProtectedRoute><ExamAiResultPage /></ProtectedRoute>} />
         <Route path="/student/courses/:courseId/exams/:slotIndex" element={<ProtectedRoute role="student"><StudentExamPage /></ProtectedRoute>} />
         <Route path="/checkout"      element={<ProtectedRoute role="student"><CheckoutPage /></ProtectedRoute>} />
         <Route path="/payment-result" element={<ProtectedRoute role="student"><PaymentResultPage /></ProtectedRoute>} />
@@ -164,7 +167,7 @@ export default function App() {
         <Route path="/admin/teachers"   element={<ProtectedRoute role="admin"><ComingSoonPage title="Quản lý giáo viên"    subtitle="Danh sách và thông tin giáo viên" /></ProtectedRoute>} />
         <Route path="/admin/accounting" element={<ProtectedRoute role="admin"><DashboardAdmin /></ProtectedRoute>} />
         <Route path="/admin/salary"     element={<ProtectedRoute role="admin"><ComingSoonPage title="Lương"                subtitle="Quản lý lương giáo viên và nhân sự" /></ProtectedRoute>} />
-        <Route path="/admin/reports"    element={<ProtectedRoute role="admin"><ComingSoonPage title="Báo cáo & Thống kê"   subtitle="Phân tích dữ liệu và báo cáo tổng hợp" /></ProtectedRoute>} />
+        <Route path="/admin/reports"    element={<ProtectedRoute role="admin"><AdminReportsPage /></ProtectedRoute>} />
         <Route path="/admin/settings"   element={<ProtectedRoute role="admin"><DashboardAdmin /></ProtectedRoute>} />
       </Routes>
       </Suspense>

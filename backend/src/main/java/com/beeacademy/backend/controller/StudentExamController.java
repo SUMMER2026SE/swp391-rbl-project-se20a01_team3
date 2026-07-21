@@ -69,6 +69,13 @@ public class StudentExamController {
                 "Nộp bài kiểm tra thanh cong");
     }
 
+    @GetMapping("/{slotIndex}/result")
+    public ApiResponse<StudentExamSubmissionResponse> getCourseExamResult(
+            @PathVariable UUID courseId,
+            @PathVariable Integer slotIndex) {
+        return ApiResponse.ok(examService.getStudentExamResult(courseId, slotIndex, CurrentUser.required()));
+    }
+
     @PostMapping("/{slotIndex}/draft")
     public ApiResponse<Void> saveCourseExamDraft(
             @PathVariable UUID courseId,

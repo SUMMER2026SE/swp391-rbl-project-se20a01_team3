@@ -33,7 +33,10 @@ import java.util.UUID;
  * Duyệt mở thêm lượt làm bài kiểm tra (BRULE-RETAKE-001):
  * HS bị RETAKE_LOCKED gửi yêu cầu → GV sở hữu khóa hoặc Admin duyệt/từ chối.
  * Mỗi lần duyệt cộng 1-2 lượt và mở lại cửa sổ làm bài 14 ngày; tối đa
- * {@link #MAX_APPROVALS_PER_EXAM} lần duyệt cho cùng (HS, bài kiểm tra).
+ * {@link #MAX_REQUESTS_PER_EXAM} yêu cầu và {@link #MAX_APPROVALS_PER_EXAM}
+ * lần duyệt cho cùng (HS, bài kiểm tra). Sau khi bị REJECTED, học sinh chỉ
+ * được gửi lại yêu cầu mới sau cooldown 12 giờ, đọc từ cột
+ * {@code cooldown_until} được ghi khi Admin/GV từ chối yêu cầu.
  */
 @Slf4j
 @Service
@@ -78,6 +81,21 @@ public class ExamRetakeService {
                         && r.getRetakeExpireAt().isAfter(Instant.now()));
     }
 
+    /**
+     * Chuyển các lượt APPROVED đã quá retakeExpireAt sang EXPIRED (lazy transition,
+     * không cần cron job) — đúng SRS "quá retake_expire_at... → RetakeApproval=EXPIRED".
+     */
+    private void expireStaleApprovals(UUID studentId, UUID examConfigId) {
+        List<ExamRetakeRequest> stale = retakeRepository
+                .findByStudentIdAndExamConfigIdAndStatus(studentId, examConfigId, ExamRetakeStatus.APPROVED)
+                .stream()
+                .filter(r -> r.getRetakeExpireAt() != null && r.getRetakeExpireAt().isBefore(Instant.now()))
+                .toList();
+        if (stale.isEmpty()) return;
+        stale.forEach(ExamRetakeRequest::expire);
+        retakeRepository.saveAll(stale);
+    }
+
     @Transactional(readOnly = true)
     public ExamEnrollmentRetakeStatus accessStatus(UUID studentId, ExamConfig config) {
         return accessSnapshot(studentId, config).status();
@@ -112,6 +130,9 @@ public class ExamRetakeService {
             throw new BusinessException("RETAKE_REQUEST_PENDING",
                     "Bạn đã có một yêu cầu đang chờ duyệt cho bài kiểm tra này.");
         }
+
+        expireStaleApprovals(me.userId(), config.getId());
+
         Optional<ExamRetakeRequest> latestRequest = retakeRepository
                 .findFirstByStudentIdAndExamConfigIdOrderByCreatedAtDesc(
                         me.userId(), config.getId());

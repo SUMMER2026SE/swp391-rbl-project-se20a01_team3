@@ -218,6 +218,17 @@ public interface QuestionRepository extends JpaRepository<Question, UUID>, JpaSp
     @Query("UPDATE Question q SET q.usageCount = q.usageCount + 1 WHERE q.id IN :ids")
     void incrementUsageCount(@Param("ids") List<UUID> ids);
 
+    /**
+     * Gỡ liên kết chương của các câu hỏi (đưa về cấp môn học, chapter_id = null).
+     *
+     * <p>FK {@code questions.chapter_id} là RESTRICT (không ON DELETE) → nếu còn câu
+     * hỏi trỏ về chapter thì không thể xóa chapter. Gọi trước khi xóa khóa học/chương
+     * để tránh vỡ khóa ngoại, đồng thời giữ lại câu hỏi GV đã soạn trong ngân hàng.
+     */
+    @Modifying
+    @Query("UPDATE Question q SET q.chapter = null WHERE q.chapter.id IN :chapterIds")
+    void detachFromChapters(@Param("chapterIds") List<UUID> chapterIds);
+
     @Query("""
            SELECT COUNT(q) > 0
            FROM Question q

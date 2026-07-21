@@ -20,5 +20,30 @@ export default defineConfig(({mode}) => {
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-ui': ['motion/react', 'lucide-react'],
+            'vendor-utils': ['axios', 'zustand'],
+            'vendor-charts': ['recharts'],
+            'pages-admin': [
+              './src/pages/admin/DashboardAdmin',
+              './src/pages/admin/ApprovalsPage',
+              './src/pages/admin/CourseReviewPage',
+              './src/pages/admin/AdminReportsPage',
+            ],
+            'pages-teacher': [
+              './src/pages/teacher/CoursesPage',
+              './src/pages/teacher/QuestionBankPage',
+              './src/pages/teacher/QuizPage',
+              './src/pages/teacher/RevenuePage',
+              './src/pages/teacher/BankPage',
+            ],
+          },
+        },
+      },
+    },
   };
 });
