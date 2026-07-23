@@ -1,0 +1,145 @@
+{
+  "input": "D:\\FPT_UNI\\swp391-rbl-project-se20a01_team3\\COPS\\reference\\Group5_COPS_Template.docx",
+  "fonts_by_char_count": {
+    "Times New Roman": 29163
+  },
+  "direct_run_formatting_runs": 621,
+  "direct_paragraph_formatting_paragraphs": 165,
+  "heading_like_paragraphs_not_heading_style": [
+    {
+      "para_index": 8,
+      "text": "JOBTRANS - PLATFORM TO SUPPORT RECRUITMENT AND SEARCH FOR ONLINE JOBS",
+      "style": "Normal"
+    },
+    {
+      "para_index": 10,
+      "text": "Final Release Document",
+      "style": "Normal"
+    },
+    {
+      "para_index": 30,
+      "text": "Table of Contents",
+      "style": "Normal"
+    },
+    {
+      "para_index": 51,
+      "text": "b)Search job post",
+      "style": "Normal"
+    },
+    {
+      "para_index": 78,
+      "text": "                                    Figure : Step 2 in Register",
+      "style": "Normal"
+    },
+    {
+      "para_index": 88,
+      "text": "a) Login by gmail",
+      "style": "Normal"
+    },
+    {
+      "para_index": 103,
+      "text": "a) Login by google account already logged in",
+      "style": "Normal"
+    },
+    {
+      "para_index": 121,
+      "text": "b) Login by google account never logged in",
+      "style": "Normal"
+    },
+    {
+      "para_index": 125,
+      "text": "            Figure : Step 1 in login by Login by google account never logged in",
+      "style": "Normal"
+    },
+    {
+      "para_index": 151,
+      "text": "3.3. Change Password",
+      "style": "Normal"
+    },
+    {
+      "para_index": 186,
+      "text": "3.6. View points & trade history",
+      "style": "Normal"
+    },
+    {
+      "para_index": 555,
+      "text": "a)View Final Submission online",
+      "style": "Normal"
+    },
+    {
+      "para_index": 568,
+      "text": "b)View Final Submission offline",
+      "style": "Normal"
+    },
+    {
+      "para_index": 824,
+      "text": "File",
+      "style": "Normal"
+    },
+    {
+      "para_index": 825,
+      "text": "Notes",
+      "style": "Normal"
+    }
+  ],
+  "examples": {
+    "direct_paragraph_formatting": [
+      {
+        "para_index": 8,
+        "text": "JOBTRANS - PLATFORM TO SUPPORT RECRUITMENT AND SEARCH FOR ONLINE JOBS",
+        "style": "Normal"
+      },
+      {
+        "para_index": 29,
+        "text": "\u2013 Danang, November 2024 \u2013",
+        "style": "Normal"
+      },
+      {
+        "para_index": 30,
+        "text": "Table of Contents",
+        "style": "Normal"
+      },
+      {
+        "para_index": 34,
+        "text": "",
+        "style": "Normal"
+      },
+      {
+        "para_index": 35,
+        "text": "Other related deliverables:",
+        "style": "Normal"
+      }
+    ],
+    "direct_run_formatting": [
+      {
+        "para_index": 8,
+        "run_text": "JOBTRANS - PLATFORM TO SUPPORT RECRUITMENT AND SEARCH FOR ONLINE JOBS",
+        "style": "Normal"
+      },
+      {
+        "para_index": 10,
+        "run_text": "Final Release Document",
+        "style": "Normal"
+      },
+      {
+        "para_index": 29,
+        "run_text": "\u2013 Danang, November 2024 \u2013",
+        "style": "Normal"
+      },
+      {
+        "para_index": 30,
+        "run_text": "Table of Contents",
+        "style": "Normal"
+      },
+      {
+        "para_index": 33,
+        "run_text": "I. Deliverable Package",
+        "style": "Heading 1"
+      }
+    ]
+  },
+  "notes": [
+    "Direct formatting is not always wrong, but it often causes inconsistent output when templates change.",
+    "Heading-like paragraphs not using Heading styles can break TOC and accessibility."
+  ]
+}
