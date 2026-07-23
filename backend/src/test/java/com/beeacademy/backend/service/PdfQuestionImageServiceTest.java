@@ -56,6 +56,33 @@ class PdfQuestionImageServiceTest {
         assertThat(result.get(1).promptAssetUrl()).isEqualTo("https://cdn.test/anh-cau-2.png");
     }
 
+    /**
+     * Đề thi thật gần như luôn có logo trường lặp ở mọi trang. Logo bị loại vì trùng hash, nhưng
+     * việc loại phải xảy ra TRƯỚC khi chia ảnh cho câu — nếu không, logo chiếm mất một suất trong
+     * phép chia rồi mới biến mất: ảnh của câu 2 bị đẩy sang câu 1, câu 2 mất ảnh.
+     */
+    @Test
+    void attachImages_boQuaLogoLapTruocKhiChiaAnhChoCauHoi() throws Exception {
+        byte[] logo = solidPng(Color.GREEN);
+        byte[] pdfBytes = buildTwoQuestionsWithRepeatedLogoPdf(
+                solidPng(Color.RED), solidPng(Color.BLUE), logo);
+
+        when(contentUploadService.uploadGeneratedQuestionImage(any(), any()))
+                .thenReturn(new UploadResponse("p1", "https://cdn.test/anh-cau-1.png", "image/png", 100L))
+                .thenReturn(new UploadResponse("p2", "https://cdn.test/anh-cau-2.png", "image/png", 100L));
+
+        PdfQuestionImageService service = new PdfQuestionImageService(contentUploadService);
+
+        List<ScannedQuestion> questions = List.of(
+                scannedQuestion("Câu 1: Hình nào dưới đây là tam giác vuông?"),
+                scannedQuestion("Câu 2: Hình nào dưới đây là hình vuông?"));
+
+        List<ScannedQuestion> result = service.attachImages(pdfBytes, questions, UUID.randomUUID());
+
+        assertThat(result.get(0).promptAssetUrl()).isEqualTo("https://cdn.test/anh-cau-1.png");
+        assertThat(result.get(1).promptAssetUrl()).isEqualTo("https://cdn.test/anh-cau-2.png");
+    }
+
     @Test
     void attachImages_khongDoiGiKhiPdfKhongCoAnh() throws Exception {
         byte[] pdfBytes = buildTextOnlyPdf();
@@ -96,6 +123,24 @@ class PdfQuestionImageServiceTest {
         document.add(Image.getInstance(image1));
         document.add(new Paragraph("Câu 2: Hình nào dưới đây là hình vuông?"));
         document.add(Image.getInstance(image2));
+        document.close();
+        return out.toByteArray();
+    }
+
+    /** Trang 1: câu 1 + ảnh, câu 2 + ảnh, logo cuối trang. Trang 2: chỉ logo (để logo lặp 2 lần). */
+    private byte[] buildTwoQuestionsWithRepeatedLogoPdf(byte[] image1, byte[] image2, byte[] logo)
+            throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Document document = new Document();
+        PdfWriter.getInstance(document, out);
+        document.open();
+        document.add(new Paragraph("Câu 1: Hình nào dưới đây là tam giác vuông?"));
+        document.add(Image.getInstance(image1));
+        document.add(new Paragraph("Câu 2: Hình nào dưới đây là hình vuông?"));
+        document.add(Image.getInstance(image2));
+        document.add(Image.getInstance(logo));
+        document.newPage();
+        document.add(Image.getInstance(logo));
         document.close();
         return out.toByteArray();
     }

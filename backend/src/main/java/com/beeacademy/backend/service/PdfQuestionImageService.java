@@ -50,12 +50,15 @@ import java.util.UUID;
  * duyệt tính năng) — không đảm bảo đúng 100%, đặc biệt khi nhiều câu hỏi + nhiều ảnh cùng nằm
  * trên 1 trang. Giáo viên vẫn cần xem lại bảng preview trước khi nhập.
  *
- * <p>Hai lớp lọc nhiễu:
+ * <p>Hai lớp lọc nhiễu, cả hai đều chạy TRƯỚC khi chia ảnh cho câu:
  * <ul>
  *   <li>Ảnh quá nhỏ (&lt; 30px mỗi chiều) — thường là icon/bullet, không phải hình minh họa.</li>
  *   <li>Ảnh trùng nội dung (hash giống nhau) xuất hiện ≥ 2 lần trong file — thường là logo/watermark
  *       lặp lại mỗi trang, không phải hình riêng cho từng câu.</li>
  * </ul>
+ * Thứ tự này là bắt buộc: phép chia dựa trên SỐ ảnh của trang, nên nếu logo còn nằm trong danh sách
+ * lúc chia thì nó chiếm mất một suất rồi mới bị loại — ảnh thật bị đẩy sang câu bên cạnh, câu cuối
+ * trang mất ảnh. Đề thi thật gần như luôn có logo trường lặp ở mọi trang nên đây không phải ca hiếm.
  *
  * <p>Toàn bộ lỗi trong quá trình ghép ảnh đều bị nuốt và trả lại danh sách câu hỏi dạng chữ như cũ —
  * đây là phần cộng thêm, không được phép làm hỏng luồng AI Scan chính.
@@ -81,8 +84,8 @@ public class PdfQuestionImageService {
                     .map(q -> truncate(normalize(q.content()), ANCHOR_PREFIX_LENGTH))
                     .toList();
 
-            List<ImageCapture> captures = extractImages(pdfBytes, anchors);
-            Map<Integer, List<byte[]>> byQuestion = dedupeAndGroup(captures);
+            List<PageCapture> pages = extractPages(pdfBytes, anchors);
+            Map<Integer, List<byte[]>> byQuestion = assignImagesToQuestions(pages);
             if (byQuestion.isEmpty()) {
                 return questions;
             }
@@ -128,31 +131,59 @@ public class PdfQuestionImageService {
         result.set(idx, q.withChoices(choices));
     }
 
-    private Map<Integer, List<byte[]>> dedupeAndGroup(List<ImageCapture> captures) {
-        Map<String, Long> hashCounts = new HashMap<>();
-        captures.forEach(c -> hashCounts.merge(c.hash(), 1L, Long::sum));
-        Set<String> repeated = new HashSet<>();
-        hashCounts.forEach((hash, count) -> {
-            if (count > 1) repeated.add(hash);
-        });
+    /**
+     * Chia đều ảnh của từng trang cho các câu hỏi mới khớp trên trang đó, theo đúng thứ tự.
+     * Trang không có câu mới nào → toàn bộ ảnh thuộc về câu đang xét gần nhất từ trang trước.
+     *
+     * <p>Logo/watermark bị loại NGAY TRƯỚC phép chia của từng trang, không phải sau — xem javadoc
+     * đầu lớp.
+     */
+    private Map<Integer, List<byte[]>> assignImagesToQuestions(List<PageCapture> pages) {
+        Set<String> repeated = repeatedHashes(pages);
 
         Map<Integer, List<byte[]>> result = new LinkedHashMap<>();
         int total = 0;
-        for (ImageCapture capture : captures) {
-            if (total >= MAX_IMAGES_TOTAL) break;
-            if (capture.questionIndex() < 0) continue;
-            if (repeated.contains(capture.hash())) continue;
-            result.computeIfAbsent(capture.questionIndex(), k -> new ArrayList<>()).add(capture.bytes());
-            total++;
+        int carryOverQuestion = -1;
+
+        for (PageCapture page : pages) {
+            List<RawImage> images = page.images().stream()
+                    .filter(image -> !repeated.contains(image.hash()))
+                    .toList();
+            List<Integer> anchors = page.anchorIndices();
+
+            for (int i = 0; i < images.size(); i++) {
+                if (total >= MAX_IMAGES_TOTAL) return result;
+                int questionIndex = anchors.isEmpty()
+                        ? carryOverQuestion
+                        : anchors.get(Math.min(anchors.size() - 1, i * anchors.size() / images.size()));
+                if (questionIndex < 0) continue;
+                result.computeIfAbsent(questionIndex, k -> new ArrayList<>()).add(images.get(i).bytes());
+                total++;
+            }
+
+            if (!anchors.isEmpty()) {
+                carryOverQuestion = anchors.get(anchors.size() - 1);
+            }
         }
         return result;
     }
 
-    private List<ImageCapture> extractImages(byte[] pdfBytes, List<String> anchors) throws IOException {
+    /** Hash của những ảnh xuất hiện ≥ 2 lần trong cả file — logo/watermark lặp mỗi trang. */
+    private Set<String> repeatedHashes(List<PageCapture> pages) {
+        Map<String, Long> hashCounts = new HashMap<>();
+        pages.forEach(page -> page.images().forEach(image -> hashCounts.merge(image.hash(), 1L, Long::sum)));
+        Set<String> repeated = new HashSet<>();
+        hashCounts.forEach((hash, count) -> {
+            if (count > 1) repeated.add(hash);
+        });
+        return repeated;
+    }
+
+    private List<PageCapture> extractPages(byte[] pdfBytes, List<String> anchors) throws IOException {
         try (PDDocument doc = Loader.loadPDF(pdfBytes)) {
             ImageEventStripper stripper = new ImageEventStripper(anchors);
             stripper.getText(doc);
-            return stripper.captures;
+            return stripper.pages;
         }
     }
 
@@ -175,24 +206,26 @@ public class PdfQuestionImageService {
         }
     }
 
-    private record ImageCapture(byte[] bytes, String hash, int questionIndex) {}
+    private record RawImage(byte[] bytes, String hash) {}
+
+    /** Ảnh + câu hỏi mới của một trang, mỗi thứ theo đúng thứ tự xuất hiện trên trang đó. */
+    private record PageCapture(List<RawImage> images, List<Integer> anchorIndices) {}
 
     /**
      * Đọc PDF theo từng trang: trong 1 trang, câu hỏi mới khớp được (writeString) và ảnh tìm được
      * (processOperator, operator "Do") đều được ghi nhận theo đúng thứ tự xuất hiện RIÊNG trong
-     * từng luồng của chúng — nhưng chỉ GHÉP ảnh vào câu ở ranh giới cuối trang (endPage), lúc đó
-     * mới biết chắc trang này có bao nhiêu câu mới + bao nhiêu ảnh để chia đều theo thứ tự.
+     * từng luồng của chúng. Stripper chỉ GOM theo trang, không tự ghép ảnh vào câu — việc chia để
+     * {@link #assignImagesToQuestions} làm sau, khi đã biết ảnh nào là logo lặp cần loại.
      */
     private static class ImageEventStripper extends PDFTextStripper {
         private final List<String> anchors;
         private final boolean[] matched;
-        private final List<ImageCapture> captures = new ArrayList<>();
+        private final List<PageCapture> pages = new ArrayList<>();
         // PDFBox gọi writeString() theo từng đoạn nhỏ (có thể chỉ vài từ mỗi lần), không phải
         // nguyên câu — nên phải gộp dần vào buffer rồi so khớp trên phần đã gộp.
         private final StringBuilder textBuffer = new StringBuilder();
         private final List<Integer> anchorsMatchedThisPage = new ArrayList<>();
-        private final List<byte[]> pendingImagesThisPage = new ArrayList<>();
-        private int carryOverQuestion = -1;
+        private final List<RawImage> imagesThisPage = new ArrayList<>();
 
         ImageEventStripper(List<String> anchors) throws IOException {
             super();
@@ -248,36 +281,16 @@ public class PdfQuestionImageService {
                 ImageIO.write(image, "png", out);
                 byte[] bytes = out.toByteArray();
                 if (bytes.length == 0 || bytes.length > MAX_IMAGE_BYTES) return;
-                pendingImagesThisPage.add(bytes);
+                imagesThisPage.add(new RawImage(bytes, sha256(bytes)));
             } catch (Exception e) {
                 // Ảnh lỗi (encoding lạ, hỏng...) — bỏ qua ảnh này, không chặn cả file.
             }
         }
 
-        /**
-         * Chia đều ảnh của trang cho các câu hỏi mới khớp trên trang, theo đúng thứ tự.
-         * Trang không có câu mới nào → toàn bộ ảnh thuộc về câu đang xét từ trang trước.
-         */
+        /** Chốt sổ một trang: cất ảnh + câu hỏi mới của trang, chưa ghép gì cả. */
         private void finalizePage() {
-            int anchorCount = anchorsMatchedThisPage.size();
-            int imageCount = pendingImagesThisPage.size();
-            for (int i = 0; i < imageCount; i++) {
-                int questionIndex;
-                if (anchorCount == 0) {
-                    questionIndex = carryOverQuestion;
-                } else {
-                    int bucket = Math.min(anchorCount - 1, i * anchorCount / imageCount);
-                    questionIndex = anchorsMatchedThisPage.get(bucket);
-                }
-                if (questionIndex >= 0) {
-                    byte[] bytes = pendingImagesThisPage.get(i);
-                    captures.add(new ImageCapture(bytes, sha256(bytes), questionIndex));
-                }
-            }
-            if (anchorCount > 0) {
-                carryOverQuestion = anchorsMatchedThisPage.get(anchorCount - 1);
-            }
-            pendingImagesThisPage.clear();
+            pages.add(new PageCapture(List.copyOf(imagesThisPage), List.copyOf(anchorsMatchedThisPage)));
+            imagesThisPage.clear();
             anchorsMatchedThisPage.clear();
         }
     }
