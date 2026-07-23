@@ -194,6 +194,10 @@ export default function CertificatesPage() {
                   const eligibleForCertificate = course.progressPct >= 100 && course.allRequiredExamsPassed === true;
                   const passedExamCount = (course.requiredExams ?? [])
                     .filter(exam => exam.status === 'passed').length;
+                  const configuredExamCount = (course.requiredExams ?? [])
+                    .filter(exam => exam.status !== 'not_configured').length;
+                  const needsReview = certificate?.status === 'NEEDS_REVIEW';
+                  const canRequestIssue = eligibleForCertificate && (!certificate || needsReview);
 
                   return (
                     <article
@@ -245,7 +249,7 @@ export default function CertificatesPage() {
                               Chia sẻ
                             </button>
                             </>
-                          ) : eligibleForCertificate && !certificate ? (
+                          ) : canRequestIssue ? (
                             <button
                               type="button"
                               onClick={() => handleIssue(course)}
@@ -253,13 +257,21 @@ export default function CertificatesPage() {
                               className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-on-primary hover:bg-primary/90 disabled:opacity-60"
                             >
                               {busyCourseId === course.courseId ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
-                              {retryBlockedCourseId === course.courseId ? 'Thử lại sau 30 giây' : 'Cấp chứng chỉ'}
+                              {retryBlockedCourseId === course.courseId
+                                ? 'Thử lại sau 30 giây'
+                                : needsReview ? 'Cấp lại chứng chỉ' : 'Cấp chứng chỉ'}
                             </button>
+                          ) : needsReview ? (
+                            <p className="max-w-xs self-center text-xs font-semibold text-amber-700">
+                              Khóa học đã đổi nội dung nên chứng chỉ cần cấp lại. Hoàn thành phần còn thiếu để nhận chứng chỉ mới.
+                            </p>
                           ) : certificate ? (
                             <p className="max-w-xs self-center text-xs font-semibold text-amber-700">
-                              {certificate.status === 'NEEDS_REVIEW'
-                                ? 'Chứng chỉ đang được rà soát do kết quả học tập đã thay đổi.'
-                                : 'Chứng chỉ đã bị thu hồi và không còn hiệu lực.'}
+                              Chứng chỉ đã bị thu hồi và không còn hiệu lực.
+                            </p>
+                          ) : configuredExamCount < 4 ? (
+                            <p className="max-w-xs self-center text-xs font-semibold text-amber-700">
+                              Khóa học mới có {configuredExamCount}/4 bài kiểm tra bắt buộc nên chưa thể cấp chứng chỉ. Vui lòng liên hệ giáo viên.
                             </p>
                           ) : (
                             <p className="max-w-xs self-center text-xs font-semibold text-amber-700">

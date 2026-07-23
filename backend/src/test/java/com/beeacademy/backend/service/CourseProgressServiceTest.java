@@ -76,7 +76,7 @@ class CourseProgressServiceTest {
     private OrderItemRepository orderItemRepository;
 
     @Mock
-    private CertificateService certificateService;
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @Mock
     private CourseVersionSnapshotService courseVersionSnapshotService;
@@ -149,7 +149,8 @@ class CourseProgressServiceTest {
                 new CompleteCourseProgressItemRequest(chapterId, "quiz"));
 
         verify(progressRepository, never()).save(any());
-        verify(certificateService).tryIssueAfterProgress(studentId, courseId);
+        verify(eventPublisher).publishEvent(
+                new com.beeacademy.backend.event.CertificateIssueRequestedEvent(studentId, courseId));
         assertThat(enrollment.getProgressPct()).isEqualTo(100);
     }
 

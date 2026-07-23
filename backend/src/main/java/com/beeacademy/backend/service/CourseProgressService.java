@@ -3,6 +3,7 @@ package com.beeacademy.backend.service;
 import com.beeacademy.backend.dto.request.CompleteCourseProgressItemRequest;
 import com.beeacademy.backend.dto.response.CourseProgressResponse;
 import com.beeacademy.backend.dto.response.StudentLearningProgressResponse;
+import com.beeacademy.backend.event.CertificateIssueRequestedEvent;
 import com.beeacademy.backend.exception.BusinessException;
 import com.beeacademy.backend.exception.ResourceNotFoundException;
 import com.beeacademy.backend.model.Chapter;
@@ -32,6 +33,7 @@ import com.beeacademy.backend.repository.QuizConfigRepository;
 import com.beeacademy.backend.repository.StudentVideoProgressRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -70,7 +72,7 @@ public class CourseProgressService {
     private final ExamAttemptRepository examAttemptRepository;
     private final ExamConfigRepository examConfigRepository;
     private final OrderItemRepository orderItemRepository;
-    private final CertificateService certificateService;
+    private final ApplicationEventPublisher eventPublisher;
     private final CourseVersionSnapshotService courseVersionSnapshotService;
     private final AssignmentSubmissionRepository assignmentSubmissionRepository;
     private final StudentVideoProgressRepository studentVideoProgressRepository;
@@ -279,7 +281,7 @@ public class CourseProgressService {
         enrollmentRepository.findByStudentIdAndCourseId(studentId, courseId)
                 .ifPresent(enrollment -> enrollment.updateProgress(progressPct));
         if (progressPct >= 100) {
-            certificateService.tryIssueAfterProgress(studentId, courseId);
+            eventPublisher.publishEvent(new CertificateIssueRequestedEvent(studentId, courseId));
         }
 
         return buildResponse(studentId, courseId);

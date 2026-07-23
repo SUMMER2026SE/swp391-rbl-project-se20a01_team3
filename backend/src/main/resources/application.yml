@@ -94,6 +94,10 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
   dev-mode: ${DEV_MODE:false}
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  certificate:
+    # Đường dẫn tới file .ttf Unicode để in chứng chỉ. Để trống thì hệ thống tự dò
+    # font hệ điều hành; không tìm thấy font nào thì tên tiếng Việt sẽ bị bỏ dấu.
+    font-path: ${CERTIFICATE_FONT_PATH:}
   parent:
     weekly-report:
       inactive-days-threshold: ${PARENT_WEEKLY_INACTIVE_DAYS_THRESHOLD:5}

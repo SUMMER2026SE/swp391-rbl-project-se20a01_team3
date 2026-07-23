@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CertificateEligibilityService {
 
-    private static final int REQUIRED_EXAM_COUNT = 4;
+    public static final int REQUIRED_EXAM_COUNT = 4;
     private static final int FINAL_EXAM_SLOT_INDEX = 3;
 
     private final ExamConfigVersionService examConfigVersionService;
@@ -35,10 +35,11 @@ public class CertificateEligibilityService {
         Set<UUID> requiredConfigIds = requiredConfigs.stream()
                 .map(ExamConfig::getId)
                 .collect(Collectors.toSet());
-        boolean hasAllRequiredExamSlots = requiredConfigs.stream()
+        int configuredExamSlots = (int) requiredConfigs.stream()
                 .map(ExamConfig::getSlotIndex)
                 .distinct()
-                .count() == REQUIRED_EXAM_COUNT;
+                .count();
+        boolean hasAllRequiredExamSlots = configuredExamSlots == REQUIRED_EXAM_COUNT;
         Set<UUID> passedConfigIds = hasAllRequiredExamSlots
                 ? Set.copyOf(examAttemptRepository.findPassedRequiredExamConfigIds(
                         enrollment.getStudentId(), requiredConfigIds))
@@ -64,7 +65,8 @@ public class CertificateEligibilityService {
                 allRequiredExamsPassed,
                 bestFinalAttempt != null,
                 bestFinalAttempt,
-                Set.copyOf(requiredConfigIds));
+                Set.copyOf(requiredConfigIds),
+                configuredExamSlots);
     }
 
     @Transactional(readOnly = true)
@@ -118,10 +120,16 @@ public class CertificateEligibilityService {
             boolean allRequiredExamsPassed,
             boolean finalExamPassed,
             ExamAttempt bestFinalAttempt,
-            Set<UUID> requiredExamConfigIds) {
+            Set<UUID> requiredExamConfigIds,
+            int configuredExamSlots) {
 
         public boolean eligible() {
             return courseCompleted && allRequiredExamsPassed;
+        }
+
+        /** Khóa học thiếu bài kiểm tra bắt buộc — lỗi cấu hình của giáo viên, không phải lỗi học sinh. */
+        public boolean courseMissingRequiredExams() {
+            return configuredExamSlots < REQUIRED_EXAM_COUNT;
         }
     }
 }

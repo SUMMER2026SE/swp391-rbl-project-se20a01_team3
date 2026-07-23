@@ -3,6 +3,7 @@ package com.beeacademy.backend.service;
 import com.beeacademy.backend.client.SupabaseStorageClient;
 import com.beeacademy.backend.dto.response.CertificateResponse;
 import com.beeacademy.backend.dto.response.CertificateVerificationResponse;
+import com.beeacademy.backend.event.CertificateIssuedEvent;
 import com.beeacademy.backend.exception.BusinessException;
 import com.beeacademy.backend.exception.ResourceNotFoundException;
 import com.beeacademy.backend.model.Certificate;
@@ -14,6 +15,7 @@ import com.beeacademy.backend.model.Profile;
 import com.beeacademy.backend.repository.CertificateRepository;
 import com.beeacademy.backend.repository.CourseRepository;
 import com.beeacademy.backend.repository.EnrollmentRepository;
+import com.beeacademy.backend.repository.ExamAttemptRepository;
 import com.beeacademy.backend.repository.ProfileRepository;
 import com.beeacademy.backend.security.AuthenticatedUser;
 import com.google.zxing.BarcodeFormat;
@@ -38,6 +40,7 @@ import com.lowagie.text.pdf.PdfStamper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,20 +62,39 @@ public class CertificateService {
 
     private static final String CERTIFICATE_BUCKET = "certificates";
     private static final int CERTIFICATE_SIGNED_URL_TTL_SECONDS = 600;
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter
+            .ofPattern("dd/MM/yyyy")
+            .withZone(ZoneId.of("Asia/Ho_Chi_Minh"));
+
+    /**
+     * Font phải hỗ trợ Unicode, nếu không tên tiếng Việt sẽ bị bỏ dấu trên PDF.
+     * Danh sách trải rộng nhiều bản phân phối vì ảnh Docker gọn nhẹ thường không có font nào.
+     */
     private static final List<String> FONT_CANDIDATES = List.of(
             "C:/Windows/Fonts/arial.ttf",
+            "C:/Windows/Fonts/segoeui.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf");
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf");
 
     private final CertificateRepository certificateRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final CourseRepository courseRepository;
     private final ProfileRepository profileRepository;
+    private final ExamAttemptRepository examAttemptRepository;
     private final CertificateEligibilityService certificateEligibilityService;
     private final SupabaseStorageClient storageClient;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Value("${app.frontend-url:http://localhost:3000}")
     private String frontendUrl;
+
+    @Value("${app.certificate.font-path:}")
+    private String configuredFontPath;
 
     @Transactional(readOnly = true)
     public List<CertificateResponse> listMyCertificates(AuthenticatedUser me) {
@@ -83,13 +105,46 @@ public class CertificateService {
 
     @Transactional
     public CertificateResponse requestIssue(UUID courseId, AuthenticatedUser me) {
-        requireEnrollment(me.userId(), courseId);
+        Enrollment enrollment = enrollmentRepository
+                .findByStudentIdAndCourseId(me.userId(), courseId)
+                .orElseThrow(() -> new BusinessException(
+                        "COURSE_NOT_ENROLLED",
+                        "Bạn cần ghi danh khóa học trước khi nhận chứng chỉ.",
+                        HttpStatus.FORBIDDEN));
+
+        CertificateEligibilityService.Eligibility eligibility =
+                certificateEligibilityService.evaluate(enrollment);
+        if (!eligibility.eligible()) {
+            throw new BusinessException(
+                    eligibility.courseMissingRequiredExams()
+                            ? "COURSE_MISSING_REQUIRED_EXAMS"
+                            : "CERTIFICATE_NOT_ELIGIBLE",
+                    ineligibleMessage(eligibility),
+                    HttpStatus.BAD_REQUEST);
+        }
+
         Certificate certificate = issueIfEligible(me.userId(), courseId)
                 .orElseThrow(() -> new BusinessException(
                         "CERTIFICATE_NOT_ELIGIBLE",
-                        "Bạn cần hoàn thành 100% khóa học và đạt đủ 4 bài kiểm tra bắt buộc để nhận chứng chỉ.",
+                        ineligibleMessage(eligibility),
                         HttpStatus.BAD_REQUEST));
         return certificateResponseWithUrls(certificate);
+    }
+
+    private String ineligibleMessage(CertificateEligibilityService.Eligibility eligibility) {
+        int required = CertificateEligibilityService.REQUIRED_EXAM_COUNT;
+        if (eligibility.courseMissingRequiredExams()) {
+            return "Khóa học mới có %d/%d bài kiểm tra bắt buộc nên chưa thể cấp chứng chỉ. Vui lòng liên hệ giáo viên."
+                    .formatted(eligibility.configuredExamSlots(), required);
+        }
+        if (!eligibility.courseCompleted() && !eligibility.allRequiredExamsPassed()) {
+            return "Bạn cần hoàn thành 100%% nội dung khóa học và đạt đủ %d bài kiểm tra bắt buộc."
+                    .formatted(required);
+        }
+        if (!eligibility.courseCompleted()) {
+            return "Bạn cần hoàn thành 100% nội dung khóa học trước khi nhận chứng chỉ.";
+        }
+        return "Bạn cần đạt đủ %d bài kiểm tra bắt buộc trước khi nhận chứng chỉ.".formatted(required);
     }
 
     @Transactional(readOnly = true)
@@ -113,7 +168,9 @@ public class CertificateService {
     }
 
     @Transactional
-    public void handleRequiredExamGradeChanged(ExamAttempt attempt) {
+    public void handleRequiredExamGradeChanged(UUID examAttemptId) {
+        if (examAttemptId == null) return;
+        ExamAttempt attempt = examAttemptRepository.findById(examAttemptId).orElse(null);
         if (attempt == null || attempt.getStudent() == null
                 || attempt.getExamConfig() == null
                 || attempt.getExamConfig().getCourse() == null) {
@@ -133,17 +190,10 @@ public class CertificateService {
                 .findByStudentIdAndCourseId(studentId, courseId)
                 .orElse(null);
 
-        if (certificate != null
-                && (certificate.getStatus() == CertificateStatus.ISSUED
-                || certificate.getStatus() == CertificateStatus.REISSUED)) {
-            certificate.markNeedsReview("A required exam score was changed by teacher.");
-            certificateRepository.save(certificate);
-        }
-
         if (certificateEligibilityService.evaluate(enrollment).eligible()) {
             issueIfEligible(studentId, courseId);
         } else if (certificate != null && certificate.hasBeenIssuedBefore()) {
-            certificate.revoke("One or more required exams no longer satisfy certificate requirements.");
+            certificate.revoke("Điểm bài kiểm tra bắt buộc thay đổi khiến chứng chỉ không còn đủ điều kiện.");
             certificateRepository.save(certificate);
         }
     }
@@ -192,16 +242,17 @@ public class CertificateService {
         Certificate saved = certificateRepository.save(certificate);
         log.info("Certificate {} {} for student={} course={}",
                 saved.getStatus(), saved.getCertificateNo(), studentId, courseId);
-        return java.util.Optional.of(saved);
-    }
 
-    private void requireEnrollment(UUID studentId, UUID courseId) {
-        if (!enrollmentRepository.existsByStudentIdAndCourseId(studentId, courseId)) {
-            throw new BusinessException(
-                    "COURSE_NOT_ENROLLED",
-                    "Bạn cần ghi danh khóa học trước khi nhận chứng chỉ.",
-                    HttpStatus.FORBIDDEN);
-        }
+        eventPublisher.publishEvent(new CertificateIssuedEvent(
+                studentId,
+                safeText(student.getFullName(), "Học viên"),
+                safeText(course.getTitle(), "Khóa học"),
+                saved.getCertificateNo(),
+                verificationUrl(saved),
+                certificateFilename(saved),
+                pdf,
+                reissue));
+        return java.util.Optional.of(saved);
     }
 
     private CertificateResponse certificateResponseWithUrls(Certificate certificate) {
@@ -245,12 +296,11 @@ public class CertificateService {
             ExamAttempt finalAttempt,
             boolean reissue) {
         try {
+            PdfFontSet fonts = loadFonts();
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             Document document = new Document(PageSize.A4.rotate(), 56, 56, 48, 48);
             PdfWriter.getInstance(document, output);
             document.open();
-
-            PdfFontSet fonts = loadFonts();
 
             Rectangle border = new Rectangle(36, 36, PageSize.A4.getHeight() - 36, PageSize.A4.getWidth() - 36);
             border.setBorder(Rectangle.BOX);
@@ -264,41 +314,54 @@ public class CertificateService {
             Font nameFont = font(fonts, 26, Font.BOLD, Color.BLACK);
             Font smallFont = font(fonts, 9, Font.NORMAL, Color.GRAY);
 
-            Paragraph brand = centered("BEE ACADEMY", titleFont);
+            String studentName = pdfText(safeText(student.getFullName(), "Học viên"), fonts);
+            String issuedDate = DATE_FORMAT.format(java.time.Instant.now());
+            String completedDate = finalAttempt.getSubmittedAt() == null
+                    ? issuedDate
+                    : DATE_FORMAT.format(finalAttempt.getSubmittedAt());
+            int requiredExams = CertificateEligibilityService.REQUIRED_EXAM_COUNT;
+
+            Paragraph brand = centered(pdfText("BEE ACADEMY", fonts), titleFont);
             brand.setSpacingAfter(12);
             document.add(brand);
-            document.add(centered(reissue ? "CERTIFICATE OF COURSE COMPLETION - REISSUED"
-                    : "CERTIFICATE OF COURSE COMPLETION", headingFont));
-            document.add(centered("This certificate is awarded to", normalFont));
+            document.add(centered(pdfText(reissue
+                    ? "CHỨNG CHỈ HOÀN THÀNH KHÓA HỌC (CẤP LẠI)"
+                    : "CHỨNG CHỈ HOÀN THÀNH KHÓA HỌC", fonts), headingFont));
+            document.add(centered(pdfText("Chứng nhận học viên", fonts), normalFont));
 
-            Paragraph studentName = centered(safeText(student.getFullName(), "Student"), nameFont);
-            studentName.setSpacingBefore(16);
-            studentName.setSpacingAfter(12);
-            document.add(studentName);
+            Paragraph studentLine = centered(studentName, nameFont);
+            studentLine.setSpacingBefore(16);
+            studentLine.setSpacingAfter(12);
+            document.add(studentLine);
 
-            document.add(centered(
-                    "for completing 100% of the course and passing all 4 required exams",
+            document.add(centered(pdfText(
+                    "đã hoàn thành 100%% nội dung khóa học và đạt đủ %d bài kiểm tra bắt buộc"
+                            .formatted(requiredExams), fonts),
                     normalFont));
-            Paragraph courseTitle = centered(safeText(course.getTitle(), "Course"), headingFont);
+            Paragraph courseTitle = centered(
+                    pdfText(safeText(course.getTitle(), "Khóa học"), fonts), headingFont);
             courseTitle.setSpacingBefore(10);
             courseTitle.setSpacingAfter(8);
             document.add(courseTitle);
 
             Profile teacher = course.getTeacher();
             String teacherName = teacher == null
-                    ? "Teacher information unavailable"
-                    : safeText(teacher.getFullName(), "Teacher information unavailable");
-            Paragraph teacherLine = centered("Teacher: " + teacherName, normalFont);
+                    ? "Chưa có thông tin giáo viên"
+                    : safeText(teacher.getFullName(), "Chưa có thông tin giáo viên");
+            Paragraph teacherLine = centered(
+                    pdfText("Giáo viên: " + teacherName, fonts), normalFont);
             teacherLine.setSpacingAfter(12);
             document.add(teacherLine);
 
             BigDecimal score = finalAttempt.getEffectiveScorePercent();
-            String issuedDate = DateTimeFormatter.ofPattern("dd/MM/yyyy")
-                    .withZone(ZoneId.systemDefault())
-                    .format(java.time.Instant.now());
-            document.add(centered("All 4 required exams: passed | Final exam"
-                    + (score != null ? " - Score " + score.stripTrailingZeros().toPlainString() + "%" : "")
-                    + " | Completed: " + issuedDate + " | Issued: " + issuedDate, normalFont));
+            document.add(centered(pdfText(
+                    "Bài kiểm tra cuối kỳ"
+                            + (score != null
+                                    ? ": " + score.stripTrailingZeros().toPlainString() + "%"
+                                    : ": đã đạt")
+                            + "  |  Ngày hoàn thành: " + completedDate
+                            + "  |  Ngày cấp: " + issuedDate, fonts),
+                    normalFont));
             document.add(Chunk.NEWLINE);
 
             Image qr = Image.getInstance(buildQrPngBytes(verificationUrl(certificate)));
@@ -306,10 +369,12 @@ public class CertificateService {
             qr.setAlignment(Element.ALIGN_CENTER);
             document.add(qr);
 
-            document.add(centered("Certificate No: " + certificate.getCertificateNo(), smallFont));
-            document.add(centered("Verify: " + verificationUrl(certificate), smallFont));
+            document.add(centered(
+                    pdfText("Số hiệu: " + certificate.getCertificateNo(), fonts), smallFont));
+            document.add(centered(
+                    pdfText("Xác minh tại: " + verificationUrl(certificate), fonts), smallFont));
             document.close();
-            return watermarkPdf(output.toByteArray(), safeText(student.getFullName(), "Student"), issuedDate);
+            return watermarkPdf(output.toByteArray(), studentName, issuedDate, fonts);
         } catch (Exception ex) {
             throw new BusinessException("CERTIFICATE_PDF_FAILED",
                     "Không thể tạo file chứng chỉ.", HttpStatus.INTERNAL_SERVER_ERROR);
@@ -335,25 +400,31 @@ public class CertificateService {
     }
 
     private PdfFontSet loadFonts() throws Exception {
-        for (String candidate : FONT_CANDIDATES) {
+        List<String> candidates = configuredFontPath == null || configuredFontPath.isBlank()
+                ? FONT_CANDIDATES
+                : java.util.stream.Stream.concat(
+                        java.util.stream.Stream.of(configuredFontPath.trim()),
+                        FONT_CANDIDATES.stream()).toList();
+        for (String candidate : candidates) {
             if (new File(candidate).isFile()) {
                 return new PdfFontSet(
                         BaseFont.createFont(candidate, BaseFont.IDENTITY_H, BaseFont.EMBEDDED),
                         true);
             }
         }
+        log.warn("Không tìm thấy font Unicode nào trong {} — chứng chỉ sẽ bị bỏ dấu tiếng Việt. "
+                + "Cài font hoặc đặt app.certificate.font-path trỏ tới một file .ttf.", candidates);
         return new PdfFontSet(
                 BaseFont.createFont(BaseFont.HELVETICA, BaseFont.WINANSI, BaseFont.NOT_EMBEDDED),
                 false);
     }
 
     /** Watermark de ban PDF tai ve luon gan voi hoc sinh va ngay phat hanh. */
-    private byte[] watermarkPdf(byte[] source, String studentName, String issuedDate) {
+    private byte[] watermarkPdf(byte[] source, String studentName, String issuedDate, PdfFontSet fonts) {
         try {
             PdfReader reader = new PdfReader(source);
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             PdfStamper stamper = new PdfStamper(reader, output);
-            PdfFontSet fonts = loadFonts();
             Font watermarkFont = font(fonts, 18, Font.BOLD, new Color(120, 120, 120));
             String watermark = "BEE ACADEMY | " + pdfText(studentName, fonts) + " | " + issuedDate;
             for (int page = 1; page <= reader.getNumberOfPages(); page++) {

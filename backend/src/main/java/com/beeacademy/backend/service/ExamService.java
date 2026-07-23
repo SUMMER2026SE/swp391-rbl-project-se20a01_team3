@@ -17,6 +17,8 @@ import com.beeacademy.backend.dto.response.StudentExamResponse;
 import com.beeacademy.backend.dto.response.StudentExamSubmissionResponse;
 import com.beeacademy.backend.dto.response.TeacherExamAttemptResponse;
 import com.beeacademy.backend.dto.response.UploadResponse;
+import com.beeacademy.backend.event.CertificateIssueRequestedEvent;
+import com.beeacademy.backend.event.RequiredExamGradeChangedEvent;
 import com.beeacademy.backend.exception.BusinessException;
 import com.beeacademy.backend.exception.ResourceNotFoundException;
 import com.beeacademy.backend.model.Chapter;
@@ -49,6 +51,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -122,7 +125,7 @@ public class ExamService {
     private final AiScanService aiScanService;
     private final UserNotificationService userNotificationService;
     private final RewardService rewardService;
-    private final CertificateService certificateService;
+    private final ApplicationEventPublisher eventPublisher;
     private final ExamRetakeService examRetakeService;
     private final ExamIntegrityService examIntegrityService;
     private final TeacherAccessService teacherAccessService;
@@ -213,7 +216,7 @@ public class ExamService {
                     me.userId(),
                     config.getId(),
                     scoringSummary.autoScorePercent());
-            certificateService.tryIssueAfterProgress(me.userId(), courseId);
+            eventPublisher.publishEvent(new CertificateIssueRequestedEvent(me.userId(), courseId));
         }
 
         log.info("Student {} submitted exam course={} slot={} attempt={} autoScore={}",
@@ -621,7 +624,7 @@ public class ExamService {
                 saved.getStudent().getId(),
                 saved.getExamConfig().getId(),
                 request.scorePercent());
-        certificateService.handleRequiredExamGradeChanged(saved);
+        eventPublisher.publishEvent(new RequiredExamGradeChangedEvent(saved.getId()));
         try {
             notifyStudentAboutExamGraded(saved);
         } catch (Exception ex) {

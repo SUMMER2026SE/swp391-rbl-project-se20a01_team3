@@ -93,7 +93,8 @@ class CourseServiceTest {
                         allRequiredExamsPassed,
                         finalExamPassed,
                         null,
-                        Set.of()));
+                        Set.of(),
+                        CertificateEligibilityService.REQUIRED_EXAM_COUNT));
         when(courseProgressItemRepository.findLatestCompletedAtByStudentAndCourseIds(studentId, courseIds))
                 .thenReturn(List.of());
         when(studentVideoProgressRepository.findLatestUpdatedAtByStudentAndCourseIds(studentId, courseIds))
@@ -138,7 +139,8 @@ class CourseServiceTest {
                         false,
                         false,
                         null,
-                        Set.of()));
+                        Set.of(),
+                        CertificateEligibilityService.REQUIRED_EXAM_COUNT));
         when(courseProgressItemRepository.findLatestCompletedAtByStudentAndCourseIds(studentId, courseIds))
                 .thenReturn(List.of());
         when(studentVideoProgressRepository.findLatestUpdatedAtByStudentAndCourseIds(studentId, courseIds))
