@@ -22,13 +22,17 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { exportPayoutPeriod, getRevenueSplits, getPayoutPeriods } from '../../api/revenueService';
 import type { RevenueSplitResponse, PayoutPeriodResponse } from '../../api/revenueService';
+import ChartCard from '../../components/charts/ChartCard';
+import RevenueTrendChart from '../../components/charts/RevenueTrendChart';
+import { BRAND, BRAND_ALT } from '../../lib/chartTheme';
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle,
-  Bell, LogOut, Menu, X,
+  LogOut, Menu, X,
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, DollarSign, Clock, CheckCircle2,
   TrendingUp, Calendar, Receipt, ArrowRight, Megaphone, Database, UserCircle, Lock, Star, Download,
 } from 'lucide-react';
+import BrandLogo from '../../components/BrandLogo';
 
 type PayoutStatus = 'PENDING' | 'PROCESSING' | 'PAID';
 type RevenueSplit = RevenueSplitResponse;
@@ -229,6 +233,16 @@ export default function TeacherRevenuePage() {
     return map;
   }, [periods]);
 
+  // ── Dữ liệu biểu đồ doanh thu theo tháng (đảo ngược về thứ tự tăng dần) ──
+  const revenueChartData = useMemo(
+    () => [...periods].reverse().map(p => ({
+      month: p.monthYear,
+      teacherAmount: p.totalTeacherAmount,
+      platformFee: p.totalPlatformFee,
+    })),
+    [periods],
+  );
+
   // ── Handler: cross-link từ Tab 2 (kỳ X) → Tab 1 (filter theo kỳ X)
   function viewTransactionsOfPeriod(periodId: string) {
     setPeriodFilter(periodId);
@@ -263,7 +277,7 @@ export default function TeacherRevenuePage() {
       `}>
         <div className="p-6 flex items-center justify-between border-b border-outline-variant/20">
           <Link to="/teacher" className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-primary text-on-primary rounded-xl flex items-center justify-center font-extrabold text-lg shadow-md shadow-primary/20">B</div>
+            <BrandLogo size="sm" />
             <div>
               <p className="font-extrabold text-on-surface text-sm">Bee Academy</p>
               <p className="text-xs text-on-surface-variant font-medium">Cổng Giáo Viên</p>
@@ -393,6 +407,23 @@ export default function TeacherRevenuePage() {
               <p className="text-xs text-on-surface-variant mt-1">Trong tháng hiện tại</p>
             </div>
           </motion.div>
+
+          {/* ── BIỂU ĐỒ DOANH THU THEO THÁNG ───────────────────── */}
+          <div className="mb-6">
+            <ChartCard
+              title="Doanh thu theo tháng"
+              subtitle="Phần bạn nhận + phí nền tảng qua các kỳ"
+              isEmpty={revenueChartData.length === 0}
+            >
+              <RevenueTrendChart
+                data={revenueChartData}
+                series={[
+                  { key: 'teacherAmount', name: 'Bạn nhận', color: BRAND },
+                  { key: 'platformFee', name: 'Phí nền tảng', color: BRAND_ALT },
+                ]}
+              />
+            </ChartCard>
+          </div>
 
           {/* ── TAB SWITCHER ───────────────────────────────────── */}
           <div className="flex gap-1 bg-surface-container/50 rounded-xl p-1 mb-4 w-fit">
@@ -640,7 +671,7 @@ export default function TeacherRevenuePage() {
                         className="ml-3 text-sm text-green-700 font-bold hover:underline inline-flex items-center gap-1"
                       >
                         <Download className="w-4 h-4" />
-                        Xuáº¥t Excel
+                        Xuất Excel
                       </button>
                     )}
                   </div>

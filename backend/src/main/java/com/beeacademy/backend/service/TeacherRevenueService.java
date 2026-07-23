@@ -1,7 +1,9 @@
 package com.beeacademy.backend.service;
 
+import com.beeacademy.backend.dto.response.CountPointResponse;
 import com.beeacademy.backend.dto.response.PayoutPeriodResponse;
 import com.beeacademy.backend.dto.response.RevenueSplitResponse;
+import com.beeacademy.backend.dto.response.RevenueTrendPointResponse;
 import com.beeacademy.backend.dto.response.TeacherStatsResponse;
 import com.beeacademy.backend.model.Course;
 import com.beeacademy.backend.model.CourseStatus;
@@ -35,6 +37,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -137,19 +140,21 @@ public class TeacherRevenueService {
         backfillEnrollmentRevenue(teacherId);
         List<RevenueSplit> splits = splitRepo.findByTeacherIdOrderByOccurredAtDesc(teacherId);
 
-        Set<UUID> studentIds = splits.stream().map(RevenueSplit::getStudentId).collect(Collectors.toSet());
-        Set<UUID> courseIds = splits.stream().map(RevenueSplit::getCourseId).collect(Collectors.toSet());
+        Set<UUID> studentIds = splits.stream().map(RevenueSplit::getStudentId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<UUID> courseIds = splits.stream().map(RevenueSplit::getCourseId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
 
         Map<UUID, String> studentNames = profileRepo.findAllById(studentIds).stream()
                 .collect(Collectors.toMap(Profile::getId,
-                        p -> p.getFullName() != null ? p.getFullName() : "Hoc vien"));
+                        p -> p.getFullName() != null ? p.getFullName() : "Học viên"));
         Map<UUID, String> courseTitles = courseRepo.findAllById(courseIds).stream()
                 .collect(Collectors.toMap(Course::getId, Course::getTitle));
 
         return splits.stream()
                 .map(s -> RevenueSplitResponse.from(s,
-                        studentNames.getOrDefault(s.getStudentId(), "Hoc vien"),
-                        courseTitles.getOrDefault(s.getCourseId(), "Khoa hoc")))
+                        studentNames.getOrDefault(s.getStudentId(), "Học viên"),
+                        courseTitles.getOrDefault(s.getCourseId(), "Khóa học")))
                 .toList();
     }
 
@@ -169,17 +174,19 @@ public class TeacherRevenueService {
         PayoutPeriod period = requirePaidTeacherPeriod(teacherId, periodId);
         List<RevenueSplit> splits = splitRepo.findByTeacherIdAndPayoutPeriodIdOrderByOccurredAtDesc(
                 teacherId, period.getId());
-        Set<UUID> studentIds = splits.stream().map(RevenueSplit::getStudentId).collect(Collectors.toSet());
-        Set<UUID> courseIds = splits.stream().map(RevenueSplit::getCourseId).collect(Collectors.toSet());
+        Set<UUID> studentIds = splits.stream().map(RevenueSplit::getStudentId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<UUID> courseIds = splits.stream().map(RevenueSplit::getCourseId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
         Map<UUID, String> studentNames = profileRepo.findAllById(studentIds).stream()
                 .collect(Collectors.toMap(Profile::getId,
-                        p -> p.getFullName() != null ? p.getFullName() : "Hoc vien"));
+                        p -> p.getFullName() != null ? p.getFullName() : "Học viên"));
         Map<UUID, String> courseTitles = courseRepo.findAllById(courseIds).stream()
                 .collect(Collectors.toMap(Course::getId, Course::getTitle));
         return splits.stream()
                 .map(s -> RevenueSplitResponse.from(s,
-                        studentNames.getOrDefault(s.getStudentId(), "Hoc vien"),
-                        courseTitles.getOrDefault(s.getCourseId(), "Khoa hoc")))
+                        studentNames.getOrDefault(s.getStudentId(), "Học viên"),
+                        courseTitles.getOrDefault(s.getCourseId(), "Khóa học")))
                 .toList();
     }
 
@@ -290,7 +297,7 @@ public class TeacherRevenueService {
         if (!period.getTeacherId().equals(teacherId) || period.getStatus() != PayoutStatus.PAID) {
             throw new com.beeacademy.backend.exception.BusinessException(
                     "PAYOUT_PERIOD_NOT_CONFIRMED",
-                    "Chi xem duoc ky thanh toan da duoc Admin xac nhan.");
+                    "Chỉ xem được kỳ thanh toán đã được Admin xác nhận.");
         }
         return period;
     }
@@ -343,11 +350,13 @@ public class TeacherRevenueService {
         // Tránh phụ thuộc vào schema enrollments (có thể chưa migrate student_id).
         long uniqueStudents = allSplits.stream()
                 .map(RevenueSplit::getStudentId)
+                .filter(Objects::nonNull)
                 .distinct()
                 .count();
 
         // ── 3. Map courseId → số lượt mua — dùng cho bar chart ──────────────────
         Map<UUID, Long> courseEnrollmentCounts = allSplits.stream()
+                .filter(split -> split.getCourseId() != null)
                 .collect(Collectors.groupingBy(RevenueSplit::getCourseId, Collectors.counting()));
 
         // ── 4. Revenue splits: doanh thu tháng này / tháng trước ─────────────────
@@ -376,8 +385,10 @@ public class TeacherRevenueService {
         // ── 7. 8 giao dịch gần nhất — batch-load names để tránh N+1 ─────────────
         List<RevenueSplit> recentRaw = allSplits.stream().limit(8).toList();
 
-        Set<UUID> studentIds    = recentRaw.stream().map(RevenueSplit::getStudentId).collect(Collectors.toSet());
-        Set<UUID> splitCourseIds = recentRaw.stream().map(RevenueSplit::getCourseId).collect(Collectors.toSet());
+        Set<UUID> studentIds = recentRaw.stream().map(RevenueSplit::getStudentId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<UUID> splitCourseIds = recentRaw.stream().map(RevenueSplit::getCourseId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
 
         Map<UUID, String> studentNames = profileRepo.findAllById(studentIds).stream()
                 .collect(Collectors.toMap(Profile::getId,
@@ -402,6 +413,37 @@ public class TeacherRevenueService {
                 .courseEnrollmentCounts(courseEnrollmentCounts)
                 .recentSplits(recentSplits)
                 .build();
+    }
+
+    /**
+     * Doanh thu theo tháng của giáo viên — cho biểu đồ đường/vùng (UC37).
+     *
+     * <p>Chỉ đọc: dựa trên revenue_splits đã có. Dashboard/Revenue page gọi
+     * {@code getTeacherStats}/{@code getSplits} (đã backfill) cùng lúc nên
+     * dữ liệu split đã đầy đủ khi trend được vẽ.
+     */
+    @Transactional(readOnly = true)
+    public List<RevenueTrendPointResponse> getRevenueTrend(UUID teacherId) {
+        return splitRepo.findMonthlyRevenueByTeacher(teacherId).stream()
+                .map(r -> new RevenueTrendPointResponse(
+                        (String) r[0],
+                        ((Number) r[1]).longValue(),
+                        ((Number) r[2]).longValue(),
+                        ((Number) r[3]).longValue(),
+                        ((Number) r[4]).longValue()))
+                .toList();
+    }
+
+    /** Lượt đăng ký theo tháng cho các khóa của giáo viên (UC37). */
+    @Transactional(readOnly = true)
+    public List<CountPointResponse> getEnrollmentTrend(UUID teacherId) {
+        List<UUID> courseIds = courseRepo.findByTeacherId(teacherId).stream()
+                .map(Course::getId)
+                .toList();
+        if (courseIds.isEmpty()) return List.of();
+        return enrollmentRepo.enrollmentTrendByCourseIds(courseIds).stream()
+                .map(r -> new CountPointResponse((String) r[0], ((Number) r[1]).longValue()))
+                .toList();
     }
 
     /**

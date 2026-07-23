@@ -1,0 +1,648 @@
+[
+  {
+    "role": "student",
+    "req": "REQ-AUTH-003",
+    "route": "/student/courses",
+    "slug": "logout-entry",
+    "rel": "student/REQ-AUTH-003/step-01-logout-entry-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 339.5874938964844,
+      "height": 52,
+      "text": "Khóa học của tôi"
+    },
+    "url": "http://localhost:3000/student/courses",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-AUTH-005",
+    "route": "/student/profile",
+    "slug": "profile",
+    "rel": "student/REQ-AUTH-005/step-01-profile-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 267.4624938964844,
+      "height": 52,
+      "text": "Hồ sơ"
+    },
+    "url": "http://localhost:3000/student/profile",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-PAY-001",
+    "route": "/checkout",
+    "slug": "checkout",
+    "rel": "student/REQ-PAY-001/step-01-checkout-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 160,
+      "y": 176,
+      "width": 1120,
+      "height": 36,
+      "text": "Giỏ Hàng Của Bạn"
+    },
+    "url": "http://localhost:3000/checkout",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-PAY-002",
+    "route": "/checkout",
+    "slug": "payment",
+    "rel": "student/REQ-PAY-002/step-01-payment-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 160,
+      "y": 176,
+      "width": 1120,
+      "height": 36,
+      "text": "Giỏ Hàng Của Bạn"
+    },
+    "url": "http://localhost:3000/checkout",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-PAY-003",
+    "route": "/student/orders",
+    "slug": "order-history",
+    "rel": "student/REQ-PAY-003/step-01-order-history-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 347.5375061035156,
+      "height": 52,
+      "text": "Lịch sử mua hàng"
+    },
+    "url": "http://localhost:3000/student/orders",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-PAY-004",
+    "route": "/student/complaints",
+    "slug": "complaints",
+    "rel": "student/REQ-PAY-004/step-01-complaints-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 575.2250366210938,
+      "height": 52,
+      "text": "Khiếu nại"
+    },
+    "url": "http://localhost:3000/student/complaints",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-LRN-001",
+    "route": "/student/courses",
+    "slug": "my-courses",
+    "rel": "student/REQ-LRN-001/step-01-my-courses-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 339.5874938964844,
+      "height": 52,
+      "text": "Khóa học của tôi"
+    },
+    "url": "http://localhost:3000/student/courses",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-LRN-002",
+    "route": "/student/courses",
+    "slug": "lectures-materials",
+    "rel": "student/REQ-LRN-002/step-01-lectures-materials-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 339.5874938964844,
+      "height": 52,
+      "text": "Khóa học của tôi"
+    },
+    "url": "http://localhost:3000/student/courses",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-LRN-003",
+    "route": "/student/courses",
+    "slug": "download-materials",
+    "rel": "student/REQ-LRN-003/step-01-download-materials-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 339.5874938964844,
+      "height": 52,
+      "text": "Khóa học của tôi"
+    },
+    "url": "http://localhost:3000/student/courses",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-LRN-004",
+    "route": "/student/courses",
+    "slug": "submit-assignment",
+    "rel": "student/REQ-LRN-004/step-01-submit-assignment-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 339.5874938964844,
+      "height": 52,
+      "text": "Khóa học của tôi"
+    },
+    "url": "http://localhost:3000/student/courses",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-LRN-005",
+    "route": "/student/courses",
+    "slug": "take-exam",
+    "rel": "student/REQ-LRN-005/step-01-take-exam-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 339.5874938964844,
+      "height": 52,
+      "text": "Khóa học của tôi"
+    },
+    "url": "http://localhost:3000/student/courses",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-LRN-006",
+    "route": "/student/progress",
+    "slug": "learning-progress",
+    "rel": "student/REQ-LRN-006/step-01-learning-progress-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 352,
+      "y": 264.8000183105469,
+      "width": 736,
+      "height": 31.98750114440918,
+      "text": "Bạn chưa có khóa học đã mua"
+    },
+    "url": "http://localhost:3000/student/progress",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-LRN-007",
+    "route": "/student/courses",
+    "slug": "course-review",
+    "rel": "student/REQ-LRN-007/step-01-course-review-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 339.5874938964844,
+      "height": 52,
+      "text": "Khóa học của tôi"
+    },
+    "url": "http://localhost:3000/student/courses",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-LRN-008",
+    "route": "/student/certificates",
+    "slug": "certificates",
+    "rel": "student/REQ-LRN-008/step-01-certificates-original.png",
+    "targetKind": "main",
+    "rect": {
+      "x": 80,
+      "y": 240,
+      "width": 1280,
+      "height": 337.5874938964844,
+      "text": "Chứng chỉ của tôi\n\nĐiều kiện cấp: hoàn thành 100% khóa học và đạt đủ 4 bài kiểm tra bắt buộc.\n\nLàm mới\nĐiều kiện chứng c"
+    },
+    "url": "http://localhost:3000/student/certificates",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-INT-001",
+    "route": "/student/qa",
+    "slug": "student-qa",
+    "rel": "student/REQ-INT-001/step-01-student-qa-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 493.1125183105469,
+      "height": 52,
+      "text": "Hỏi & Đáp"
+    },
+    "url": "http://localhost:3000/student/qa",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-INT-002",
+    "route": "/student/ai-tutor",
+    "slug": "ai-tutor-chat",
+    "rel": "student/REQ-INT-002/step-01-ai-tutor-chat-original.png",
+    "targetKind": "button",
+    "rect": {
+      "x": 224,
+      "y": 168.8000030517578,
+      "width": 141.9499969482422,
+      "height": 40,
+      "text": "Trò chuyện"
+    },
+    "url": "http://localhost:3000/student/ai-tutor",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-INT-003",
+    "route": "/student/ai-tutor",
+    "slug": "ai-roadmap",
+    "rel": "student/REQ-INT-003/step-01-ai-roadmap-original.png",
+    "targetKind": "button",
+    "rect": {
+      "x": 373.95001220703125,
+      "y": 168.8000030517578,
+      "width": 148.6374969482422,
+      "height": 40,
+      "text": "Lộ trình học"
+    },
+    "url": "http://localhost:3000/student/ai-tutor",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-PRN-005",
+    "route": "/student/account",
+    "slug": "link-invitation",
+    "rel": "student/REQ-PRN-005/step-01-link-invitation-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 273.4250183105469,
+      "height": 52,
+      "text": "Tài khoản"
+    },
+    "url": "http://localhost:3000/student/account",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "student",
+    "req": "REQ-PRN-006",
+    "route": "/student/account",
+    "slug": "unlink-account",
+    "rel": "student/REQ-PRN-006/step-01-unlink-account-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 273.4250183105469,
+      "height": 52,
+      "text": "Tài khoản"
+    },
+    "url": "http://localhost:3000/student/account",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "parent",
+    "req": "REQ-PRN-001",
+    "route": "/parent/progress",
+    "slug": "child-progress",
+    "rel": "parent/REQ-PRN-001/step-01-child-progress-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 39.943538665771484,
+      "y": 118,
+      "width": 360.3500061035156,
+      "height": 52,
+      "text": "Tiến độ & Điểm số"
+    },
+    "url": "http://localhost:3000/parent/progress",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "parent",
+    "req": "REQ-PRN-002",
+    "route": "/parent/messages",
+    "slug": "teacher-messages",
+    "rel": "parent/REQ-PRN-002/step-01-teacher-messages-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 40,
+      "y": 118,
+      "width": 463.3374938964844,
+      "height": 52,
+      "text": "Tin nhắn giáo viên"
+    },
+    "url": "http://localhost:3000/parent/messages",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "parent",
+    "req": "REQ-PRN-003",
+    "route": "/parent/payments",
+    "slug": "payment-history",
+    "rel": "parent/REQ-PRN-003/step-01-payment-history-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 39.76964569091797,
+      "y": 118,
+      "width": 370.9999694824219,
+      "height": 52,
+      "text": "Lịch sử thanh toán"
+    },
+    "url": "http://localhost:3000/parent/payments",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "parent",
+    "req": "REQ-PRN-004",
+    "route": "/parent/link",
+    "slug": "link-child",
+    "rel": "parent/REQ-PRN-004/step-01-link-child-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 39.99464797973633,
+      "y": 118,
+      "width": 882.6000366210938,
+      "height": 52,
+      "text": "Lời mời liên kết tài khoản con"
+    },
+    "url": "http://localhost:3000/parent/link",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "teacher",
+    "req": "REQ-TCH-001",
+    "route": "/teacher/courses",
+    "slug": "create-course",
+    "rel": "teacher/REQ-TCH-001/step-01-create-course-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 154.1374969482422,
+      "height": 28,
+      "text": "Khóa học của tôi"
+    },
+    "url": "http://localhost:3000/teacher/courses",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "teacher",
+    "req": "REQ-TCH-002",
+    "route": "/teacher/content",
+    "slug": "course-content",
+    "rel": "teacher/REQ-TCH-002/step-01-course-content-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 86.95000457763672,
+      "height": 28,
+      "text": "Bài giảng"
+    },
+    "url": "http://localhost:3000/teacher/content",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "teacher",
+    "req": "REQ-TCH-003",
+    "route": "/teacher/exam",
+    "slug": "create-exam",
+    "rel": "teacher/REQ-TCH-003/step-01-create-exam-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 110.23750305175781,
+      "height": 28,
+      "text": "Bài kiểm tra"
+    },
+    "url": "http://localhost:3000/teacher/exam",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "teacher",
+    "req": "REQ-TCH-004",
+    "route": "/teacher/questions",
+    "slug": "create-question-bank",
+    "rel": "teacher/REQ-TCH-004/step-01-create-question-bank-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 169.1999969482422,
+      "height": 28,
+      "text": "Ngân hàng câu hỏi"
+    },
+    "url": "http://localhost:3000/teacher/questions",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "teacher",
+    "req": "REQ-TCH-005",
+    "route": "/teacher/questions",
+    "slug": "update-question-bank",
+    "rel": "teacher/REQ-TCH-005/step-01-update-question-bank-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 169.1999969482422,
+      "height": 28,
+      "text": "Ngân hàng câu hỏi"
+    },
+    "url": "http://localhost:3000/teacher/questions",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "teacher",
+    "req": "REQ-TCH-006",
+    "route": "/teacher/grades",
+    "slug": "grade-submissions",
+    "rel": "teacher/REQ-TCH-006/step-01-grade-submissions-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 202.65000915527344,
+      "height": 28,
+      "text": "Chấm điểm bài tự luận"
+    },
+    "url": "http://localhost:3000/teacher/grades",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "teacher",
+    "req": "REQ-TCH-007",
+    "route": "/teacher/qa",
+    "slug": "answer-questions",
+    "rel": "teacher/REQ-TCH-007/step-01-answer-questions-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 91.13750457763672,
+      "height": 28,
+      "text": "Hỏi & Đáp"
+    },
+    "url": "http://localhost:3000/teacher/qa",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "teacher",
+    "req": "REQ-TCH-008",
+    "route": "/teacher/revenue",
+    "slug": "revenue-history",
+    "rel": "teacher/REQ-TCH-008/step-01-revenue-history-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 93.45000457763672,
+      "height": 28,
+      "text": "Doanh thu"
+    },
+    "url": "http://localhost:3000/teacher/revenue",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "admin",
+    "req": "REQ-ADM-001",
+    "route": "/admin",
+    "slug": "dashboard",
+    "rel": "admin/REQ-ADM-001/step-01-dashboard-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 212.1999969482422,
+      "height": 28,
+      "text": "Tổng Quan Hệ Thống"
+    },
+    "url": "http://localhost:3000/admin",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "admin",
+    "req": "REQ-ADM-002",
+    "route": "/admin/users",
+    "slug": "user-list",
+    "rel": "admin/REQ-ADM-002/step-01-user-list-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 188.7624969482422,
+      "height": 28,
+      "text": "Quản Lý Tài Khoản"
+    },
+    "url": "http://localhost:3000/admin/users",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "admin",
+    "req": "REQ-ADM-003",
+    "route": "/admin/users",
+    "slug": "update-user",
+    "rel": "admin/REQ-ADM-003/step-01-update-user-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 188.7624969482422,
+      "height": 28,
+      "text": "Quản Lý Tài Khoản"
+    },
+    "url": "http://localhost:3000/admin/users",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "admin",
+    "req": "REQ-ADM-004",
+    "route": "/admin/approvals",
+    "slug": "course-approvals",
+    "rel": "admin/REQ-ADM-004/step-01-course-approvals-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 142.72500610351562,
+      "height": 28,
+      "text": "Duyệt khóa học"
+    },
+    "url": "http://localhost:3000/admin/approvals",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "admin",
+    "req": "REQ-ADM-005",
+    "route": "/admin/complaints",
+    "slug": "complaint-processing",
+    "rel": "admin/REQ-ADM-005/step-01-complaint-processing-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 157.66250610351562,
+      "height": 28,
+      "text": "Xử Lý Khiếu Nại"
+    },
+    "url": "http://localhost:3000/admin/complaints",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "admin",
+    "req": "REQ-ADM-006",
+    "route": "/admin/payouts",
+    "slug": "payout-export",
+    "rel": "admin/REQ-ADM-006/step-01-payout-export-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 335.70001220703125,
+      "height": 28,
+      "text": "Đối Soát & Thanh Toán Giáo Viên"
+    },
+    "url": "http://localhost:3000/admin/payouts",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  },
+  {
+    "role": "admin",
+    "req": "REQ-ADM-007",
+    "route": "/admin/notifications",
+    "slug": "send-notification",
+    "rel": "admin/REQ-ADM-007/step-01-send-notification-original.png",
+    "targetKind": "h1",
+    "rect": {
+      "x": 280,
+      "y": 17.600000381469727,
+      "width": 162.90000915527344,
+      "height": 28,
+      "text": "Phát Thông Báo"
+    },
+    "url": "http://localhost:3000/admin/notifications",
+    "title": "Bee Academy - Nền Tảng Học Tập Trực Tuyến"
+  }
+]

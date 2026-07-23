@@ -1,0 +1,2580 @@
+{
+  "source": "E:\\swp391-rbl-project-se20a01_team3\\COPS\\COPS_Retest.docx",
+  "sections": [
+    {
+      "page_width_cm": 21.001,
+      "page_height_cm": 29.7,
+      "top_margin_cm": 2.54,
+      "bottom_margin_cm": 2.54,
+      "left_margin_cm": 2.54,
+      "right_margin_cm": 2.498,
+      "header_distance_cm": 1.249,
+      "footer_distance_cm": 1.249
+    }
+  ],
+  "styles": {
+    "Normal": {
+      "font": "Times New Roman",
+      "size_pt": 12.0,
+      "bold": null,
+      "italic": null,
+      "color": null,
+      "alignment": null,
+      "space_before_pt": null,
+      "space_after_pt": 6.0,
+      "line_spacing": "1.15",
+      "keep_with_next": null,
+      "page_break_before": null
+    },
+    "Title": {
+      "font": null,
+      "size_pt": 36.0,
+      "bold": true,
+      "italic": null,
+      "color": null,
+      "alignment": null,
+      "space_before_pt": 24.0,
+      "space_after_pt": 6.0,
+      "line_spacing": "None",
+      "keep_with_next": true,
+      "page_break_before": false
+    },
+    "Subtitle": {
+      "font": "Georgia",
+      "size_pt": 24.0,
+      "bold": null,
+      "italic": true,
+      "color": "666666",
+      "alignment": null,
+      "space_before_pt": 18.0,
+      "space_after_pt": 4.0,
+      "line_spacing": "None",
+      "keep_with_next": true,
+      "page_break_before": false
+    },
+    "Heading 1": {
+      "font": "Calibri",
+      "size_pt": 16.0,
+      "bold": true,
+      "italic": null,
+      "color": "C00000",
+      "alignment": null,
+      "space_before_pt": 12.0,
+      "space_after_pt": 4.0,
+      "line_spacing": "None",
+      "keep_with_next": true,
+      "page_break_before": null
+    },
+    "Heading 2": {
+      "font": "Calibri",
+      "size_pt": 13.0,
+      "bold": true,
+      "italic": null,
+      "color": "000000",
+      "alignment": null,
+      "space_before_pt": 8.0,
+      "space_after_pt": 3.0,
+      "line_spacing": "None",
+      "keep_with_next": true,
+      "page_break_before": null
+    },
+    "Heading 3": {
+      "font": "Calibri",
+      "size_pt": 12.0,
+      "bold": true,
+      "italic": null,
+      "color": "000000",
+      "alignment": null,
+      "space_before_pt": 6.0,
+      "space_after_pt": 3.0,
+      "line_spacing": "None",
+      "keep_with_next": true,
+      "page_break_before": null
+    },
+    "Caption": {
+      "font": "Times New Roman",
+      "size_pt": 10.0,
+      "bold": null,
+      "italic": true,
+      "color": null,
+      "alignment": null,
+      "space_before_pt": 3.0,
+      "space_after_pt": 8.0,
+      "line_spacing": "None",
+      "keep_with_next": null,
+      "page_break_before": null
+    }
+  },
+  "paragraph_count": 512,
+  "table_count": 3,
+  "inline_shapes": 49,
+  "paragraphs": [
+    {
+      "index": 2,
+      "style": "Normal",
+      "text": "FPT UNIVERSITY"
+    },
+    {
+      "index": 3,
+      "style": "Normal",
+      "text": "BEE ACADEMY - NỀN TẢNG HỌC TRỰC TUYẾN"
+    },
+    {
+      "index": 4,
+      "style": "Normal",
+      "text": "TÀI LIỆU BÀN GIAO PHIÊN BẢN CUỐI / COPS"
+    },
+    {
+      "index": 5,
+      "style": "Normal",
+      "text": "FINAL RELEASE DOCUMENT"
+    },
+    {
+      "index": 6,
+      "style": "Normal",
+      "text": "Đà Nẵng, tháng 7 năm 2026"
+    },
+    {
+      "index": 8,
+      "style": "Normal",
+      "text": "MỤC LỤC"
+    },
+    {
+      "index": 9,
+      "style": "Normal",
+      "text": "Mục lục sẽ được cập nhật khi mở tài liệu."
+    },
+    {
+      "index": 10,
+      "style": "Heading 1",
+      "text": "I. GÓI BÀN GIAO"
+    },
+    {
+      "index": 12,
+      "style": "Heading 1",
+      "text": "II. HƯỚNG DẪN CÀI ĐẶT"
+    },
+    {
+      "index": 13,
+      "style": "Heading 2",
+      "text": "1. Điều kiện tiên quyết"
+    },
+    {
+      "index": 14,
+      "style": "List Paragraph",
+      "text": "Java Development Kit 21."
+    },
+    {
+      "index": 15,
+      "style": "List Paragraph",
+      "text": "Node.js 20 trở lên và npm."
+    },
+    {
+      "index": 16,
+      "style": "List Paragraph",
+      "text": "Maven hoặc Maven Wrapper đi kèm repository."
+    },
+    {
+      "index": 17,
+      "style": "List Paragraph",
+      "text": "Supabase project cung cấp PostgreSQL, Auth và Storage."
+    },
+    {
+      "index": 18,
+      "style": "Heading 2",
+      "text": "2. Lấy source code"
+    },
+    {
+      "index": 19,
+      "style": "List Paragraph",
+      "text": "Clone repository, sau đó checkout commit 209b0e98a4d04028ed76dcdaa1551ad6be179542."
+    },
+    {
+      "index": 20,
+      "style": "Heading 2",
+      "text": "3. Cấu hình biến môi trường"
+    },
+    {
+      "index": 21,
+      "style": "List Paragraph",
+      "text": "Tạo backend/.env từ danh sách khóa trong README; không commit secret."
+    },
+    {
+      "index": 22,
+      "style": "List Paragraph",
+      "text": "Tạo frontend/.env.local từ frontend/.env.example; đặt VITE_API_BASE_URL=http://localhost:8080."
+    },
+    {
+      "index": 23,
+      "style": "Heading 2",
+      "text": "4. Cấu hình database"
+    },
+    {
+      "index": 24,
+      "style": "List Paragraph",
+      "text": "Tạo Supabase PostgreSQL test project."
+    },
+    {
+      "index": 25,
+      "style": "List Paragraph",
+      "text": "Chạy lần lượt các migration trong backend/db/migrations và các migration bổ sung ở backend/."
+    },
+    {
+      "index": 26,
+      "style": "List Paragraph",
+      "text": "Không chạy migration trên production khi chưa có phê duyệt."
+    },
+    {
+      "index": 27,
+      "style": "Heading 2",
+      "text": "5. Chạy backend"
+    },
+    {
+      "index": 28,
+      "style": "List Paragraph",
+      "text": "cd backend"
+    },
+    {
+      "index": 29,
+      "style": "List Paragraph",
+      "text": ".\\mvnw.cmd spring-boot:run"
+    },
+    {
+      "index": 30,
+      "style": "List Paragraph",
+      "text": "Backend mặc định: http://localhost:8080."
+    },
+    {
+      "index": 31,
+      "style": "Heading 2",
+      "text": "6. Chạy frontend"
+    },
+    {
+      "index": 32,
+      "style": "List Paragraph",
+      "text": "cd frontend"
+    },
+    {
+      "index": 33,
+      "style": "List Paragraph",
+      "text": "npm ci"
+    },
+    {
+      "index": 34,
+      "style": "List Paragraph",
+      "text": "npm run dev"
+    },
+    {
+      "index": 35,
+      "style": "List Paragraph",
+      "text": "Frontend mặc định: http://localhost:3000."
+    },
+    {
+      "index": 36,
+      "style": "Heading 2",
+      "text": "7. Kiểm tra sau cài đặt"
+    },
+    {
+      "index": 37,
+      "style": "List Paragraph",
+      "text": "Mở http://localhost:3000/courses."
+    },
+    {
+      "index": 38,
+      "style": "List Paragraph",
+      "text": "Kiểm tra GET http://localhost:8080/api/courses?page=0&size=1 trả HTTP 200."
+    },
+    {
+      "index": 39,
+      "style": "Heading 2",
+      "text": "8. Tài khoản kiểm thử"
+    },
+    {
+      "index": 40,
+      "style": "List Paragraph",
+      "text": "student.cops@beeacademy.test"
+    },
+    {
+      "index": 41,
+      "style": "List Paragraph",
+      "text": "parent.cops@beeacademy.test"
+    },
+    {
+      "index": 42,
+      "style": "List Paragraph",
+      "text": "teacher.cops@beeacademy.test"
+    },
+    {
+      "index": 43,
+      "style": "List Paragraph",
+      "text": "admin.cops@beeacademy.test"
+    },
+    {
+      "index": 44,
+      "style": "List Paragraph",
+      "text": "Mật khẩu chỉ đọc từ secret cục bộ; không ghi trong tài liệu."
+    },
+    {
+      "index": 45,
+      "style": "Heading 2",
+      "text": "9. Sự cố thường gặp"
+    },
+    {
+      "index": 46,
+      "style": "List Paragraph",
+      "text": "Nếu frontend không gọi được backend, kiểm tra VITE_API_BASE_URL và CORS_ALLOWED_ORIGINS."
+    },
+    {
+      "index": 47,
+      "style": "List Paragraph",
+      "text": "Nếu backend không kết nối database, kiểm tra SUPABASE_DB_HOST/USER/PASSWORD và SSL."
+    },
+    {
+      "index": 48,
+      "style": "List Paragraph",
+      "text": "Trong lần kiểm thử này, dịch vụ xác thực tạm thời không khả dụng dù frontend/backend local đều trả HTTP 200."
+    },
+    {
+      "index": 49,
+      "style": "Heading 1",
+      "text": "III. HƯỚNG DẪN SỬ DỤNG"
+    },
+    {
+      "index": 50,
+      "style": "Heading 2",
+      "text": "1. Tổng quan"
+    },
+    {
+      "index": 51,
+      "style": "Normal",
+      "text": "Bee Academy là nền tảng học trực tuyến cho học sinh THCS Việt Nam. Học sinh có thể tìm kiếm, mua và học khóa học; phụ huynh theo dõi tiến độ; giáo viên quản lý nội dung và chấm điểm; quản trị viên duyệt khóa học, tài khoản, khiếu nại và chi trả. Phạm vi tài liệu bao phủ 44 requirement trong yêu cầu COPS."
+    },
+    {
+      "index": 52,
+      "style": "Heading 2",
+      "text": "2. Hướng dẫn cho Khách"
+    },
+    {
+      "index": 53,
+      "style": "Heading 3",
+      "text": "2.1. Đăng ký tài khoản"
+    },
+    {
+      "index": 54,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-AUTH-001"
+    },
+    {
+      "index": 55,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Guest thực hiện chức năng đăng ký tài khoản trong hệ thống Bee Academy."
+    },
+    {
+      "index": 56,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 57,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 58,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /register"
+    },
+    {
+      "index": 59,
+      "style": "Normal",
+      "text": "Bước 1: Mở trang [Đăng ký] và quan sát nhóm trường Họ và tên, Email, Mật khẩu, Vai trò."
+    },
+    {
+      "index": 61,
+      "style": "Caption",
+      "text": "Hình 1: Bước 1 trong chức năng Đăng ký tài khoản"
+    },
+    {
+      "index": 62,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Biểu mẫu đăng ký hiển thị. Không tạo tài khoản hoặc gửi OTP/email thật nên trạng thái được ghi PARTIAL."
+    },
+    {
+      "index": 63,
+      "style": "Heading 3",
+      "text": "2.2. Tìm kiếm khóa học"
+    },
+    {
+      "index": 64,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-CRS-001"
+    },
+    {
+      "index": 65,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Guest/Student thực hiện chức năng tìm kiếm khóa học trong hệ thống Bee Academy."
+    },
+    {
+      "index": 66,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 67,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PASSED"
+    },
+    {
+      "index": 68,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /courses"
+    },
+    {
+      "index": 69,
+      "style": "Normal",
+      "text": "Bước 1: Tại trang chủ, chọn [Xem Khóa Học]."
+    },
+    {
+      "index": 71,
+      "style": "Caption",
+      "text": "Hình 2: Bước 1 trong chức năng Tìm kiếm khóa học"
+    },
+    {
+      "index": 72,
+      "style": "Normal",
+      "text": "Bước 2: Tại trang danh sách, nhập từ khóa vào ô [Tìm kiếm khóa học, môn học, giảng viên...]."
+    },
+    {
+      "index": 74,
+      "style": "Caption",
+      "text": "Hình 3: Bước 2 trong chức năng Tìm kiếm khóa học"
+    },
+    {
+      "index": 75,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang hiển thị 1 khóa học phù hợp, gồm khóa “Công Nghệ 6”."
+    },
+    {
+      "index": 76,
+      "style": "Heading 3",
+      "text": "2.3. Xem chi tiết khóa học"
+    },
+    {
+      "index": 77,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-CRS-002"
+    },
+    {
+      "index": 78,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Guest/Student thực hiện chức năng xem chi tiết khóa học trong hệ thống Bee Academy."
+    },
+    {
+      "index": 79,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 80,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PASSED"
+    },
+    {
+      "index": 81,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /courses/:id"
+    },
+    {
+      "index": 82,
+      "style": "Normal",
+      "text": "Bước 1: Chọn thẻ khóa học [Công Nghệ 6]."
+    },
+    {
+      "index": 84,
+      "style": "Caption",
+      "text": "Hình 4: Bước 1 trong chức năng Xem chi tiết khóa học"
+    },
+    {
+      "index": 85,
+      "style": "Normal",
+      "text": "Bước 2: Quan sát tiêu đề và thông tin tổng quan trên trang chi tiết."
+    },
+    {
+      "index": 87,
+      "style": "Caption",
+      "text": "Hình 5: Bước 2 trong chức năng Xem chi tiết khóa học"
+    },
+    {
+      "index": 88,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang chi tiết hiển thị đúng tên khóa học, giảng viên, 4 chương, 18 bài và giá khóa học."
+    },
+    {
+      "index": 89,
+      "style": "Heading 3",
+      "text": "2.4. Xem bài học thử"
+    },
+    {
+      "index": 90,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-CRS-003"
+    },
+    {
+      "index": 91,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Guest thực hiện chức năng xem bài học thử trong hệ thống Bee Academy."
+    },
+    {
+      "index": 92,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 93,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 94,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /courses/:id (tab Nội dung học)"
+    },
+    {
+      "index": 95,
+      "style": "Normal",
+      "text": "Bước 1: Trên trang chi tiết, chọn tab [Nội dung học]."
+    },
+    {
+      "index": 97,
+      "style": "Caption",
+      "text": "Hình 6: Bước 1 trong chức năng Xem bài học thử"
+    },
+    {
+      "index": 98,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Mục lục hiển thị nhưng mọi bài trong dữ liệu hiện tại đều có trạng thái [Cần mua khóa]. Không có bài học thử khả dụng để kiểm tra happy path."
+    },
+    {
+      "index": 99,
+      "style": "Heading 2",
+      "text": "3. Hướng dẫn chung cho Người dùng"
+    },
+    {
+      "index": 100,
+      "style": "Heading 3",
+      "text": "3.1. Đăng nhập hệ thống"
+    },
+    {
+      "index": 101,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-AUTH-002"
+    },
+    {
+      "index": 102,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép User thực hiện chức năng đăng nhập hệ thống trong hệ thống Bee Academy."
+    },
+    {
+      "index": 103,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 104,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PASSED"
+    },
+    {
+      "index": 105,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /login"
+    },
+    {
+      "index": 106,
+      "style": "Normal",
+      "text": "Bước 1: Nhập tài khoản kiểm thử vào biểu mẫu [Đăng Nhập]."
+    },
+    {
+      "index": 108,
+      "style": "Caption",
+      "text": "Hình 7: Bước 1 trong chức năng Đăng nhập hệ thống"
+    },
+    {
+      "index": 109,
+      "style": "Normal",
+      "text": "Bước 2: Chọn [Đăng Nhập]."
+    },
+    {
+      "index": 111,
+      "style": "Caption",
+      "text": "Hình 8: Bước 2 trong chức năng Đăng nhập hệ thống"
+    },
+    {
+      "index": 112,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Retest ngày 22/07/2026 xác nhận cả 4 tài khoản Student, Parent, Teacher và Admin đăng nhập thành công, điều hướng đúng dashboard theo vai trò."
+    },
+    {
+      "index": 113,
+      "style": "Heading 3",
+      "text": "3.2. Đăng xuất hệ thống"
+    },
+    {
+      "index": 114,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-AUTH-003"
+    },
+    {
+      "index": 115,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép User thực hiện chức năng đăng xuất hệ thống trong hệ thống Bee Academy."
+    },
+    {
+      "index": 116,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 117,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: FAILED"
+    },
+    {
+      "index": 118,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: Header / Sidebar"
+    },
+    {
+      "index": 119,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [Header / Sidebar] và quan sát khu vực Khóa học của tôi."
+    },
+    {
+      "index": 121,
+      "style": "Caption",
+      "text": "Hình 9: Bước 1 trong chức năng Đăng xuất hệ thống"
+    },
+    {
+      "index": 122,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Đăng xuất hoạt động ở một số màn hình nhưng không phản hồi trên trang con Giáo viên và Admin; lỗi tái hiện sau hai lần bấm."
+    },
+    {
+      "index": 123,
+      "style": "Heading 3",
+      "text": "3.3. Quên mật khẩu"
+    },
+    {
+      "index": 124,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-AUTH-004"
+    },
+    {
+      "index": 125,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép User thực hiện chức năng quên mật khẩu trong hệ thống Bee Academy."
+    },
+    {
+      "index": 126,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 127,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 128,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /forgot-password"
+    },
+    {
+      "index": 129,
+      "style": "Normal",
+      "text": "Bước 1: Mở trang [Quên mật khẩu] và quan sát biểu mẫu nhận OTP."
+    },
+    {
+      "index": 131,
+      "style": "Caption",
+      "text": "Hình 10: Bước 1 trong chức năng Quên mật khẩu"
+    },
+    {
+      "index": 132,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Biểu mẫu hiển thị đúng. Không gửi OTP thật và không xác minh được luồng hoàn tất."
+    },
+    {
+      "index": 133,
+      "style": "Heading 3",
+      "text": "3.4. Cập nhật hồ sơ cá nhân"
+    },
+    {
+      "index": 134,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-AUTH-005"
+    },
+    {
+      "index": 135,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép User thực hiện chức năng cập nhật hồ sơ cá nhân trong hệ thống Bee Academy."
+    },
+    {
+      "index": 136,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 137,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 138,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/profile; /teacher/profile"
+    },
+    {
+      "index": 139,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/profile; /teacher/profile] và quan sát khu vực Hồ sơ."
+    },
+    {
+      "index": 141,
+      "style": "Caption",
+      "text": "Hình 11: Bước 1 trong chức năng Cập nhật hồ sơ cá nhân"
+    },
+    {
+      "index": 142,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Màn hình hồ sơ Student và Teacher cùng nút Lưu hiển thị; không ghi thay đổi dữ liệu trong phiên kiểm thử."
+    },
+    {
+      "index": 143,
+      "style": "Heading 2",
+      "text": "4. Hướng dẫn cho Học sinh"
+    },
+    {
+      "index": 144,
+      "style": "Heading 3",
+      "text": "4.1. Mua khóa học"
+    },
+    {
+      "index": 145,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-PAY-001"
+    },
+    {
+      "index": 146,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng mua khóa học trong hệ thống Bee Academy."
+    },
+    {
+      "index": 147,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 148,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 149,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /checkout"
+    },
+    {
+      "index": 150,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/checkout] và quan sát khu vực Giỏ Hàng Của Bạn."
+    },
+    {
+      "index": 152,
+      "style": "Caption",
+      "text": "Hình 12: Bước 1 trong chức năng Mua khóa học"
+    },
+    {
+      "index": 153,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Giỏ hàng của tài khoản Student đang trống; chưa có khóa học được chọn để hoàn tất luồng mua."
+    },
+    {
+      "index": 154,
+      "style": "Heading 3",
+      "text": "4.2. Thanh toán khóa học"
+    },
+    {
+      "index": 155,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-PAY-002"
+    },
+    {
+      "index": 156,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng thanh toán khóa học trong hệ thống Bee Academy."
+    },
+    {
+      "index": 157,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 158,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 159,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /checkout; /payment-result"
+    },
+    {
+      "index": 160,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/checkout; /payment-result] và quan sát khu vực Giỏ Hàng Của Bạn."
+    },
+    {
+      "index": 162,
+      "style": "Caption",
+      "text": "Hình 13: Bước 1 trong chức năng Thanh toán khóa học"
+    },
+    {
+      "index": 163,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Không thực hiện thanh toán thật; chưa có đơn hàng hoặc payment-result hợp lệ để kiểm tra."
+    },
+    {
+      "index": 164,
+      "style": "Heading 3",
+      "text": "4.3. Xem lịch sử mua khóa học"
+    },
+    {
+      "index": 165,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-PAY-003"
+    },
+    {
+      "index": 166,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng xem lịch sử mua khóa học trong hệ thống Bee Academy."
+    },
+    {
+      "index": 167,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 168,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PASSED"
+    },
+    {
+      "index": 169,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/orders"
+    },
+    {
+      "index": 170,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/orders] và quan sát khu vực Lịch sử mua hàng."
+    },
+    {
+      "index": 172,
+      "style": "Caption",
+      "text": "Hình 14: Bước 1 trong chức năng Xem lịch sử mua khóa học"
+    },
+    {
+      "index": 173,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang lịch sử mua hàng tải thành công và hiển thị đúng empty state: 0 đơn hàng."
+    },
+    {
+      "index": 174,
+      "style": "Heading 3",
+      "text": "4.4. Gửi khiếu nại đến Admin"
+    },
+    {
+      "index": 175,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-PAY-004"
+    },
+    {
+      "index": 176,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng gửi khiếu nại đến admin trong hệ thống Bee Academy."
+    },
+    {
+      "index": 177,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 178,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 179,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/complaints"
+    },
+    {
+      "index": 180,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/complaints] và quan sát khu vực Khiếu nại."
+    },
+    {
+      "index": 182,
+      "style": "Caption",
+      "text": "Hình 15: Bước 1 trong chức năng Gửi khiếu nại đến Admin"
+    },
+    {
+      "index": 183,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang Khiếu nại và nút Tạo khiếu nại mới hiển thị; không gửi khiếu nại thử để tránh tạo dữ liệu."
+    },
+    {
+      "index": 184,
+      "style": "Heading 3",
+      "text": "4.5. Xem danh sách khóa học đã mua"
+    },
+    {
+      "index": 185,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-LRN-001"
+    },
+    {
+      "index": 186,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng xem danh sách khóa học đã mua trong hệ thống Bee Academy."
+    },
+    {
+      "index": 187,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 188,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PASSED"
+    },
+    {
+      "index": 189,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/courses"
+    },
+    {
+      "index": 190,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/courses] và quan sát khu vực Khóa học của tôi."
+    },
+    {
+      "index": 192,
+      "style": "Caption",
+      "text": "Hình 16: Bước 1 trong chức năng Xem danh sách khóa học đã mua"
+    },
+    {
+      "index": 193,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang Khóa học của tôi tải thành công và hiển thị đúng empty state cho tài khoản chưa mua khóa học."
+    },
+    {
+      "index": 194,
+      "style": "Heading 3",
+      "text": "4.6. Xem bài giảng và tài liệu"
+    },
+    {
+      "index": 195,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-LRN-002"
+    },
+    {
+      "index": 196,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng xem bài giảng và tài liệu trong hệ thống Bee Academy."
+    },
+    {
+      "index": 197,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 198,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 199,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/courses/:id"
+    },
+    {
+      "index": 200,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/courses/:id] và quan sát khu vực Khóa học của tôi."
+    },
+    {
+      "index": 202,
+      "style": "Caption",
+      "text": "Hình 17: Bước 1 trong chức năng Xem bài giảng và tài liệu"
+    },
+    {
+      "index": 203,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Tài khoản Student chưa sở hữu khóa học nên chưa truy cập được bài giảng đã mua."
+    },
+    {
+      "index": 204,
+      "style": "Heading 3",
+      "text": "4.7. Tải tài liệu học tập"
+    },
+    {
+      "index": 205,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-LRN-003"
+    },
+    {
+      "index": 206,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng tải tài liệu học tập trong hệ thống Bee Academy."
+    },
+    {
+      "index": 207,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 208,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 209,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/courses/:id"
+    },
+    {
+      "index": 210,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/courses/:id] và quan sát khu vực Khóa học của tôi."
+    },
+    {
+      "index": 212,
+      "style": "Caption",
+      "text": "Hình 18: Bước 1 trong chức năng Tải tài liệu học tập"
+    },
+    {
+      "index": 213,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Không có khóa học đã mua và không có tài liệu đủ điều kiện tải."
+    },
+    {
+      "index": 214,
+      "style": "Heading 3",
+      "text": "4.8. Nộp bài tập"
+    },
+    {
+      "index": 215,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-LRN-004"
+    },
+    {
+      "index": 216,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng nộp bài tập trong hệ thống Bee Academy."
+    },
+    {
+      "index": 217,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 218,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 219,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/courses/:id"
+    },
+    {
+      "index": 220,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/courses/:id] và quan sát khu vực Khóa học của tôi."
+    },
+    {
+      "index": 222,
+      "style": "Caption",
+      "text": "Hình 19: Bước 1 trong chức năng Nộp bài tập"
+    },
+    {
+      "index": 223,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Không có khóa học/bài tập đã mua để nộp bài."
+    },
+    {
+      "index": 224,
+      "style": "Heading 3",
+      "text": "4.9. Làm bài kiểm tra"
+    },
+    {
+      "index": 225,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-LRN-005"
+    },
+    {
+      "index": 226,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng làm bài kiểm tra trong hệ thống Bee Academy."
+    },
+    {
+      "index": 227,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 228,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 229,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/courses/:courseId/exams/:slotIndex"
+    },
+    {
+      "index": 230,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/courses/:courseId/exams/:slotIndex] và quan sát khu vực Khóa học của tôi."
+    },
+    {
+      "index": 232,
+      "style": "Caption",
+      "text": "Hình 20: Bước 1 trong chức năng Làm bài kiểm tra"
+    },
+    {
+      "index": 233,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Không có khóa học và exam slot hợp lệ cho tài khoản Student."
+    },
+    {
+      "index": 234,
+      "style": "Heading 3",
+      "text": "4.10. Xem điểm và tiến độ học tập"
+    },
+    {
+      "index": 235,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-LRN-006"
+    },
+    {
+      "index": 236,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng xem điểm và tiến độ học tập trong hệ thống Bee Academy."
+    },
+    {
+      "index": 237,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 238,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 239,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/progress"
+    },
+    {
+      "index": 240,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/progress] và quan sát khu vực Bạn chưa có khóa học đã mua."
+    },
+    {
+      "index": 242,
+      "style": "Caption",
+      "text": "Hình 21: Bước 1 trong chức năng Xem điểm và tiến độ học tập"
+    },
+    {
+      "index": 243,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Không có dữ liệu học tập đã mua để xác minh điểm và tiến độ."
+    },
+    {
+      "index": 244,
+      "style": "Heading 3",
+      "text": "4.11. Đánh giá khóa học"
+    },
+    {
+      "index": 245,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-LRN-007"
+    },
+    {
+      "index": 246,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng đánh giá khóa học trong hệ thống Bee Academy."
+    },
+    {
+      "index": 247,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 248,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 249,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/courses/:id"
+    },
+    {
+      "index": 250,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/courses/:id] và quan sát khu vực Khóa học của tôi."
+    },
+    {
+      "index": 252,
+      "style": "Caption",
+      "text": "Hình 22: Bước 1 trong chức năng Đánh giá khóa học"
+    },
+    {
+      "index": 253,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Không có khóa học đã mua/hoàn thành để đánh giá."
+    },
+    {
+      "index": 254,
+      "style": "Heading 3",
+      "text": "4.12. Xem và tải chứng chỉ"
+    },
+    {
+      "index": 255,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-LRN-008"
+    },
+    {
+      "index": 256,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng xem và tải chứng chỉ trong hệ thống Bee Academy."
+    },
+    {
+      "index": 257,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 258,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 259,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/certificates"
+    },
+    {
+      "index": 260,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/certificates] và quan sát khu vực Chứng chỉ của tôi\n\nĐiều kiện cấp: hoàn thành 100% khóa học và đạt đủ 4 bài kiểm tra bắt buộc.\n\nLàm mới\nĐiều kiện chứng c."
+    },
+    {
+      "index": 262,
+      "style": "Caption",
+      "text": "Hình 23: Bước 1 trong chức năng Xem và tải chứng chỉ"
+    },
+    {
+      "index": 263,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang Chứng chỉ tải thành công và hiển thị điều kiện cấp; tài khoản chưa có chứng chỉ để tải."
+    },
+    {
+      "index": 264,
+      "style": "Heading 3",
+      "text": "4.13. Gửi câu hỏi cho giáo viên"
+    },
+    {
+      "index": 265,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-INT-001"
+    },
+    {
+      "index": 266,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng gửi câu hỏi cho giáo viên trong hệ thống Bee Academy."
+    },
+    {
+      "index": 267,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 268,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 269,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/qa"
+    },
+    {
+      "index": 270,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/qa] và quan sát khu vực Hỏi & Đáp."
+    },
+    {
+      "index": 272,
+      "style": "Caption",
+      "text": "Hình 24: Bước 1 trong chức năng Gửi câu hỏi cho giáo viên"
+    },
+    {
+      "index": 273,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang Hỏi & Đáp và nút Đặt câu hỏi hiển thị; chưa gửi câu hỏi thử."
+    },
+    {
+      "index": 274,
+      "style": "Heading 3",
+      "text": "4.14. Chat AI hỗ trợ"
+    },
+    {
+      "index": 275,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-INT-002"
+    },
+    {
+      "index": 276,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng chat ai hỗ trợ trong hệ thống Bee Academy."
+    },
+    {
+      "index": 277,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 278,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 279,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/ai-tutor"
+    },
+    {
+      "index": 280,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/ai-tutor] và quan sát khu vực Trò chuyện."
+    },
+    {
+      "index": 282,
+      "style": "Caption",
+      "text": "Hình 25: Bước 1 trong chức năng Chat AI hỗ trợ"
+    },
+    {
+      "index": 283,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang Trợ lý AI và các gợi ý hội thoại hiển thị; không gọi dịch vụ AI ngoài trong phiên kiểm thử."
+    },
+    {
+      "index": 284,
+      "style": "Heading 3",
+      "text": "4.15. Nhận đề xuất lộ trình từ AI"
+    },
+    {
+      "index": 285,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-INT-003"
+    },
+    {
+      "index": 286,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng nhận đề xuất lộ trình từ ai trong hệ thống Bee Academy."
+    },
+    {
+      "index": 287,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 288,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 289,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/ai-tutor"
+    },
+    {
+      "index": 290,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/ai-tutor] và quan sát khu vực Lộ trình học."
+    },
+    {
+      "index": 292,
+      "style": "Caption",
+      "text": "Hình 26: Bước 1 trong chức năng Nhận đề xuất lộ trình từ AI"
+    },
+    {
+      "index": 293,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Tab Lộ trình học hiển thị; không gọi dịch vụ AI ngoài để sinh lộ trình."
+    },
+    {
+      "index": 294,
+      "style": "Heading 2",
+      "text": "5. Hướng dẫn cho Phụ huynh"
+    },
+    {
+      "index": 295,
+      "style": "Heading 3",
+      "text": "5.1. Theo dõi tiến độ học tập của con"
+    },
+    {
+      "index": 296,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-PRN-001"
+    },
+    {
+      "index": 297,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Parent thực hiện chức năng theo dõi tiến độ học tập của con trong hệ thống Bee Academy."
+    },
+    {
+      "index": 298,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 299,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 300,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /parent/progress"
+    },
+    {
+      "index": 301,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/parent/progress] và quan sát khu vực Tiến độ & Điểm số."
+    },
+    {
+      "index": 303,
+      "style": "Caption",
+      "text": "Hình 27: Bước 1 trong chức năng Theo dõi tiến độ học tập của con"
+    },
+    {
+      "index": 304,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang tiến độ mở được nhưng tài khoản Parent chưa liên kết học sinh."
+    },
+    {
+      "index": 305,
+      "style": "Heading 3",
+      "text": "5.2. Liên hệ và nhận thông báo từ giáo viên"
+    },
+    {
+      "index": 306,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-PRN-002"
+    },
+    {
+      "index": 307,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Parent thực hiện chức năng liên hệ và nhận thông báo từ giáo viên trong hệ thống Bee Academy."
+    },
+    {
+      "index": 308,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 309,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 310,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /parent/messages"
+    },
+    {
+      "index": 311,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/parent/messages] và quan sát khu vực Tin nhắn giáo viên."
+    },
+    {
+      "index": 313,
+      "style": "Caption",
+      "text": "Hình 28: Bước 1 trong chức năng Liên hệ và nhận thông báo từ giáo viên"
+    },
+    {
+      "index": 314,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang tin nhắn mở được nhưng tài khoản Parent chưa liên kết học sinh."
+    },
+    {
+      "index": 315,
+      "style": "Heading 3",
+      "text": "5.3. Xem lịch sử thanh toán khóa học"
+    },
+    {
+      "index": 316,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-PRN-003"
+    },
+    {
+      "index": 317,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Parent thực hiện chức năng xem lịch sử thanh toán khóa học trong hệ thống Bee Academy."
+    },
+    {
+      "index": 318,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 319,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 320,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /parent/payments"
+    },
+    {
+      "index": 321,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/parent/payments] và quan sát khu vực Lịch sử thanh toán."
+    },
+    {
+      "index": 323,
+      "style": "Caption",
+      "text": "Hình 29: Bước 1 trong chức năng Xem lịch sử thanh toán khóa học"
+    },
+    {
+      "index": 324,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang lịch sử thanh toán mở được nhưng chưa có tài khoản con được liên kết."
+    },
+    {
+      "index": 325,
+      "style": "Heading 3",
+      "text": "5.4. Gửi lời mời liên kết con"
+    },
+    {
+      "index": 326,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-PRN-004"
+    },
+    {
+      "index": 327,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Parent thực hiện chức năng gửi lời mời liên kết con trong hệ thống Bee Academy."
+    },
+    {
+      "index": 328,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 329,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 330,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /parent/link"
+    },
+    {
+      "index": 331,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/parent/link] và quan sát khu vực Lời mời liên kết tài khoản con."
+    },
+    {
+      "index": 333,
+      "style": "Caption",
+      "text": "Hình 30: Bước 1 trong chức năng Gửi lời mời liên kết con"
+    },
+    {
+      "index": 334,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Biểu mẫu mời liên kết, lựa chọn quan hệ và nút Gửi lời mời hiển thị; không gửi email thật."
+    },
+    {
+      "index": 335,
+      "style": "Heading 3",
+      "text": "5.5. Chấp nhận hoặc từ chối liên kết"
+    },
+    {
+      "index": 336,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-PRN-005"
+    },
+    {
+      "index": 337,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Student thực hiện chức năng chấp nhận hoặc từ chối liên kết trong hệ thống Bee Academy."
+    },
+    {
+      "index": 338,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 339,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 340,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /student/account"
+    },
+    {
+      "index": 341,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/student/account] và quan sát khu vực Tài khoản."
+    },
+    {
+      "index": 343,
+      "style": "Caption",
+      "text": "Hình 31: Bước 1 trong chức năng Chấp nhận hoặc từ chối liên kết"
+    },
+    {
+      "index": 344,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Chưa có lời mời PENDING để Student chấp nhận hoặc từ chối."
+    },
+    {
+      "index": 345,
+      "style": "Heading 3",
+      "text": "5.6. Hủy liên kết tài khoản"
+    },
+    {
+      "index": 346,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-PRN-006"
+    },
+    {
+      "index": 347,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Parent/Student thực hiện chức năng hủy liên kết tài khoản trong hệ thống Bee Academy."
+    },
+    {
+      "index": 348,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 349,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 350,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /parent/link; /student/account"
+    },
+    {
+      "index": 351,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/parent/link; /student/account] và quan sát khu vực Tài khoản."
+    },
+    {
+      "index": 353,
+      "style": "Caption",
+      "text": "Hình 32: Bước 1 trong chức năng Hủy liên kết tài khoản"
+    },
+    {
+      "index": 354,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Chưa có liên kết Parent-Student để kiểm tra hủy liên kết."
+    },
+    {
+      "index": 355,
+      "style": "Heading 2",
+      "text": "6. Hướng dẫn cho Giáo viên"
+    },
+    {
+      "index": 356,
+      "style": "Heading 3",
+      "text": "6.1. Tạo khóa học mới"
+    },
+    {
+      "index": 357,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-TCH-001"
+    },
+    {
+      "index": 358,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Teacher thực hiện chức năng tạo khóa học mới trong hệ thống Bee Academy."
+    },
+    {
+      "index": 359,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 360,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 361,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /teacher/courses"
+    },
+    {
+      "index": 362,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/teacher/courses] và quan sát khu vực Khóa học của tôi."
+    },
+    {
+      "index": 364,
+      "style": "Caption",
+      "text": "Hình 33: Bước 1 trong chức năng Tạo khóa học mới"
+    },
+    {
+      "index": 365,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Mở được biểu mẫu Tạo khóa học với đầy đủ trường bắt buộc; không tạo bản ghi thử."
+    },
+    {
+      "index": 366,
+      "style": "Heading 3",
+      "text": "6.2. Cập nhật bài giảng và tài liệu"
+    },
+    {
+      "index": 367,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-TCH-002"
+    },
+    {
+      "index": 368,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Teacher thực hiện chức năng cập nhật bài giảng và tài liệu trong hệ thống Bee Academy."
+    },
+    {
+      "index": 369,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 370,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 371,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /teacher/content"
+    },
+    {
+      "index": 372,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/teacher/content] và quan sát khu vực Bài giảng."
+    },
+    {
+      "index": 374,
+      "style": "Caption",
+      "text": "Hình 34: Bước 1 trong chức năng Cập nhật bài giảng và tài liệu"
+    },
+    {
+      "index": 375,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang Bài giảng mở được nhưng Teacher hiện có 0 khóa học để cập nhật."
+    },
+    {
+      "index": 376,
+      "style": "Heading 3",
+      "text": "6.3. Tạo bài kiểm tra"
+    },
+    {
+      "index": 377,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-TCH-003"
+    },
+    {
+      "index": 378,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Teacher thực hiện chức năng tạo bài kiểm tra trong hệ thống Bee Academy."
+    },
+    {
+      "index": 379,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 380,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 381,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /teacher/exam"
+    },
+    {
+      "index": 382,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/teacher/exam] và quan sát khu vực Bài kiểm tra."
+    },
+    {
+      "index": 384,
+      "style": "Caption",
+      "text": "Hình 35: Bước 1 trong chức năng Tạo bài kiểm tra"
+    },
+    {
+      "index": 385,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang Bài kiểm tra mở được nhưng chưa có khóa học/vị trí đề."
+    },
+    {
+      "index": 386,
+      "style": "Heading 3",
+      "text": "6.4. Tạo question bank"
+    },
+    {
+      "index": 387,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-TCH-004"
+    },
+    {
+      "index": 388,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Teacher thực hiện chức năng tạo question bank trong hệ thống Bee Academy."
+    },
+    {
+      "index": 389,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 390,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 391,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /teacher/questions"
+    },
+    {
+      "index": 392,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/teacher/questions] và quan sát khu vực Ngân hàng câu hỏi."
+    },
+    {
+      "index": 394,
+      "style": "Caption",
+      "text": "Hình 36: Bước 1 trong chức năng Tạo question bank"
+    },
+    {
+      "index": 395,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang Ngân hàng câu hỏi và các nút Tạo bank/Import hiển thị; chưa tạo bank thử."
+    },
+    {
+      "index": 396,
+      "style": "Heading 3",
+      "text": "6.5. Cập nhật question bank"
+    },
+    {
+      "index": 397,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-TCH-005"
+    },
+    {
+      "index": 398,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Teacher thực hiện chức năng cập nhật question bank trong hệ thống Bee Academy."
+    },
+    {
+      "index": 399,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 400,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 401,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /teacher/questions"
+    },
+    {
+      "index": 402,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/teacher/questions] và quan sát khu vực Ngân hàng câu hỏi."
+    },
+    {
+      "index": 404,
+      "style": "Caption",
+      "text": "Hình 37: Bước 1 trong chức năng Cập nhật question bank"
+    },
+    {
+      "index": 405,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Teacher chưa có question bank để cập nhật."
+    },
+    {
+      "index": 406,
+      "style": "Heading 3",
+      "text": "6.6. Chấm điểm bài tập và câu tự luận"
+    },
+    {
+      "index": 407,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-TCH-006"
+    },
+    {
+      "index": 408,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Teacher thực hiện chức năng chấm điểm bài tập và câu tự luận trong hệ thống Bee Academy."
+    },
+    {
+      "index": 409,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 410,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 411,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /teacher/grades"
+    },
+    {
+      "index": 412,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/teacher/grades] và quan sát khu vực Chấm điểm bài tự luận."
+    },
+    {
+      "index": 414,
+      "style": "Caption",
+      "text": "Hình 38: Bước 1 trong chức năng Chấm điểm bài tập và câu tự luận"
+    },
+    {
+      "index": 415,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang Chấm tự luận mở được nhưng có 0 lượt nộp."
+    },
+    {
+      "index": 416,
+      "style": "Heading 3",
+      "text": "6.7. Trả lời câu hỏi học sinh"
+    },
+    {
+      "index": 417,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-TCH-007"
+    },
+    {
+      "index": 418,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Teacher thực hiện chức năng trả lời câu hỏi học sinh trong hệ thống Bee Academy."
+    },
+    {
+      "index": 419,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 420,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: BLOCKED"
+    },
+    {
+      "index": 421,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /teacher/qa"
+    },
+    {
+      "index": 422,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/teacher/qa] và quan sát khu vực Hỏi & Đáp."
+    },
+    {
+      "index": 424,
+      "style": "Caption",
+      "text": "Hình 39: Bước 1 trong chức năng Trả lời câu hỏi học sinh"
+    },
+    {
+      "index": 425,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang Hỏi & Đáp mở được nhưng không có câu hỏi để trả lời."
+    },
+    {
+      "index": 426,
+      "style": "Heading 3",
+      "text": "6.8. Xem lịch sử doanh thu"
+    },
+    {
+      "index": 427,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-TCH-008"
+    },
+    {
+      "index": 428,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Teacher thực hiện chức năng xem lịch sử doanh thu trong hệ thống Bee Academy."
+    },
+    {
+      "index": 429,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 430,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PASSED"
+    },
+    {
+      "index": 431,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /teacher/revenue"
+    },
+    {
+      "index": 432,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/teacher/revenue] và quan sát khu vực Doanh thu."
+    },
+    {
+      "index": 434,
+      "style": "Caption",
+      "text": "Hình 40: Bước 1 trong chức năng Xem lịch sử doanh thu"
+    },
+    {
+      "index": 435,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang Doanh thu tải thành công, hiển thị đúng số liệu 0 và empty state giao dịch."
+    },
+    {
+      "index": 436,
+      "style": "Heading 2",
+      "text": "7. Hướng dẫn cho Quản trị viên"
+    },
+    {
+      "index": 437,
+      "style": "Heading 3",
+      "text": "7.1. Xem dashboard quản trị"
+    },
+    {
+      "index": 438,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-ADM-001"
+    },
+    {
+      "index": 439,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Admin thực hiện chức năng xem dashboard quản trị trong hệ thống Bee Academy."
+    },
+    {
+      "index": 440,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 441,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PASSED"
+    },
+    {
+      "index": 442,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /admin"
+    },
+    {
+      "index": 443,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/admin] và quan sát khu vực Tổng Quan Hệ Thống."
+    },
+    {
+      "index": 445,
+      "style": "Caption",
+      "text": "Hình 41: Bước 1 trong chức năng Xem dashboard quản trị"
+    },
+    {
+      "index": 446,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Dashboard Admin tải thành công và hiển thị KPI, bảng, biểu đồ/empty state."
+    },
+    {
+      "index": 447,
+      "style": "Heading 3",
+      "text": "7.2. Xem danh sách tài khoản người dùng"
+    },
+    {
+      "index": 448,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-ADM-002"
+    },
+    {
+      "index": 449,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Admin thực hiện chức năng xem danh sách tài khoản người dùng trong hệ thống Bee Academy."
+    },
+    {
+      "index": 450,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 451,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PASSED"
+    },
+    {
+      "index": 452,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /admin/users"
+    },
+    {
+      "index": 453,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/admin/users] và quan sát khu vực Quản Lý Tài Khoản."
+    },
+    {
+      "index": 455,
+      "style": "Caption",
+      "text": "Hình 42: Bước 1 trong chức năng Xem danh sách tài khoản người dùng"
+    },
+    {
+      "index": 456,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Danh sách tài khoản tải thành công, hiển thị người dùng, vai trò và trạng thái."
+    },
+    {
+      "index": 457,
+      "style": "Heading 3",
+      "text": "7.3. Cập nhật tài khoản người dùng"
+    },
+    {
+      "index": 458,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-ADM-003"
+    },
+    {
+      "index": 459,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Admin thực hiện chức năng cập nhật tài khoản người dùng trong hệ thống Bee Academy."
+    },
+    {
+      "index": 460,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 461,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 462,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /admin/users"
+    },
+    {
+      "index": 463,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/admin/users] và quan sát khu vực Quản Lý Tài Khoản."
+    },
+    {
+      "index": 465,
+      "style": "Caption",
+      "text": "Hình 43: Bước 1 trong chức năng Cập nhật tài khoản người dùng"
+    },
+    {
+      "index": 466,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Các hành động khóa tài khoản/cấp lại mật khẩu hiển thị; không thực thi vì làm thay đổi quyền truy cập."
+    },
+    {
+      "index": 467,
+      "style": "Heading 3",
+      "text": "7.4. Duyệt khóa học"
+    },
+    {
+      "index": 468,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-ADM-004"
+    },
+    {
+      "index": 469,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Admin thực hiện chức năng duyệt khóa học trong hệ thống Bee Academy."
+    },
+    {
+      "index": 470,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 471,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 472,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /admin/approvals"
+    },
+    {
+      "index": 473,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/admin/approvals] và quan sát khu vực Duyệt khóa học."
+    },
+    {
+      "index": 475,
+      "style": "Caption",
+      "text": "Hình 44: Bước 1 trong chức năng Duyệt khóa học"
+    },
+    {
+      "index": 476,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang Duyệt khóa học tải thành công nhưng hiện có 0 khóa chờ duyệt."
+    },
+    {
+      "index": 477,
+      "style": "Heading 3",
+      "text": "7.5. Xử lý khiếu nại từ người dùng"
+    },
+    {
+      "index": 478,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-ADM-005"
+    },
+    {
+      "index": 479,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Admin thực hiện chức năng xử lý khiếu nại từ người dùng trong hệ thống Bee Academy."
+    },
+    {
+      "index": 480,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 481,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 482,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /admin/complaints"
+    },
+    {
+      "index": 483,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/admin/complaints] và quan sát khu vực Xử Lý Khiếu Nại."
+    },
+    {
+      "index": 485,
+      "style": "Caption",
+      "text": "Hình 45: Bước 1 trong chức năng Xử lý khiếu nại từ người dùng"
+    },
+    {
+      "index": 486,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang Xử lý khiếu nại tải thành công nhưng không có khiếu nại thử để xử lý."
+    },
+    {
+      "index": 487,
+      "style": "Heading 3",
+      "text": "7.6. Xuất danh sách chi trả và xác nhận chuyển khoản giáo viên"
+    },
+    {
+      "index": 488,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-ADM-006"
+    },
+    {
+      "index": 489,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Admin thực hiện chức năng xuất danh sách chi trả và xác nhận chuyển khoản giáo viên trong hệ thống Bee Academy."
+    },
+    {
+      "index": 490,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 491,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: FAILED"
+    },
+    {
+      "index": 492,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /admin/payouts"
+    },
+    {
+      "index": 493,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/admin/payouts] và quan sát khu vực Đối Soát & Thanh Toán Giáo Viên."
+    },
+    {
+      "index": 495,
+      "style": "Caption",
+      "text": "Hình 46: Bước 1 trong chức năng Xuất danh sách chi trả và xác nhận chuyển khoản giáo viên"
+    },
+    {
+      "index": 496,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Trang chi trả hiển thị dữ liệu PENDING; nút Xuất báo cáo Excel không phát sinh file tải xuống trong 10 giây. Không bấm Xác nhận chuyển."
+    },
+    {
+      "index": 497,
+      "style": "Heading 3",
+      "text": "7.7. Gửi thông báo đến người dùng"
+    },
+    {
+      "index": 498,
+      "style": "Normal",
+      "text": "Mã yêu cầu: REQ-ADM-007"
+    },
+    {
+      "index": 499,
+      "style": "Normal",
+      "text": "Mục đích: Cho phép Admin thực hiện chức năng gửi thông báo đến người dùng trong hệ thống Bee Academy."
+    },
+    {
+      "index": 500,
+      "style": "Normal",
+      "text": "Điều kiện tiên quyết: Truy cập đúng route; đăng nhập đúng vai trò nếu chức năng được bảo vệ."
+    },
+    {
+      "index": 501,
+      "style": "Normal",
+      "text": "Trạng thái kiểm thử: PARTIAL"
+    },
+    {
+      "index": 502,
+      "style": "Normal",
+      "text": "Route/điểm truy cập: /admin/notifications"
+    },
+    {
+      "index": 503,
+      "style": "Normal",
+      "text": "Bước 1: Mở route [/admin/notifications] và quan sát khu vực Phát Thông Báo."
+    },
+    {
+      "index": 505,
+      "style": "Caption",
+      "text": "Hình 47: Bước 1 trong chức năng Gửi thông báo đến người dùng"
+    },
+    {
+      "index": 506,
+      "style": "Normal",
+      "text": "Kết quả quan sát: Biểu mẫu phát thông báo và lịch sử hiển thị; không gửi thông báo thật."
+    },
+    {
+      "index": 507,
+      "style": "Heading 1",
+      "text": "IV. CHỨC NĂNG CHƯA TRIỂN KHAI HOẶC CHƯA THỂ XÁC MINH"
+    },
+    {
+      "index": 509,
+      "style": "Heading 1",
+      "text": "V. TỔNG KẾT KIỂM THỬ VÀ QA"
+    },
+    {
+      "index": 511,
+      "style": "Normal",
+      "text": "Kết luận: dịch vụ xác thực đã hoạt động trở lại và cả 4 vai trò đăng nhập thành công. Retest ghi nhận 8 Passed, 15 Partial, 19 Blocked và 2 Failed. Không có chức năng bị đánh dấu Passed khi chưa quan sát đủ kết quả; không sử dụng ảnh giả, thanh toán thật, OTP/email thật, chuyển khoản hoặc khóa tài khoản thật."
+    }
+  ],
+  "tables": [
+    {
+      "index": 0,
+      "rows": 12,
+      "cols": 3,
+      "sample": [
+        [
+          "STT",
+          "Tệp/Gói",
+          "Ghi chú"
+        ],
+        [
+          "1",
+          "README.md",
+          "Tổng quan kiến trúc và cách chạy dự án."
+        ],
+        [
+          "2",
+          "Bee_Academy_SRS_4.18_English_Complete_With_Section_7 (1).docx",
+          "Đặc tả yêu cầu phần mềm, 44 REQ trong phạm vi COPS."
+        ],
+        [
+          "3",
+          "backend/pom.xml",
+          "Cấu hình Java 21, Spring Boot 3.2.5 và Maven."
+        ],
+        [
+          "4",
+          "frontend/package.json",
+          "Cấu hình React 19, Vite, TypeScript và Playwright."
+        ],
+        [
+          "5",
+          "backend/db/migrations/",
+          "Các script migration PostgreSQL/Supabase."
+        ],
+        [
+          "6",
+          "backend/postman/BeeAcademy.postman_collection.json",
+          "Postman collection cho backend API."
+        ],
+        [
+          "7",
+          "SRS_CODE_REVIEW_BEE_ACADEMY.md",
+          "Báo cáo đối chiếu SRS và source code."
+        ]
+      ]
+    },
+    {
+      "index": 1,
+      "rows": 37,
+      "cols": 5,
+      "sample": [
+        [
+          "REQ ID",
+          "Chức năng",
+          "Lý do/Trạng thái",
+          "Bằng chứng",
+          "Hành động đề xuất"
+        ],
+        [
+          "REQ-AUTH-001",
+          "Đăng ký tài khoản",
+          "PARTIAL",
+          "Biểu mẫu đăng ký mở được; không tạo tài khoản hoặc gửi OTP/email thật trong phiên kiểm thử.",
+          "Chuẩn bị dữ liệu test kiểm soát và hoàn tất happy path"
+        ],
+        [
+          "REQ-AUTH-003",
+          "Đăng xuất hệ thống",
+          "FAILED",
+          "Đăng xuất hoạt động ở một số màn hình nhưng không phản hồi trên trang con Giáo viên và Admin; lỗi tái hiện sau hai lần bấm.",
+          "Sửa lỗi đã tái hiện và chạy regression test"
+        ],
+        [
+          "REQ-AUTH-004",
+          "Quên mật khẩu",
+          "PARTIAL",
+          "Biểu mẫu quên mật khẩu mở được; không gửi OTP/email thật nên chưa xác minh bước hoàn tất.",
+          "Chuẩn bị dữ liệu test kiểm soát và hoàn tất happy path"
+        ],
+        [
+          "REQ-AUTH-005",
+          "Cập nhật hồ sơ cá nhân",
+          "PARTIAL",
+          "Màn hình hồ sơ Student và Teacher cùng nút Lưu hiển thị; không ghi thay đổi dữ liệu trong phiên kiểm thử.",
+          "Chuẩn bị dữ liệu test kiểm soát và hoàn tất happy path"
+        ],
+        [
+          "REQ-CRS-003",
+          "Xem bài học thử",
+          "BLOCKED",
+          "Mục lục hiển thị nhưng dữ liệu hiện tại không có bài học miễn phí; khóa học yêu cầu mua.",
+          "Bổ sung lesson isFree và kiểm thử lại"
+        ],
+        [
+          "REQ-PAY-001",
+          "Mua khóa học",
+          "BLOCKED",
+          "Giỏ hàng của tài khoản Student đang trống; chưa có khóa học được chọn để hoàn tất luồng mua.",
+          "Chuẩn bị dữ liệu/điều kiện tiên quyết rồi kiểm thử lại"
+        ],
+        [
+          "REQ-PAY-002",
+          "Thanh toán khóa học",
+          "BLOCKED",
+          "Không thực hiện thanh toán thật; chưa có đơn hàng hoặc payment-result hợp lệ để kiểm tra.",
+          "Chuẩn bị dữ liệu/điều kiện tiên quyết rồi kiểm thử lại"
+        ]
+      ]
+    },
+    {
+      "index": 2,
+      "rows": 11,
+      "cols": 3,
+      "sample": [
+        [
+          "Chỉ số",
+          "Kết quả",
+          "Ghi chú"
+        ],
+        [
+          "Tổng requirement",
+          "44",
+          "Theo phạm vi người dùng yêu cầu."
+        ],
+        [
+          "Có trong tài liệu",
+          "44",
+          "Không thiếu REQ."
+        ],
+        [
+          "Passed",
+          "8",
+          "Đăng nhập, tra cứu công khai và một số màn hình đọc/empty state đã xác minh."
+        ],
+        [
+          "Partial",
+          "15",
+          "Đã mở được UI hoặc một phần luồng nhưng không tạo dữ liệu/email/thông báo thật."
+        ],
+        [
+          "Blocked",
+          "19",
+          "Thiếu khóa học đã mua, liên kết con, question bank, bài nộp hoặc dữ liệu nghiệp vụ."
+        ],
+        [
+          "Failed",
+          "2",
+          "Đăng xuất không phản hồi ở một số trang con; xuất Excel chi trả không tạo file."
+        ],
+        [
+          "Ảnh highlighted",
+          "47",
+          "Ảnh UI local đã được khoanh vùng bằng viền đỏ và kiểm tra trước khi chèn."
+        ]
+      ]
+    }
+  ],
+  "headers": [
+    {
+      "section": 0,
+      "text": ""
+    }
+  ],
+  "footers": [
+    {
+      "section": 0,
+      "text": "1"
+    }
+  ],
+  "settings_update_fields": true
+}

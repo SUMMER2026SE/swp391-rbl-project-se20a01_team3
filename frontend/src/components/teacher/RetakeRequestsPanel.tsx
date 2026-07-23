@@ -103,6 +103,10 @@ export default function RetakeRequestsPanel() {
                   {request.attemptsUsed}/{request.maxAttempts} lượt
                 </p>
                 <p className="text-xs text-on-surface-variant mt-0.5">
+                  Yêu cầu {request.requestCount}/3 · Đã duyệt {request.approvalCount}/3 ·{' '}
+                  {request.examEnrollmentStatus}
+                </p>
+                <p className="text-xs text-on-surface-variant mt-0.5">
                   Gửi lúc {formatDateTime(request.createdAt)}
                 </p>
               </div>
@@ -128,6 +132,9 @@ export default function RetakeRequestsPanel() {
               >
                 <option value={1}>+1 lượt</option>
                 <option value={2}>+2 lượt</option>
+                <option value={3}>+3 lượt</option>
+                <option value={4}>+4 lượt</option>
+                <option value={5}>+5 lượt</option>
               </select>
               <button
                 onClick={() => handleDecide(request, true)}

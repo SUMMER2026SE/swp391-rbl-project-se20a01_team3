@@ -18,7 +18,7 @@ import {
 import { Link, useSearchParams } from 'react-router-dom';
 import DashboardHeader from '../../components/DashboardHeader';
 import PageBanner from '../../components/PageBanner';
-import type { Course as UiCourse } from '../../data/mockCourses';
+import type { Course as UiCourse } from '../../types/course';
 import { useCourseStore } from '../../store/useCourseStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import {
@@ -631,7 +631,7 @@ export default function CoursesPage() {
                     className="bg-surface-container-lowest rounded-3xl overflow-hidden shadow-sm border border-outline-variant/50 hover:shadow-lg hover:border-primary/30 transition-all group flex flex-col h-full"
                   >
                       <div className="relative h-40 overflow-hidden">
-                        <Link to={`/courses/${course.id}?learn=1`}>
+                        <Link to={`/courses/${course.id}`}>
                           <CourseCover
                             course={course}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -641,14 +641,14 @@ export default function CoursesPage() {
                         {course.grade}
                       </div>
                       <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors pointer-events-none" />
-                      <Link to={`/courses/${course.id}?learn=1`} className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Link to={`/courses/${course.id}`} className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                         <div className="w-14 h-14 bg-white/90 rounded-full flex items-center justify-center text-primary shadow-lg hover:scale-110 transition-transform">
                           <PlayCircle className="w-8 h-8" />
                         </div>
                       </Link>
                     </div>
                     <div className="p-5 flex flex-col flex-grow">
-                      <Link to={`/courses/${course.id}?learn=1`}>
+                      <Link to={`/courses/${course.id}`}>
                         <h3 className="text-lg font-bold mb-1.5 line-clamp-2 text-on-surface hover:text-primary transition-colors">{course.title}</h3>
                       </Link>
                       <button

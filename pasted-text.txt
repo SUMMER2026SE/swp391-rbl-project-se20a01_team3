@@ -1,0 +1,985 @@
+Bạn là Senior QA Engineer, Technical Writer và Browser Automation Engineer.
+
+Nhiệm vụ của bạn là tự động kiểm tra hệ thống Bee Academy, thực hiện từng chức năng trên giao diện, chụp ảnh từng bước và tạo tài liệu Final Release Document/COPS hoàn chỉnh theo cấu trúc, cách trình bày và mức độ chi tiết tương tự tài liệu mẫu:
+
+- Group5_Report5_COPS_Final_Report.docx
+
+Nguồn yêu cầu nghiệp vụ chính:
+
+- SRS_4.14_final.before-tv3-non-ai-update.docx
+
+Source code Bee Academy:
+
+- [ĐIỀN ĐƯỜNG DẪN SOURCE CODE HOẶC REPOSITORY]
+
+Thư mục đầu ra:
+
+- [ĐIỀN ĐƯỜNG DẪN OUTPUT]
+
+URL dự kiến:
+
+- Frontend: [ĐIỀN URL, ví dụ http://localhost:3000]
+- Backend API: [ĐIỀN URL, ví dụ http://localhost:8080]
+- Swagger: [ĐIỀN URL NẾU CÓ]
+
+
+Quy định ngôn ngữ:
+
+- Toàn bộ quá trình phân tích, báo cáo tiến độ và ghi log trao đổi với người dùng sử dụng tiếng Việt.
+- Tài liệu COPS đầu ra sử dụng tiếng Anh theo cấu trúc của tài liệu mẫu, trừ tên nút, menu, thông báo và nội dung giao diện phải giữ nguyên đúng ngôn ngữ đang hiển thị trên hệ thống.
+- Không tự dịch tên nút nếu bản dịch không xuất hiện trên giao diện thực tế.
+
+==================================================
+I. MỤC TIÊU
+==================================================
+
+Tạo tài liệu:
+
+BeeAcademy_COPS_Final_Report.docx
+
+Tài liệu phải bao gồm:
+
+1. Trang bìa.
+2. Mục lục tự động.
+3. Deliverable Package.
+4. Installation Guides.
+5. User Manual được chia theo từng vai trò.
+6. Hướng dẫn từng chức năng bằng các bước cụ thể.
+7. Ảnh chụp giao diện cho từng bước quan trọng.
+8. Chú thích hình ảnh thống nhất.
+9. Danh sách chức năng chưa hoàn thiện hoặc không thể kiểm tra.
+10. Kiểm tra lại toàn bộ nội dung và định dạng trước khi bàn giao.
+
+Không được chỉ tạo dàn ý hoặc hướng dẫn tôi thực hiện. Hãy trực tiếp tiến hành các bước trong môi trường được cung cấp.
+
+==================================================
+II. NGUYÊN TẮC NGUỒN DỮ LIỆU
+==================================================
+
+Sử dụng nguồn thông tin theo thứ tự ưu tiên sau:
+
+1. Hệ thống Bee Academy đang chạy thực tế.
+2. Source code và database hiện tại.
+3. README, Docker Compose, file cấu hình và tài liệu cài đặt trong repository.
+4. SRS phiên bản 4.14.
+5. Tài liệu COPS mẫu chỉ dùng để tham khảo cấu trúc và định dạng.
+
+Không được tự tạo giao diện, chức năng, nút bấm hoặc kết quả không tồn tại.
+
+Nếu SRS mô tả một chức năng nhưng source code chưa triển khai:
+
+- Không tạo ảnh giả.
+- Không mô tả như thể chức năng đã hoạt động.
+- Ghi rõ: “Not available in the current build”.
+- Thêm chức năng đó vào bảng “Unimplemented or Unverified Functions”.
+
+Nếu giao diện thực tế khác SRS:
+
+- Mô tả theo giao diện thực tế.
+- Ghi nhận khác biệt trong phần ghi chú.
+- Không tự ý sửa hoặc che giấu sự khác biệt.
+
+==================================================
+III. GIAI ĐOẠN 1 — PHÂN TÍCH TÀI LIỆU
+==================================================
+
+Trước khi chạy hệ thống, hãy đọc toàn bộ hai tài liệu đầu vào.
+
+A. Phân tích tài liệu COPS mẫu
+
+Xác định và ghi nhận:
+
+- Cấu trúc Heading 1, Heading 2 và Heading 3.
+- Cách đánh số chương.
+- Cách chia User Manual theo vai trò.
+- Cách viết phần mô tả chức năng.
+- Cách trình bày từng Step.
+- Vị trí đặt ảnh.
+- Kích thước ảnh.
+- Cách căn giữa ảnh.
+- Cách ghi Figure caption.
+- Font chữ, cỡ chữ, giãn dòng và khoảng cách đoạn.
+- Header, footer và số trang.
+- Cách trình bày bảng Deliverable Package.
+- Cách trình bày Installation Guides.
+- Cách tạo mục lục.
+
+Không thay đổi file COPS mẫu.
+
+B. Phân tích SRS Bee Academy
+
+Tạo một Feature Coverage Matrix với các cột:
+
+| REQ ID | Tên chức năng | Module | Actor | UI route dự kiến | Đã triển khai | Có thể kiểm thử | Trạng thái tài liệu | Ghi chú |
+
+Phải kiểm tra đủ 44 requirement sau:
+
+Authentication & Account:
+- REQ-AUTH-001 Đăng ký tài khoản
+- REQ-AUTH-002 Đăng nhập hệ thống
+- REQ-AUTH-003 Đăng xuất hệ thống
+- REQ-AUTH-004 Quên mật khẩu
+- REQ-AUTH-005 Cập nhật hồ sơ cá nhân
+
+Search & Course:
+- REQ-CRS-001 Tìm kiếm khóa học
+- REQ-CRS-002 Xem chi tiết khóa học
+- REQ-CRS-003 Xem bài học thử
+
+Purchase & Payment:
+- REQ-PAY-001 Mua khóa học
+- REQ-PAY-002 Thanh toán khóa học
+- REQ-PAY-003 Xem lịch sử mua khóa học
+- REQ-PAY-004 Gửi khiếu nại đến Admin
+
+Learning:
+- REQ-LRN-001 Xem danh sách khóa học đã mua
+- REQ-LRN-002 Xem bài giảng và tài liệu
+- REQ-LRN-003 Tải tài liệu học tập
+- REQ-LRN-004 Nộp bài tập
+- REQ-LRN-005 Làm bài kiểm tra
+- REQ-LRN-006 Xem điểm và tiến độ học tập
+- REQ-LRN-007 Đánh giá khóa học
+- REQ-LRN-008 Xem và tải chứng chỉ
+
+Interaction & Support:
+- REQ-INT-001 Gửi câu hỏi cho giáo viên
+- REQ-INT-002 Chat AI hỗ trợ
+- REQ-INT-003 Nhận đề xuất lộ trình từ AI
+
+Parent:
+- REQ-PRN-001 Theo dõi tiến độ học tập của con
+- REQ-PRN-002 Liên hệ và nhận thông báo từ giáo viên
+- REQ-PRN-003 Xem lịch sử thanh toán khóa học
+- REQ-PRN-004 Gửi lời mời liên kết con
+- REQ-PRN-005 Chấp nhận hoặc từ chối liên kết
+- REQ-PRN-006 Hủy liên kết tài khoản
+
+Teacher:
+- REQ-TCH-001 Tạo khóa học mới
+- REQ-TCH-002 Cập nhật bài giảng và tài liệu
+- REQ-TCH-003 Tạo bài kiểm tra
+- REQ-TCH-004 Tạo question bank
+- REQ-TCH-005 Cập nhật question bank
+- REQ-TCH-006 Chấm điểm bài tập và câu tự luận
+- REQ-TCH-007 Trả lời câu hỏi học sinh
+- REQ-TCH-008 Xem lịch sử doanh thu
+
+Admin:
+- REQ-ADM-001 Xem dashboard quản trị
+- REQ-ADM-002 Xem danh sách tài khoản người dùng
+- REQ-ADM-003 Cập nhật tài khoản người dùng
+- REQ-ADM-004 Duyệt khóa học
+- REQ-ADM-005 Xử lý khiếu nại từ người dùng
+- REQ-ADM-006 Xuất danh sách chi trả và xác nhận chuyển khoản giáo viên
+- REQ-ADM-007 Gửi thông báo đến người dùng
+
+Lưu Coverage Matrix tại:
+
+output/feature_coverage_matrix.xlsx
+
+==================================================
+IV. GIAI ĐOẠN 2 — KIỂM TRA VÀ KHỞI CHẠY HỆ THỐNG
+==================================================
+
+1. Kiểm tra cấu trúc repository.
+2. Xác định công nghệ frontend, backend và database thực tế.
+3. Đọc README và các file:
+   - pom.xml
+   - package.json
+   - application.properties
+   - application.yml
+   - .env.example
+   - docker-compose.yml
+   - migration hoặc SQL seed
+4. Không được ghi đè dữ liệu production.
+5. Chỉ chạy trên local hoặc test environment.
+6. Tạo file .env riêng cho quá trình kiểm thử nếu cần.
+7. Khởi chạy database.
+8. Khởi chạy backend.
+9. Khởi chạy frontend.
+10. Kiểm tra health endpoint và giao diện.
+11. Ghi lại chính xác các lệnh cài đặt và khởi chạy để sử dụng trong phần Installation Guides.
+
+Nếu hệ thống không chạy:
+
+- Thu thập log.
+- Thử sửa các lỗi cấu hình không làm thay đổi nghiệp vụ.
+- Không tự ý viết lại chức năng lớn.
+- Ghi lại lỗi, nguyên nhân và cách đã thử xử lý.
+- Không tiếp tục tạo ảnh giả.
+
+==================================================
+V. TÀI KHOẢN VÀ DỮ LIỆU KIỂM THỬ
+==================================================
+
+
+Lưu ý bảo mật thông tin đăng nhập:
+
+- Không lưu mật khẩu trực tiếp trong prompt, source code, log, ảnh chụp hoặc tài liệu COPS.
+- Đưa tài khoản kiểm thử vào file `.env.cops-test` hoặc secret store cục bộ và thêm file này vào `.gitignore`.
+- Trong prompt chỉ tham chiếu các biến như STUDENT_EMAIL, STUDENT_PASSWORD, PARENT_EMAIL, PARENT_PASSWORD, TEACHER_EMAIL, TEACHER_PASSWORD, ADMIN_EMAIL và ADMIN_PASSWORD.
+- Không hiển thị mật khẩu trong terminal log hoặc báo cáo bàn giao.
+
+Sử dụng các tài khoản kiểm thử sau:
+
+Guest:
+- Không cần tài khoản.
+
+Mật khẩu chung: BeeAcademy@Test2026
+Email:
+student.cops@beeacademy.test (Role: STUDENT)
+parent.cops@beeacademy.test (Role: PARENT)
+teacher.cops@beeacademy.test (Role: TEACHER)
+admin.cops@beeacademy.test (Role: ADMIN)
+
+Nếu chưa có dữ liệu phù hợp, hãy tạo dữ liệu kiểm thử tối thiểu, bao gồm:
+
+- Một tài khoản Student đang ACTIVE.
+- Một tài khoản Parent đang ACTIVE.
+- Một tài khoản Teacher đã được phê duyệt.
+- Một tài khoản Admin.
+- Một khóa học đã được phê duyệt.
+- Một khóa học đang chờ duyệt.
+- Một khóa học Student đã mua.
+- Các chapter và lesson cần thiết.
+- Ít nhất một bài tập.
+- Ít nhất một bài kiểm tra.
+- Một question bank.
+- Một câu hỏi từ Student gửi Teacher.
+- Một lời mời liên kết Parent–Student.
+- Một payment test.
+- Một complaint test.
+- Một payout record test.
+- Dữ liệu tiến độ và điểm học tập.
+
+Mọi dữ liệu phải là dữ liệu giả, không chứa thông tin thật của thành viên nhóm.
+
+Không thực hiện:
+
+- Thanh toán thật.
+- Chuyển khoản thật.
+- Gửi email thật cho người ngoài.
+- Gửi thông báo tới production.
+- Sử dụng tài khoản Google cá nhân.
+- Nhập OTP hoặc thông tin ngân hàng thật.
+
+Với VNPay/MoMo, sử dụng sandbox hoặc mock.
+
+==================================================
+VI. GIAI ĐOẠN 3 — TỰ ĐỘNG HÓA TRÌNH DUYỆT
+==================================================
+
+Ưu tiên sử dụng Playwright.
+
+Nếu Playwright không phù hợp, có thể dùng Selenium.
+
+Yêu cầu chung:
+
+- Trình duyệt: Chromium hoặc Chrome.
+- Viewport desktop: 1440 × 900.
+- Browser zoom: 100%.
+- Chờ network idle hoặc UI ổn định trước khi chụp.
+- Đóng các popup không liên quan.
+- Không để DevTools xuất hiện trong ảnh.
+- Không để con trỏ che nội dung quan trọng.
+- Không chụp thanh bookmark, thông báo hệ điều hành hoặc dữ liệu nhạy cảm.
+
+Tạo các page object hoặc helper dùng lại cho:
+
+- Login.
+- Logout.
+- Navigation.
+- Wait for loading.
+- Toast verification.
+- Screenshot capture.
+- Highlight target element.
+- Reset test state.
+
+Mỗi chức năng cần được thực hiện theo đúng luồng UI thực tế.
+
+Không chỉ gọi API để giả lập thành công nếu chức năng cần được mô tả qua UI.
+
+Có thể dùng API hoặc SQL để chuẩn bị dữ liệu đầu vào, nhưng các bước trong User Manual phải được thực hiện trên giao diện người dùng.
+
+==================================================
+VII. QUY TẮC CHỤP ẢNH VÀ KHOANH VÙNG THAO TÁC
+==================================================
+
+Mỗi bước quan trọng phải có ảnh chụp tương ứng.
+
+Chỉ chụp ảnh khi:
+
+- Người dùng cần xác định vị trí nút, menu, liên kết hoặc thẻ nội dung.
+- Giao diện đã chuyển sang màn hình hoặc trạng thái mới.
+- Người dùng phải nhập dữ liệu vào biểu mẫu.
+- Có hộp thoại hoặc popup xác nhận.
+- Có thông báo thành công, thất bại hoặc kết quả quan trọng cần quan sát.
+- Có bảng danh sách, trang chi tiết hoặc khu vực dữ liệu cần giải thích.
+
+Không cần chụp ảnh riêng cho các bước chỉ mô tả việc chờ hệ thống tải.
+
+--------------------------------------------------
+VII.1. QUY TẮC KHUNG CHỮ NHẬT ĐỎ
+--------------------------------------------------
+
+Trong mỗi ảnh hướng dẫn thao tác, phải khoanh đúng thành phần giao diện mà người dùng cần:
+
+- Nhấn hoặc chọn.
+- Nhập dữ liệu.
+- Quan sát kết quả.
+- Xác nhận trạng thái.
+- Tải lên hoặc tải xuống tệp.
+
+Khung đánh dấu phải giống phong cách của tài liệu COPS mẫu:
+
+- Hình dạng: hình chữ nhật.
+- Màu viền: đỏ rõ ràng, ưu tiên #FF0000.
+- Độ dày viền: 3 pixel.
+- Phần bên trong: trong suốt hoàn toàn.
+- Không tô nền.
+- Không chèn chữ vào bên trong khung.
+- Không thêm mũi tên nếu không thật sự cần thiết.
+- Bo góc từ 0 đến 4 pixel.
+- Khoảng cách từ viền đến phần tử được khoanh: khoảng 4–8 pixel.
+- Khung không được che tên nút, nội dung ô nhập, biểu tượng hoặc dữ liệu quan trọng.
+- Khung phải bao trọn phần tử mục tiêu.
+- Khung không được bị cắt bởi mép ảnh.
+
+Thông thường, mỗi ảnh chỉ sử dụng một khung đỏ cho một hành động chính.
+
+Chỉ dùng nhiều khung đỏ trong cùng một ảnh khi:
+
+- Người dùng cần điền nhiều trường thuộc cùng một bước.
+- Cần giải thích một nhóm điều khiển có liên quan trực tiếp.
+- Cần khoanh toàn bộ khu vực biểu mẫu như trong tài liệu COPS mẫu.
+
+Không dùng quá 3 khung trong một ảnh, trừ trường hợp khoanh các trường của một biểu mẫu hoàn chỉnh.
+
+Đối với biểu mẫu:
+
+- Khi bước yêu cầu điền toàn bộ biểu mẫu, có thể khoanh một khung lớn quanh toàn bộ nhóm trường nhập.
+- Khi bước chỉ yêu cầu nhập một trường cụ thể, chỉ khoanh trường đó.
+- Nút [Lưu], [Gửi], [Đăng ký], [Thanh toán] hoặc [Xác nhận] phải được chụp ở một bước riêng nếu đó là hành động tiếp theo.
+- Không khoanh cả biểu mẫu và nút gửi trong cùng một ảnh nếu chúng thuộc hai hành động khác nhau.
+
+--------------------------------------------------
+VII.2. PHƯƠNG PHÁP ƯU TIÊN: VẼ KHUNG TRỰC TIẾP TRÊN TRÌNH DUYỆT
+--------------------------------------------------
+
+Ưu tiên tạo khung đỏ tạm thời bằng DOM overlay trước khi chụp ảnh.
+
+Quy trình bắt buộc cho mỗi ảnh:
+
+1. Xác định đúng phần tử bằng selector ổn định.
+2. Kiểm tra phần tử đang hiển thị, có thể tương tác và thuộc đúng màn hình.
+3. Cuộn phần tử vào vùng nhìn thấy.
+4. Đặt phần tử gần giữa màn hình nếu có thể.
+5. Chờ trang, animation, dữ liệu và font tải ổn định.
+6. Lấy bounding box thực tế của phần tử sau khi cuộn.
+7. Tạo một lớp overlay tạm thời bao quanh phần tử.
+8. Mở rộng khung thêm 4–8 pixel ở mỗi cạnh.
+9. Áp dụng các thuộc tính:
+
+   - position: fixed
+   - pointer-events: none
+   - background: transparent
+   - border: 3px solid #FF0000
+   - box-sizing: border-box
+   - z-index: 2147483647
+   - border-radius: 2px
+
+10. Chờ ít nhất 200 mili-giây để khung được render hoàn chỉnh.
+11. Chụp ảnh.
+12. Xóa overlay ngay sau khi chụp.
+13. Xác nhận không còn khung cũ trước khi thực hiện bước tiếp theo.
+
+Khung chỉ được tồn tại tạm thời khi chụp ảnh.
+
+Không được:
+
+- Chỉnh sửa vĩnh viễn CSS hoặc source code của ứng dụng.
+- Thay đổi kích thước hoặc vị trí thật của phần tử.
+- Làm ảnh hưởng đến trạng thái nghiệp vụ.
+- Để overlay chặn thao tác chuột.
+- Sử dụng tọa độ cố định khi có thể lấy tọa độ từ DOM.
+
+Nếu phần tử nằm sát mép màn hình:
+
+1. Cuộn để phần tử có đủ khoảng trống xung quanh.
+2. Chờ giao diện ổn định.
+3. Lấy lại bounding box.
+4. Chỉ vẽ khung sau khi vị trí cuối cùng đã ổn định.
+
+--------------------------------------------------
+VII.3. PHƯƠNG PHÁP DỰ PHÒNG: VẼ KHUNG SAU KHI CHỤP
+--------------------------------------------------
+
+Nếu không thể tạo DOM overlay, có thể dùng Pillow hoặc OpenCV để vẽ khung lên ảnh PNG sau khi chụp.
+
+Quy trình dự phòng:
+
+1. Chụp ảnh gốc không có khung.
+2. Lấy tọa độ mục tiêu từ bounding box của phần tử trên trình duyệt.
+3. Quy đổi chính xác tọa độ theo kích thước ảnh.
+4. Vẽ hình chữ nhật chỉ có viền đỏ 3 pixel.
+5. Phần bên trong phải trong suốt, giữ nguyên ảnh gốc.
+6. Không thay đổi độ phân giải.
+7. Không kéo méo tỷ lệ.
+8. Không giảm chất lượng ảnh.
+9. Lưu ảnh đã khoanh làm ảnh chính dùng trong COPS.
+10. Lưu ảnh gốc vào thư mục nội bộ để đối chiếu.
+
+Không được dùng AI tạo sinh ảnh để tái tạo, sửa hoặc vẽ lại giao diện.
+
+Không được tự đoán vị trí khung chỉ bằng cách nhìn ảnh nếu có thể lấy tọa độ từ DOM.
+
+--------------------------------------------------
+VII.4. TRÌNH TỰ CHỤP TRƯỚC VÀ SAU THAO TÁC
+--------------------------------------------------
+
+Đối với một hành động nhấn nút hoặc chọn phần tử:
+
+1. Mở đúng màn hình.
+2. Chuẩn bị đúng dữ liệu và trạng thái.
+3. Cuộn phần tử mục tiêu vào vùng nhìn thấy.
+4. Vẽ khung đỏ quanh phần tử cần thao tác.
+5. Chụp ảnh trước khi nhấn.
+6. Xóa khung.
+7. Thực hiện thao tác.
+8. Chờ trạng thái mới xuất hiện.
+9. Nếu kết quả cần được giải thích, khoanh vùng kết quả.
+10. Chụp ảnh kết quả.
+11. Xóa khung kết quả.
+
+Ví dụ:
+
+Step 1: Nhấn [Khóa học của tôi].
+
+- Khoanh menu [Khóa học của tôi].
+- Chụp ảnh.
+- Xóa khung.
+- Nhấn menu.
+
+Step 2: Chọn khóa học.
+
+- Khoanh thẻ khóa học.
+- Chụp ảnh.
+- Xóa khung.
+- Mở khóa học.
+
+Step 3: Kiểm tra trang chi tiết.
+
+- Khoanh tiêu đề hoặc khu vực nội dung chính chỉ khi cần.
+- Chụp ảnh kết quả.
+
+--------------------------------------------------
+VII.5. QUY TẮC CHẤT LƯỢNG ẢNH
+--------------------------------------------------
+
+Trước khi chụp:
+
+1. Đợi trang tải hoàn tất.
+2. Đợi dữ liệu động và animation dừng.
+3. Cuộn phần tử chính vào vị trí dễ quan sát.
+4. Đóng popup không liên quan.
+5. Ẩn con trỏ khỏi nội dung quan trọng.
+6. Không để DevTools xuất hiện.
+7. Không chụp thanh bookmark hoặc thông báo hệ điều hành.
+8. Không để loading spinner che nội dung chính.
+9. Ẩn hoặc làm mờ token, email cá nhân, số điện thoại, địa chỉ, thông tin ngân hàng và dữ liệu nhạy cảm.
+10. Không để trình quản lý mật khẩu hoặc gợi ý autofill xuất hiện.
+
+Sau mỗi lần chụp, phải kiểm tra:
+
+1. Đúng màn hình và đúng vai trò.
+2. Đúng phần tử được khoanh.
+3. Khung bao trọn mục tiêu.
+4. Viền màu đỏ rõ ràng.
+5. Phần bên trong hoàn toàn trong suốt.
+6. Khung không che chữ hoặc biểu tượng.
+7. Khung không bị cắt ở mép ảnh.
+8. Không khoanh nhầm phần tử.
+9. Ảnh không mờ.
+10. Nội dung vẫn đọc được khi chèn vào Word.
+11. Không có dữ liệu nhạy cảm.
+12. Ảnh phù hợp chính xác với câu mô tả của Step.
+
+Nếu bất kỳ điều kiện nào không đạt:
+
+- Xóa ảnh sai.
+- Điều chỉnh vị trí hoặc selector.
+- Chụp lại ảnh.
+- Không chèn ảnh chưa đạt vào tài liệu cuối cùng.
+
+--------------------------------------------------
+VII.6. QUY TẮC ĐẶT TÊN VÀ LƯU ẢNH
+--------------------------------------------------
+
+Quy tắc đặt tên ảnh đã khoanh:
+
+screenshots/{role}/{REQ-ID}/step-{NN}-{short-description}-highlighted.png
+
+Ví dụ:
+
+screenshots/student/REQ-LRN-004/step-01-open-course-highlighted.png
+screenshots/student/REQ-LRN-004/step-02-open-assignment-highlighted.png
+screenshots/student/REQ-LRN-004/step-03-upload-file-highlighted.png
+screenshots/student/REQ-LRN-004/step-04-submit-success-highlighted.png
+
+Nếu lưu ảnh gốc để đối chiếu:
+
+screenshots-original/{role}/{REQ-ID}/step-{NN}-{short-description}-original.png
+
+Không ghi đè ảnh của bước trước.
+
+Không sử dụng cùng một ảnh cho hai bước khác nhau, trừ khi hai bước thật sự mô tả cùng một trạng thái giao diện.
+
+Không dùng ảnh giả lập, mockup, ảnh Figma hoặc ảnh tạo bằng AI để thay thế ảnh hệ thống đang chạy.
+
+Tạo thêm file:
+
+output/screenshot_manifest.xlsx
+
+Các cột:
+
+| Image ID | REQ ID | Role | Function | Step | Target selector | Target description | Original file | Highlighted file | Page title | Captured successfully | Highlight validated | Notes |
+
+--------------------------------------------------
+VII.7. QUY TẮC CHÈN ẢNH ĐÃ KHOANH VÀO WORD
+--------------------------------------------------
+
+Khi chèn ảnh vào tài liệu COPS:
+
+- Phải chèn ảnh PNG đã có khung đỏ.
+- Không chèn ảnh gốc chưa khoanh, trừ khi bước đó không có phần tử cần đánh dấu.
+- Giữ nguyên tỷ lệ ảnh.
+- Không kéo méo ảnh.
+- Không crop mất khung đỏ.
+- Không nén ảnh quá mức.
+- Căn giữa ảnh.
+- Đảm bảo chữ và khung đỏ vẫn nhìn rõ khi xem ở mức zoom thông thường.
+- Giữ ảnh và caption trên cùng một trang nếu có thể.
+- Không vẽ thêm một khung thứ hai bằng Word nếu ảnh PNG đã có khung.
+- Sau khi xuất PDF, phải kiểm tra lại khung đỏ còn rõ và không bị cắt.
+
+Định dạng caption:
+
+Figure [số hình]: Step [số bước] in [Tên chức năng]
+
+Ví dụ:
+
+Figure 18: Step 2 in Submit Assignment
+
+==================================================
+VIII. LUỒNG CHỤP ẢNH THEO VAI TRÒ
+==================================================
+
+PHÂN TÁCH AUTOMATION THEO VAI TRÒ
+
+Không chạy toàn bộ hệ thống trong một browser session duy nhất.
+
+Hãy tạo các test suite độc lập:
+
+1. common-guest-flow.spec
+2. student-flow.spec
+3. teacher-flow.spec
+4. parent-flow.spec
+5. admin-flow.spec
+6. cross-role-flow.spec
+
+Mỗi test suite phải:
+
+- Dùng tài khoản riêng đúng vai trò.
+- Có browser context riêng.
+- Xóa cookie, localStorage và sessionStorage trước khi đổi vai trò.
+- Không tái sử dụng JWT của vai trò khác.
+- Lưu ảnh vào thư mục riêng theo role.
+- Ghi log riêng.
+- Có thể chạy lại độc lập.
+- Không phụ thuộc vào thứ tự test bên trong cùng một suite.
+
+Các workflow phụ thuộc nhiều vai trò phải đặt trong cross-role-flow.spec.
+
+Cross-role workflows gồm tối thiểu:
+
+1. Teacher tạo khóa học → Admin duyệt → Student mua khóa học.
+2. Student nộp bài → Teacher chấm bài → Student xem điểm.
+3. Parent gửi liên kết → Student chấp nhận → Parent xem tiến độ.
+4. Student gửi câu hỏi → Teacher trả lời → Student xem phản hồi.
+5. Student gửi khiếu nại → Admin xử lý → Student xem kết quả.
+6. Student thanh toán → hệ thống ghi nhận doanh thu → Admin tạo payout
+   → Teacher xem trạng thái chi trả.
+
+Trước mỗi workflow, hãy chuẩn bị và xác nhận dữ liệu đầu vào.
+Sau mỗi workflow, hãy kiểm tra trạng thái cuối trong UI và database nếu có quyền truy cập.
+
+
+==================================================
+IX. CẤU TRÚC TÀI LIỆU ĐẦU RA
+==================================================
+
+Tạo tài liệu với cấu trúc sau:
+
+TRANG BÌA
+
+FPT UNIVERSITY
+
+BEE ACADEMY – ONLINE LEARNING PLATFORM
+
+FINAL RELEASE DOCUMENT
+
+[Địa điểm], [Tháng] [Năm]
+
+MỤC LỤC
+
+I. Deliverable Package
+
+Tạo bảng:
+
+| No. | File | Notes |
+
+Danh sách phải được lấy từ những file thực tế tồn tại trong repository và thư mục deliverable, chẳng hạn:
+
+- Database script hoặc migration.
+- SRS.
+- SDS hoặc Design Document.
+- Product Backlog.
+- Issues Report.
+- Project Tracking.
+- Test documentation.
+- Tagged source code.
+- Deployment configuration.
+
+Không liệt kê file không tồn tại.
+
+II. Installation Guides
+
+Viết hướng dẫn cài đặt dựa trên cách hệ thống thực sự được chạy:
+
+1. Prerequisites.
+2. Clone source code.
+3. Configure environment variables.
+4. Configure database.
+5. Run migration hoặc import seed.
+6. Run backend.
+7. Run frontend.
+8. Run bằng Docker nếu có.
+9. Truy cập hệ thống.
+10. Tài khoản test.
+11. Common issues and troubleshooting.
+
+Các câu lệnh phải chính xác và đã được kiểm chứng.
+
+III. User Manual
+
+1. Overview
+
+Viết tổng quan ngắn gọn về Bee Academy:
+
+- Mục tiêu hệ thống.
+- Đối tượng sử dụng.
+- Chức năng chính.
+- Phạm vi tài liệu.
+
+2. User Manual Guide for Guest
+
+2.1. Search Courses
+2.2. View Course Details
+2.3. View Trial Lesson
+2.4. Register
+
+3. User Manual Guide for User
+
+3.1. Login
+3.2. Logout
+3.3. Forgot Password
+3.4. Update Profile
+
+4. User Manual Guide for Student
+
+Chia thành các mục nhỏ phù hợp với các REQ Student.
+
+5. User Manual Guide for Parent
+
+Chia thành các mục nhỏ phù hợp với REQ-PRN-*.
+
+6. User Manual Guide for Teacher
+
+Chia thành các mục nhỏ phù hợp với REQ-TCH-*.
+
+7. User Manual Guide for Admin
+
+Chia thành các mục nhỏ phù hợp với REQ-ADM-*.
+
+8. Unimplemented or Unverified Functions
+
+Tạo bảng:
+
+| REQ ID | Function | Reason | Evidence | Recommended action |
+
+==================================================
+X. MẪU VIẾT CHO MỖI CHỨC NĂNG
+==================================================
+
+Mỗi chức năng phải sử dụng mẫu sau:
+
+[SECTION NUMBER]. [FUNCTION NAME]
+
+Requirement ID: [REQ-ID]
+
+This is the function to [mô tả ngắn gọn mục đích của chức năng].
+
+Preconditions:
+- [Điều kiện 1]
+- [Điều kiện 2]
+
+Step 1: [Mô tả thao tác rõ ràng].
+
+[Chèn ảnh Step 1]
+
+Figure [số hình]: Step 1 in [Function Name]
+
+Step 2: [Mô tả thao tác].
+
+[Chèn ảnh Step 2]
+
+Figure [số hình]: Step 2 in [Function Name]
+
+Step 3: [Mô tả thao tác].
+
+[Chèn ảnh Step 3]
+
+Figure [số hình]: Step 3 in [Function Name]
+
+Expected result:
+- [Kết quả người dùng nhìn thấy]
+
+Notes:
+- [Chỉ thêm khi có điểm cần lưu ý]
+
+Quy tắc viết Step:
+
+- Mỗi Step chỉ chứa một hành động chính.
+- Chỉ rõ vị trí nút hoặc menu.
+- Tên nút phải đặt trong dấu ngoặc vuông, ví dụ [Đăng nhập].
+- Giữ nguyên ngôn ngữ hiển thị trên giao diện.
+- Không sử dụng cách nói mơ hồ như “bấm vào đó” hoặc “làm như hình”.
+- Không viết code hoặc mô tả kỹ thuật backend trong User Manual.
+- Không viết thông tin chưa quan sát được trên giao diện.
+
+Ví dụ:
+
+4.4. Submit Assignment
+
+Requirement ID: REQ-LRN-004
+
+This is the function that allows a Student to submit an assignment for a lesson.
+
+Preconditions:
+- The Student has logged in.
+- The Student has purchased the course.
+- The course contains an active assignment.
+
+Step 1: From the Student dashboard, click [My Courses].
+
+[Ảnh]
+
+Figure 25: Step 1 in Submit Assignment
+
+Step 2: Select the course containing the assignment.
+
+[Ảnh]
+
+Figure 26: Step 2 in Submit Assignment
+
+Step 3: Open the assignment and click [Upload File].
+
+[Ảnh]
+
+Figure 27: Step 3 in Submit Assignment
+
+Step 4: Select a valid file and click [Submit].
+
+[Ảnh]
+
+Figure 28: Step 4 in Submit Assignment
+
+Expected result:
+- The system displays a successful submission message.
+- The submitted file and submission time are shown.
+
+==================================================
+XI. QUY TẮC ĐỊNH DẠNG WORD
+==================================================
+
+Sử dụng tài liệu COPS mẫu làm tài liệu tham chiếu định dạng.
+
+Yêu cầu tối thiểu:
+
+- Khổ giấy A4.
+- Lề đồng nhất với tài liệu mẫu.
+- Font nội dung đồng nhất.
+- Heading sử dụng Word styles, không chỉ bôi đậm thủ công.
+- Heading 1 cho chương lớn.
+- Heading 2 cho nhóm vai trò hoặc chức năng chính.
+- Heading 3 cho chức năng con.
+- Số trang ở footer.
+- Mục lục tự động.
+- Không để heading đứng một mình ở cuối trang.
+- Không để ảnh bị cắt.
+- Không để caption tách khỏi ảnh.
+- Không kéo méo tỷ lệ ảnh.
+- Ảnh căn giữa.
+- Chiều rộng ảnh tối đa trong vùng nội dung.
+- Caption căn giữa.
+- Mỗi Figure phải có số thứ tự duy nhất.
+- Bảng dài phải lặp lại hàng tiêu đề.
+- Không để một hàng bảng bị cắt khó đọc giữa hai trang.
+
+Tên ảnh và đường dẫn nội bộ không được hiển thị trong tài liệu.
+
+Sau khi hoàn tất:
+
+1. Cập nhật Table of Contents.
+2. Cập nhật số Figure.
+3. Cập nhật cross-reference nếu có.
+4. Kiểm tra tất cả Heading.
+5. Kiểm tra tất cả ảnh.
+6. Kiểm tra page break.
+7. Xuất thêm PDF để kiểm tra bố cục.
+8. Render từng trang thành ảnh để kiểm tra trực quan.
+9. Sửa mọi lỗi cắt chữ, ảnh mờ, bảng tràn lề hoặc trang trắng bất thường.
+10. Chỉ bàn giao DOCX sau khi kiểm tra trực quan toàn bộ các trang.
+
+==================================================
+XII. KIỂM TRA CHẤT LƯỢNG
+==================================================
+
+Trước khi bàn giao, tạo báo cáo QA gồm:
+
+A. Requirement coverage
+
+- Tổng số REQ trong SRS.
+- Số REQ đã có trong tài liệu.
+- Số REQ kiểm thử thành công.
+- Số REQ không thể kiểm thử.
+- Danh sách REQ còn thiếu.
+
+B. Screenshot validation
+
+- Ảnh có tồn tại.
+- Ảnh đúng chức năng và đúng vai trò.
+- Ảnh không mờ.
+- Ảnh không chứa dữ liệu nhạy cảm.
+- Đúng phần tử được khoanh bằng khung chữ nhật viền đỏ.
+- Phần bên trong khung hoàn toàn trong suốt.
+- Khung không che chữ, biểu tượng hoặc nội dung quan trọng.
+- Khung không bị cắt ở mép ảnh.
+- Không có khung cũ còn sót lại từ bước trước.
+- Caption đúng.
+- Step và ảnh khớp nhau.
+- Ảnh vẫn rõ sau khi chèn vào Word và xuất PDF.
+
+C. Document validation
+
+- Mục lục hoạt động.
+- Số trang liên tục.
+- Không có “Error! Bookmark not defined”.
+- Không có heading sai cấp.
+- Không có ảnh tràn lề.
+- Không có bảng tràn lề.
+- Không có caption trùng.
+- Không có nội dung giả định.
+- Không còn placeholder chưa điền.
+
+D. Functional validation
+
+- Mỗi chức năng được thử ít nhất một happy path.
+- Các lỗi hoặc chức năng chưa hoạt động được ghi nhận trung thực.
+- Không đánh dấu Passed nếu chưa quan sát được kết quả.
+
+==================================================
+XIII. FILE ĐẦU RA
+==================================================
+
+Tạo các file:
+
+1. output/BeeAcademy_COPS_Final_Report.docx
+2. output/BeeAcademy_COPS_Final_Report.pdf
+3. output/feature_coverage_matrix.xlsx
+4. output/screenshot_manifest.xlsx
+5. output/unimplemented_functions.xlsx
+6. output/automation_execution_log.md
+7. output/COPS_QA_Report.md
+8. output/screenshots/
+9. automation/playwright/ hoặc automation/selenium/
+
+File automation_execution_log.md phải ghi:
+
+- Thời gian bắt đầu và kết thúc.
+- Phiên bản source/commit.
+- Lệnh đã chạy.
+- Tài khoản test đã dùng, nhưng không ghi mật khẩu.
+- Chức năng đã kiểm tra.
+- Chức năng thất bại.
+- Lỗi gặp phải.
+- Cách xử lý.
+- Danh sách file đầu ra.
+
+==================================================
+XIV. QUY TẮC XỬ LÝ LỖI
+==================================================
+
+Nếu một thao tác thất bại:
+
+1. Chụp ảnh trạng thái lỗi vào thư mục logs, không đưa ảnh lỗi vào User Manual trừ khi đó là chức năng hướng dẫn xử lý lỗi.
+2. Thu thập browser console log.
+3. Thu thập network failure liên quan.
+4. Thu thập backend log.
+5. Thử lại tối đa 2 lần.
+6. Kiểm tra selector có thay đổi không.
+7. Kiểm tra dữ liệu test và quyền tài khoản.
+8. Nếu vẫn thất bại, đánh dấu BLOCKED.
+9. Không bỏ qua chức năng mà không ghi lý do.
+10. Không tạo kết quả hoặc ảnh thay thế giả.
+
+==================================================
+XV. CHẾ ĐỘ LÀM VIỆC
+==================================================
+
+Thực hiện theo các checkpoint:
+
+Checkpoint 1:
+- Hoàn thành phân tích COPS.
+- Hoàn thành Feature Coverage Matrix.
+- Báo cáo cấu trúc tài liệu dự kiến.
+
+Checkpoint 2:
+- Hệ thống đã chạy.
+- Các tài khoản và dữ liệu test đã sẵn sàng.
+- Báo cáo chức năng nào có thể kiểm thử.
+
+Checkpoint 3:
+- Hoàn thành browser automation và screenshot.
+- Báo cáo số chức năng Passed, Failed và Blocked.
+
+Checkpoint 4:
+- Tạo DOCX.
+- Xuất PDF.
+- Kiểm tra trực quan toàn bộ tài liệu.
+- Sửa lỗi.
+
+Checkpoint 5:
+- Bàn giao toàn bộ file đầu ra.
+- Báo cáo coverage cuối cùng.
+
+Không dừng lại chỉ để hỏi các câu hỏi nhỏ có thể tự xác định từ source code hoặc tài liệu.
+
+Chỉ yêu cầu tôi cung cấp thêm thông tin nếu thiếu một trong các yếu tố bắt buộc sau:
+
+- Không có source code.
+- Không có cách chạy database.
+- Thiếu thông tin đăng nhập bắt buộc.
+- Có bước yêu cầu thanh toán hoặc xác thực thật.
+- Không thể truy cập môi trường hệ thống.

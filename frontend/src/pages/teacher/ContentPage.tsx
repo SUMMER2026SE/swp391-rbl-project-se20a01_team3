@@ -17,13 +17,14 @@ import type {
 } from '../../api/teacherCourseService';
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle,
-  Bell, LogOut, Menu, X, Plus, Pencil, Trash2,
+  LogOut, Menu, X, Plus, Pencil, Trash2,
   PenSquare, Landmark, BarChart2, ClipboardList,
   GraduationCap, ChevronDown, ChevronRight, Save,
   Upload, Link2, Video, FileImage, Presentation,
   Youtube, Megaphone, Database, Loader2, CheckCircle2, AlertTriangle, UserCircle, Lock, Star,
   GripVertical,
 } from 'lucide-react';
+import BrandLogo from '../../components/BrandLogo';
 
 // ═══════════════════════════════════════════════════════════════════
 //  TYPES
@@ -638,7 +639,7 @@ export default function TeacherContentPage() {
     }
 
     if (lessonForm.videoSource === 'none' && !lessonForm.completionRule) {
-      notify.error('Vui long chon completion rule cho bai hoc khong co video');
+      notify.error('Vui lòng chọn completion rule cho bài học không có video');
       return;
     }
 
@@ -1000,24 +1001,6 @@ export default function TeacherContentPage() {
                 />
 
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-bold text-on-surface">Completion rule</span>
-                  <select
-                    value={lessonForm.completionRule}
-                    onChange={event => setLessonForm({
-                      ...lessonForm,
-                      completionRule: event.target.value as LessonFormData['completionRule'],
-                    })}
-                    className="w-full rounded-lg border border-outline-variant bg-surface-container px-4 py-2.5 text-on-surface focus:border-primary focus:outline-none"
-                  >
-                    <option value="">Auto by video when available</option>
-                    <option value="DOCUMENT_OPENED">DOCUMENT_OPENED</option>
-                    <option value="MARK_AS_COMPLETE">MARK_AS_COMPLETE</option>
-                    <option value="ASSIGNMENT_SUBMITTED">ASSIGNMENT_SUBMITTED</option>
-                    <option value="ASSIGNMENT_PASSED">ASSIGNMENT_PASSED</option>
-                  </select>
-                </label>
-
-                <label className="block">
                   <span className="mb-1.5 block text-sm font-bold text-on-surface">Nguồn video dự phòng</span>
                   <input
                     type="url"
@@ -1067,11 +1050,11 @@ export default function TeacherContentPage() {
                 </label>
 
                 <FileSlot
-                  label="Slide PDF đồng bộ"
+                  label="Slide bài giảng"
                   icon={<Presentation className="w-5 h-5" />}
-                  accept=".pdf"
+                  accept=".pdf,.pptx"
                   existingName={lessonForm.existingSlideName
-                    ? `(Slide PDF đã tải lên) ${lessonForm.existingSlideName}`
+                    ? `(Slide bài giảng đã tải lên) ${lessonForm.existingSlideName}`
                     : undefined}
                   file={slideFile}
                   onSelect={f => setSlideFile(f)}
@@ -1194,7 +1177,7 @@ export default function TeacherContentPage() {
       `}>
         <div className="p-6 flex items-center justify-between border-b border-outline-variant/20">
           <Link to="/teacher" className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-primary text-on-primary rounded-xl flex items-center justify-center font-extrabold text-lg shadow-md shadow-primary/20">B</div>
+            <BrandLogo size="sm" />
             <div>
               <p className="font-extrabold text-on-surface text-sm">Bee Academy</p>
               <p className="text-xs text-on-surface-variant font-medium">Cổng Giáo Viên</p>

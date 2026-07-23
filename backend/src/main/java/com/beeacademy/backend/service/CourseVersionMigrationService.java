@@ -275,7 +275,7 @@ public class CourseVersionMigrationService {
                 "/courses/" + course.getId());
 
         parentLinkRepository.findByIdStudentIdAndStatusOrderByInvitedAtDesc(
-                        enrollment.getStudentId(), ParentStudentLinkStatus.ACCEPTED.toDbValue())
+                        enrollment.getStudentId(), ParentStudentLinkStatus.ACTIVE.toDbValue())
                 .forEach(link -> notificationService.notify(
                         link.getParent().getId(),
                         "child_course_version_migrated",

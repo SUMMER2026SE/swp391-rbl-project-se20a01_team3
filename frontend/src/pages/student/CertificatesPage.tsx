@@ -158,7 +158,7 @@ export default function CertificatesPage() {
           <div>
             <h1 className="text-2xl font-extrabold text-on-surface">Chứng chỉ của tôi</h1>
             <p className="mt-1 text-sm text-on-surface-variant">
-              Điều kiện cấp: hoàn thành 100% khóa học và đạt bài kiểm tra cuối kỳ 2.
+              Điều kiện cấp: hoàn thành 100% khóa học và đạt đủ 4 bài kiểm tra bắt buộc.
             </p>
           </div>
           <button
@@ -191,7 +191,13 @@ export default function CertificatesPage() {
                 certificateCourses.map(course => {
                   const certificate = certificateByCourse.get(course.courseId);
                   const canDownload = certificate?.status === 'ISSUED' || certificate?.status === 'REISSUED';
-                  const eligibleForCertificate = course.progressPct >= 100 && course.finalExamPassed === true;
+                  const eligibleForCertificate = course.progressPct >= 100 && course.allRequiredExamsPassed === true;
+                  const passedExamCount = (course.requiredExams ?? [])
+                    .filter(exam => exam.status === 'passed').length;
+                  const configuredExamCount = (course.requiredExams ?? [])
+                    .filter(exam => exam.status !== 'not_configured').length;
+                  const needsReview = certificate?.status === 'NEEDS_REVIEW';
+                  const canRequestIssue = eligibleForCertificate && (!certificate || needsReview);
 
                   return (
                     <article
@@ -205,8 +211,8 @@ export default function CertificatesPage() {
                           <p className="mt-1 text-sm text-on-surface-variant">
                             Giáo viên: {course.teacherName ?? 'Đang cập nhật'} · Tiến độ {course.progressPct}%
                           </p>
-                          <p className={`mt-1 text-xs font-semibold ${course.finalExamPassed ? 'text-green-700' : 'text-amber-700'}`}>
-                            Final exam: {course.finalExamPassed ? 'Đã đạt' : 'Chưa đạt hoặc chưa có kết quả'}
+                          <p className={`mt-1 text-xs font-semibold ${course.allRequiredExamsPassed ? 'text-green-700' : 'text-amber-700'}`}>
+                            Bài thi bắt buộc: {passedExamCount}/4 đã đạt
                           </p>
                           {certificate && (
                             <span className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(certificate.status)}`}>
@@ -243,7 +249,7 @@ export default function CertificatesPage() {
                               Chia sẻ
                             </button>
                             </>
-                          ) : eligibleForCertificate && !certificate ? (
+                          ) : canRequestIssue ? (
                             <button
                               type="button"
                               onClick={() => handleIssue(course)}
@@ -251,17 +257,30 @@ export default function CertificatesPage() {
                               className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-on-primary hover:bg-primary/90 disabled:opacity-60"
                             >
                               {busyCourseId === course.courseId ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
-                              {retryBlockedCourseId === course.courseId ? 'Thử lại sau 30 giây' : 'Cấp chứng chỉ'}
+                              {retryBlockedCourseId === course.courseId
+                                ? 'Thử lại sau 30 giây'
+                                : needsReview ? 'Cấp lại chứng chỉ' : 'Cấp chứng chỉ'}
                             </button>
+                          ) : needsReview ? (
+                            <p className="max-w-xs self-center text-xs font-semibold text-amber-700">
+                              Khóa học đã đổi nội dung nên chứng chỉ cần cấp lại. Hoàn thành phần còn thiếu để nhận chứng chỉ mới.
+                            </p>
                           ) : certificate ? (
                             <p className="max-w-xs self-center text-xs font-semibold text-amber-700">
-                              {certificate.status === 'NEEDS_REVIEW'
-                                ? 'Chung chi dang duoc ra soat do ket qua hoc tap da thay doi.'
-                                : 'Chung chi da bi thu hoi va khong con hieu luc.'}
+                              Chứng chỉ đã bị thu hồi và không còn hiệu lực.
+                            </p>
+                          ) : configuredExamCount < 4 ? (
+                            <p className="max-w-xs self-center text-xs font-semibold text-amber-700">
+                              Khóa học mới có {configuredExamCount}/4 bài kiểm tra bắt buộc nên chưa thể cấp chứng chỉ. Vui lòng liên hệ giáo viên.
                             </p>
                           ) : (
                             <p className="max-w-xs self-center text-xs font-semibold text-amber-700">
-                              Hoan thanh 100% noi dung va dat final exam de xem chung chi.
+                              {course.progressPct < 100
+                                ? `Còn ${Math.max(0, 100 - course.progressPct)}% nội dung chưa hoàn thành. `
+                                : ''}
+                              {passedExamCount < 4
+                                ? `Cần đạt thêm ${4 - passedExamCount} bài thi bắt buộc.`
+                                : ''}
                             </p>
                           )}
                           <Link

@@ -7,12 +7,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCartStore } from '../store/useCartStore';
 import { useAuthStore } from '../store/useAuthStore';
-import type { Course } from '../data/mockCourses';
+import type { Course } from '../types/course';
 import { inferGradeFromSearchQuery, searchCourses } from '../api/courseService';
 import { adaptCourseSummary } from '../api/adapter';
 import { getStudentParentLinkInvitations } from '../api/studentParentLinkService';
 import { listUserNotifications, markUserNotificationRead } from '../api/notificationService';
 import type { StudentParentLinkInvitationResponse, UserNotification } from '../types/api';
+import BrandLogo from './BrandLogo';
 // ─── Highlight từ khớp trong text ────────────────────────────────────────────
 
 function HighlightedText({ text, query }: { text: string; query: string }) {
@@ -192,7 +193,6 @@ export default function DashboardHeader() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Lọc kết quả tìm kiếm từ MOCK_COURSES
   // Click outside: đóng search dropdown
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -237,7 +237,7 @@ export default function DashboardHeader() {
     setNotificationLoading(true);
     try {
       const genericSummary = await listUserNotifications(false).catch(error => {
-        console.error('Khong the tai thong bao nguoi dung:', error);
+        console.error('Không thể tải thông báo người dùng:', error);
         return { unreadCount: 0, notifications: [] as UserNotification[] };
       });
 
@@ -251,7 +251,7 @@ export default function DashboardHeader() {
           setStudentInvitationNotifications(invitations);
           studentActionCount = invitations.length;
         } catch (error) {
-          console.error('Khong the tai thong bao lien ket phu huynh:', error);
+          console.error('Không thể tải thông báo liên kết phụ huynh:', error);
           setStudentInvitationNotifications([]);
         }
       } else {
@@ -287,7 +287,10 @@ export default function DashboardHeader() {
     window.addEventListener('bee:user-notifications-updated', reloadNotifications);
     window.addEventListener('bee:student-parent-link-invitations-updated', reloadNotifications);
     window.addEventListener('focus', reloadNotifications);
-    const intervalId = window.setInterval(reloadNotifications, 60000);
+    // Tab ẩn thì bỏ qua vòng poll — listener focus refresh ngay khi quay lại.
+    const intervalId = window.setInterval(() => {
+      if (!document.hidden) reloadNotifications();
+    }, 60000);
 
     return () => {
       window.removeEventListener('bee:user-notifications-updated', reloadNotifications);
@@ -412,7 +415,7 @@ export default function DashboardHeader() {
       try {
         await markUserNotificationRead(notification.id);
       } catch (error) {
-        console.error('Khong the danh dau thong bao da doc:', error);
+        console.error('Không thể đánh dấu thông báo đã đọc:', error);
       }
       setUserNotifications(items =>
         items.map(item => item.id === notification.id ? { ...item, read: true } : item)
@@ -447,9 +450,7 @@ export default function DashboardHeader() {
 
         {/* Logo */}
         <Link to="/courses" className="flex items-center gap-3 group flex-shrink-0">
-          <div className="w-10 h-10 bg-primary text-on-primary rounded-xl flex items-center justify-center font-bold text-xl shadow-lg shadow-primary/20 group-hover:scale-105 transition-transform">
-            B
-          </div>
+          <BrandLogo size="md" className="group-hover:scale-105 transition-transform" />
           <span className="text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary hidden sm:block">
             Bee Academy
           </span>

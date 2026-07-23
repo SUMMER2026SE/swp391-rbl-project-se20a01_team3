@@ -52,9 +52,13 @@ public interface ProfileRepository extends JpaRepository<Profile, UUID> {
     /**
      * Admin: danh sách user với tìm kiếm và filter role.
      * Join auth.users để lấy email.
+     *
+     * <p>{@code AdminUserResponse.fromRow} đọc kết quả theo CHỈ SỐ VỊ TRÍ —
+     * cột mới phải thêm vào cuối SELECT, không được chèn vào giữa.
      */
     @Query(value = """
-        SELECT id, full_name, avatar_url, role, is_blocked, created_at, email
+        SELECT id, full_name, avatar_url, role, is_blocked, created_at, email,
+               teacher_approval_status, must_change_password
         FROM public.profiles_with_email
         WHERE (:role = '' OR role = :role)
           AND (:search = ''
@@ -78,4 +82,13 @@ public interface ProfileRepository extends JpaRepository<Profile, UUID> {
     long countByRole(UserRole role);
 
     List<Profile> findByRole(UserRole role);
+
+    /**
+     * Số người dùng mới theo tháng (Admin Reports — UC37). Mỗi row:
+     * [String month("yyyy-MM"), Long count]. {@code to_char} bucket theo
+     * {@code created_at}; GROUP BY 1 = theo cột output đầu tiên.
+     */
+    @Query(value = "SELECT to_char(created_at, 'YYYY-MM') AS m, COUNT(*) " +
+                   "FROM public.profiles GROUP BY 1 ORDER BY 1", nativeQuery = true)
+    List<Object[]> userGrowthByMonth();
 }

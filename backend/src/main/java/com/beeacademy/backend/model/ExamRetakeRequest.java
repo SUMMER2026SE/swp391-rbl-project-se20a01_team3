@@ -110,4 +110,9 @@ public class ExamRetakeRequest {
         this.cooldownUntil = cooldownUntil;
         this.decidedAt = Instant.now();
     }
+
+    /** Lượt duyệt đã hết hạn (quá retakeExpireAt) mà học sinh chưa dùng hết/chưa PASSED. */
+    public void expire() {
+        this.status = ExamRetakeStatus.EXPIRED;
+    }
 }

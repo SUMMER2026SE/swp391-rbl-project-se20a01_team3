@@ -8,6 +8,7 @@ export type ExamType = 'quiz' | 'chapter_test' | 'final_exam';
 
 export interface ExamQuestionPayload {
   id: string;
+  questionVersionId?: string | null;
   text: string;
   type: ExamQuestionType;
   options: string[];
@@ -68,6 +69,7 @@ export interface ExamQuestionRandomRequest {
     multipleChoiceCount?: number;
     trueFalseCount?: number;
     fillInBlankCount?: number;
+    imageQuestionCount?: number;
   }>;
 }
 
@@ -123,6 +125,25 @@ export interface TeacherExamQuestionReview {
   explanation: string | null;
 }
 
+export interface AiExamQuestionGrade {
+  questionId: string;
+  questionText: string;
+  type: string;
+  earnedPoints: number;
+  maxPoints: number;
+  studentAnswer: string | null;
+  imageUrls: string[];
+  comment: string;
+  suggestions: string[];
+}
+
+export interface AiExamFeedback {
+  overallComment: string;
+  strengths: string[];
+  improvements: string[];
+  questions: AiExamQuestionGrade[];
+}
+
 export interface TeacherExamAttemptResponse {
   id: string;
   studentId: string;
@@ -142,6 +163,9 @@ export interface TeacherExamAttemptResponse {
   passed: boolean | null;
   feedback: string | null;
   gradedAt: string | null;
+  aiScorePercent: number | null;
+  aiFeedback: AiExamFeedback | null;
+  aiGradedAt: string | null;
   status: 'pending' | 'graded';
   questions: TeacherExamQuestionReview[];
 }
@@ -181,6 +205,10 @@ export async function randomizeCourseExamQuestions(
   return unwrap(res.data);
 }
 
+// Cùng lý do với AI Scan: Gemini sinh đề lâu hơn timeout mặc định 15s của apiClient,
+// và phải lớn hơn timeout Gemini phía backend (60s) để nhận lỗi tiếng Việt từ server.
+const AI_DRAFT_CONFIG = { timeout: 90_000 };
+
 export async function generateCourseExamAiDraft(
     courseId: string,
     req: ExamAiDraftRequest,
@@ -188,6 +216,7 @@ export async function generateCourseExamAiDraft(
   const res = await apiClient.post<ApiResponse<ExamAiDraftResponse>>(
     `/api/teacher/courses/${courseId}/exams/ai-draft`,
     req,
+    AI_DRAFT_CONFIG,
   );
   return unwrap(res.data);
 }
@@ -248,10 +277,15 @@ export interface TeacherRetakeRequest {
   studentId: string;
   studentName: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  examEnrollmentStatus: 'AVAILABLE' | 'RETAKE_LOCKED' | 'RETAKE_APPROVED';
   requestedReason: string;
   extraAttempts: number | null;
   decidedReason: string | null;
   retakeExpireAt: string | null;
+  requestCount: number;
+  approvalCount: number;
+  rejectedAt: string | null;
+  cooldownUntil: string | null;
   createdAt: string;
   decidedAt: string | null;
   attemptsUsed: number;

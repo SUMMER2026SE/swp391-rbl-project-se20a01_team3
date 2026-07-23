@@ -21,7 +21,7 @@ import type { ParentLinkInvitationResponse } from '../../types/api';
 const relationshipLabels = {
   father: 'Cha',
   mother: 'Me',
-  guardian: 'Nguoi giam ho',
+  guardian: 'Người giám hộ',
 } as const;
 
 function fallbackAvatar(name: string): string {
@@ -41,7 +41,6 @@ function formatDateTime(value: string | null): string {
 function statusLabel(status: ParentLinkInvitationResponse['status']): string {
   switch (status) {
     case 'active':
-    case 'accepted':
       return 'Đã chấp nhận';
     case 'rejected':
       return 'Đã từ chối';
@@ -141,10 +140,10 @@ export default function ParentStudentLink() {
     try {
       await parentService.cancelLinkInvitation(invitation.studentId);
       setPendingInvitations(current => current.filter(item => item.studentId !== invitation.studentId));
-      notify.success(`Da huy loi moi lien ket toi ${invitation.studentName}.`);
+      notify.success(`Đã hủy lời mời liên kết tới ${invitation.studentName}.`);
     } catch (error) {
-      console.error('Loi khi huy loi moi lien ket:', error);
-      notify.error(error instanceof Error ? error.message : 'Khong the huy loi moi lien ket.');
+      console.error('Lỗi khi hủy lời mời liên kết:', error);
+      notify.error(error instanceof Error ? error.message : 'Không thể hủy lời mời liên kết.');
     } finally {
       setCancellingInvitationId(null);
     }
@@ -239,7 +238,7 @@ export default function ParentStudentLink() {
                 >
                   <option value="father">Cha</option>
                   <option value="mother">Me</option>
-                  <option value="guardian">Nguoi giam ho</option>
+                  <option value="guardian">Người giám hộ</option>
                 </select>
               </label>
 
@@ -254,13 +253,13 @@ export default function ParentStudentLink() {
             </div>
             <label className="mt-3 flex flex-col gap-1.5">
               <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
-                Ghi chu tuy chon
+                Ghi chú tùy chọn
               </span>
               <textarea
                 value={inviteNote}
                 onChange={(event) => setInviteNote(event.target.value.slice(0, 500))}
                 rows={3}
-                placeholder="Thong tin de hoc sinh xac nhan dung phu huynh."
+                placeholder="Thông tin để học sinh xác nhận đúng phụ huynh."
                 className="rounded-2xl border border-outline-variant/30 bg-surface px-4 py-3 outline-none text-sm text-on-surface placeholder:text-on-surface-variant/60 resize-none"
               />
               <span className="text-[11px] text-on-surface-variant text-right">{inviteNote.length}/500</span>

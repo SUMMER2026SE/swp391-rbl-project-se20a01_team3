@@ -46,9 +46,10 @@ public class ExamConfigSchemaMigration implements ApplicationRunner {
                     shuffle_options BOOLEAN NOT NULL DEFAULT TRUE,
                     show_answer_after_submit BOOLEAN NOT NULL DEFAULT FALSE,
                     questions JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    course_version_id UUID REFERENCES public.course_versions(id) ON DELETE SET NULL,
+                    is_draft BOOLEAN NOT NULL DEFAULT FALSE,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    CONSTRAINT uk_exam_configs_course_slot UNIQUE (course_id, slot_index)
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
                 """);
         jdbcTemplate.execute("""
@@ -70,6 +71,44 @@ public class ExamConfigSchemaMigration implements ApplicationRunner {
         jdbcTemplate.execute("""
                 ALTER TABLE public.exam_configs
                 ADD COLUMN IF NOT EXISTS course_version_id UUID REFERENCES public.course_versions(id) ON DELETE SET NULL
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.exam_configs
+                ADD COLUMN IF NOT EXISTS is_draft BOOLEAN NOT NULL DEFAULT FALSE
+                """);
+        jdbcTemplate.execute("""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'uk_exam_configs_course_slot'
+                          AND conrelid = 'public.exam_configs'::regclass
+                    ) THEN
+                        -- The old model had only one mutable row per course/slot, so
+                        -- it cannot reliably represent a historical version. Keep
+                        -- those rows as read-only legacy fallback data.
+                        UPDATE public.exam_configs
+                        SET course_version_id = NULL,
+                            is_draft = FALSE;
+                        ALTER TABLE public.exam_configs
+                            DROP CONSTRAINT uk_exam_configs_course_slot;
+                    END IF;
+                END$$
+                """);
+        jdbcTemplate.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uk_exam_configs_course_version_slot
+                ON public.exam_configs (course_id, course_version_id, slot_index)
+                WHERE course_version_id IS NOT NULL AND is_draft = FALSE
+                """);
+        jdbcTemplate.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uk_exam_configs_course_draft_slot
+                ON public.exam_configs (course_id, slot_index)
+                WHERE is_draft = TRUE
+                """);
+        jdbcTemplate.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uk_exam_configs_course_legacy_slot
+                ON public.exam_configs (course_id, slot_index)
+                WHERE course_version_id IS NULL AND is_draft = FALSE
                 """);
         jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_exam_configs_scope_start_chapter
@@ -124,6 +163,7 @@ public class ExamConfigSchemaMigration implements ApplicationRunner {
                 CREATE INDEX IF NOT EXISTS idx_exam_attempts_submitted_at
                 ON public.exam_attempts (submitted_at)
                 """);
+        ensureExamIntegritySchema();
         ensureExamRetakeRequestSchema();
     }
 
@@ -159,6 +199,56 @@ public class ExamConfigSchemaMigration implements ApplicationRunner {
         jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_exam_ai_audit_logs_course
                 ON public.exam_ai_audit_logs (course_id)
+                """);
+    }
+
+    private void ensureExamIntegritySchema() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS public.exam_integrity_events (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    client_event_id UUID NOT NULL,
+                    enrollment_id UUID NOT NULL REFERENCES public.enrollments(id) ON DELETE CASCADE,
+                    exam_id UUID NOT NULL REFERENCES public.exam_configs(id) ON DELETE CASCADE,
+                    attempt_id UUID NOT NULL REFERENCES public.exam_attempts(id) ON DELETE CASCADE,
+                    event_type VARCHAR(32) NOT NULL
+                        CHECK (event_type IN ('TAB_HIDDEN', 'FULLSCREEN_EXIT', 'WINDOW_BLUR')),
+                    violation_count INTEGER NOT NULL CHECK (violation_count > 0),
+                    occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    CONSTRAINT uk_exam_integrity_attempt_client_event
+                        UNIQUE (attempt_id, client_event_id),
+                    CONSTRAINT uk_exam_integrity_attempt_count
+                        UNIQUE (attempt_id, violation_count)
+                )
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.exam_integrity_events
+                ADD COLUMN IF NOT EXISTS client_event_id UUID,
+                ADD COLUMN IF NOT EXISTS enrollment_id UUID REFERENCES public.enrollments(id) ON DELETE CASCADE,
+                ADD COLUMN IF NOT EXISTS exam_id UUID REFERENCES public.exam_configs(id) ON DELETE CASCADE,
+                ADD COLUMN IF NOT EXISTS attempt_id UUID REFERENCES public.exam_attempts(id) ON DELETE CASCADE,
+                ADD COLUMN IF NOT EXISTS event_type VARCHAR(32),
+                ADD COLUMN IF NOT EXISTS violation_count INTEGER,
+                ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                """);
+        jdbcTemplate.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uk_exam_integrity_attempt_client_event
+                ON public.exam_integrity_events(attempt_id, client_event_id)
+                """);
+        jdbcTemplate.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uk_exam_integrity_attempt_count
+                ON public.exam_integrity_events(attempt_id, violation_count)
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exam_integrity_enrollment_created
+                ON public.exam_integrity_events(enrollment_id, occurred_at DESC)
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exam_integrity_exam_created
+                ON public.exam_integrity_events(exam_id, occurred_at DESC)
+                """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_exam_integrity_attempt_created
+                ON public.exam_integrity_events(attempt_id, occurred_at DESC)
                 """);
     }
 
