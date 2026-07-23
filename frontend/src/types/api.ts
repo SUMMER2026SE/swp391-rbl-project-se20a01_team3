@@ -201,6 +201,8 @@ export interface ChapterDetail {
 
 /** Shape đầy đủ cho detail page (GET /api/courses/{id}). */
 export interface CourseDetail extends Omit<CourseSummary, 'isFeatured'> {
+  totalDocuments: number;
+  totalChapterQuizzes: number;
   versionNo: number;
   submittedVersionNo: number;
   publishedAt: string | null;

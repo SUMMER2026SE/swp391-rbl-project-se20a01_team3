@@ -146,7 +146,6 @@ export default function MarketingView({
   const purchasedIds = useCourseStore(state => state.purchasedIds);
   const enrollCourses = useCourseStore(state => state.enrollCourses);
   const completedLessons = useCourseStore(state => state.completedLessons);
-  const completedQuizzes = useCourseStore(state => state.completedQuizzes);
   const hydrateCourseProgress = useCourseStore(state => state.hydrateCourseProgress);
   const lessonDurations = useCourseStore(state => state.lessonDurations);
   const videoPositions = useCourseStore(state => state.videoPositions);
@@ -180,10 +179,9 @@ export default function MarketingView({
     [course.lessons],
   );
   const completedList = completedLessons[course.id] ?? [];
-  const completedQuizList = completedQuizzes[course.id] ?? [];
   const progressStats = useMemo(
-    () => getCourseProgressStats(syllabusSections, completedList, completedQuizList),
-    [syllabusSections, completedList, completedQuizList],
+    () => getCourseProgressStats(syllabusSections, completedList),
+    [syllabusSections, completedList],
   );
   const progressPercent = progressStats.progressPercent;
   const isOwnedCourse = course.isEnrolled || purchasedIds.includes(course.id);
@@ -195,6 +193,16 @@ export default function MarketingView({
   const introVideoUrl = course.introVideoUrl?.trim();
   const introEmbedUrl = introVideoUrl ? toEmbeddableVideoUrl(introVideoUrl) : null;
   const introDirectUrl = introVideoUrl && isDirectVideoUrl(introVideoUrl) ? introVideoUrl : null;
+  const totalDocuments = course.totalDocuments ?? syllabusSections.reduce(
+    (total, chapter) => total + chapter.lessons.reduce(
+      (chapterTotal, lesson) => chapterTotal + (lesson.documents?.length ?? 0),
+      0,
+    ),
+    0,
+  );
+  const totalChapterQuizzes = course.totalChapterQuizzes ?? syllabusSections.filter(
+    chapter => chapter.id !== 'flat-lessons' && chapter.hasQuizConfig,
+  ).length;
 
   useEffect(() => {
     setExpandedChapterIds(new Set(syllabusSections.slice(0, 2).map(chapter => chapter.id)));
@@ -555,7 +563,7 @@ export default function MarketingView({
                         <p className="text-sm font-extrabold text-on-surface">Bạn đã sở hữu khóa học này</p>
                         <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">
                           {progressPercent > 0
-                            ? `Bạn đã hoàn thành ${progressStats.completedItems}/${progressStats.totalItems} nội dung học.`
+                            ? `Bạn đã hoàn thành ${progressStats.completedItems}/${progressStats.totalItems} bài giảng.`
                             : 'Khóa học đã sẵn sàng để bạn bắt đầu học ngay.'}
                         </p>
                       </div>
@@ -657,7 +665,7 @@ export default function MarketingView({
                 Thanh toán an toàn · Truy cập trọn đời
               </div>
               <hr className="border-outline-variant/40 my-6" />
-              {/* Tóm tắt những gì có trong khóa học — đếm từ course.lessons theo type */}
+              {/* Tóm tắt toàn khóa — tài liệu và quiz được tổng hợp từ tất cả chương. */}
               <h4 className="font-bold mb-4 text-on-surface">Khóa học bao gồm:</h4>
               <ul className="space-y-3">
                 <li className="flex items-center gap-3 text-on-surface-variant font-medium text-sm">
@@ -666,11 +674,11 @@ export default function MarketingView({
                 </li>
                 <li className="flex items-center gap-3 text-on-surface-variant font-medium text-sm">
                   <FileText className="w-5 h-5 text-primary" />
-                  {course.lessons?.filter(l => l.type === 'pdf').length ?? 0} tài liệu PDF
+                  {totalDocuments} tài liệu học tập
                 </li>
                 <li className="flex items-center gap-3 text-on-surface-variant font-medium text-sm">
                   <ClipboardList className="w-5 h-5 text-amber-500" />
-                  {course.lessons?.filter(l => l.type === 'quiz').length ?? 0} bài kiểm tra theo chương
+                  {totalChapterQuizzes} bài kiểm tra theo chương
                 </li>
                 <li className="flex items-center gap-3 text-on-surface-variant font-medium text-sm">
                   <MessageSquare className="w-5 h-5 text-primary" />
@@ -787,7 +795,13 @@ function MarketingSyllabusList({
                       const isLessonCompleted = completedList.includes(lesson.id);
                       const lessonNumber = lessonNumberById.get(lesson.id) ?? lessonIndex + 1;
                       const canPreviewLesson = Boolean(lesson.isFree && onStartPreview);
-                      const unlockState = getLessonUnlockState(course, lesson, orderedVideoLessons, completedList);
+                      const unlockState = getLessonUnlockState(
+                        course,
+                        lesson,
+                        orderedVideoLessons,
+                        completedList,
+                        lessonNumberById,
+                      );
                       const canOpen = unlockState.canOpen && (isOwnedCourse || canPreviewLesson);
                       const lockLabel = unlockState.lockedByPrerequisite
                         ? 'Hoàn thành bài trước'

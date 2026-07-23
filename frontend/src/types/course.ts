@@ -48,6 +48,8 @@ export interface Course {
   categorySlug?: string;
   totalDurationSec?: number;
   totalChapters?: number;
+  totalDocuments?: number;
+  totalChapterQuizzes?: number;
   subject: Subject;
   grade: Grade;
   image: string;
