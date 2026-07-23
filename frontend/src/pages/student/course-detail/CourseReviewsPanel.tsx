@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { isApiError } from '../../../api/client';
-import { getCourseProgress } from '../../../api/courseProgressService';
 import {
   getCourseReviews,
   upsertCourseReview,
@@ -34,8 +33,7 @@ export default function CourseReviewsPanel({
   const [savingReview, setSavingReview] = useState(false);
   const [draftRating, setDraftRating] = useState(0);
   const [draftComment, setDraftComment] = useState('');
-  const [serverProgressPct, setServerProgressPct] = useState<number | null>(null);
-  const effectiveProgressPct = serverProgressPct ?? progressPct;
+  const effectiveProgressPct = progressPct;
   const canWriteReview = canSubmitReview && (effectiveProgressPct >= 30 || Boolean(reviewSummary?.myReview));
 
   const visibleReviews = useMemo(() => {
@@ -102,31 +100,13 @@ export default function CourseReviewsPanel({
     };
   }, [courseId]);
 
-  useEffect(() => {
-    if (!canSubmitReview) {
-      setServerProgressPct(null);
-      return;
-    }
-    let cancelled = false;
-    getCourseProgress(courseId)
-      .then(progress => {
-        if (!cancelled) setServerProgressPct(progress.progressPct);
-      })
-      .catch(() => {
-        if (!cancelled) setServerProgressPct(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [canSubmitReview, courseId]);
-
   async function handleSubmitReview() {
     if (!canSubmitReview) {
       notify.error('Chỉ học sinh đã mua khóa học mới có thể đánh giá.');
       return;
     }
     if (effectiveProgressPct < 30 && !reviewSummary?.myReview) {
-      notify.error('Bạn cần hoàn thành ít nhất 30% nội dung khóa học trước khi đánh giá.');
+      notify.error('Bạn cần hoàn thành ít nhất 30% bài giảng trước khi đánh giá.');
       return;
     }
     if (draftRating < 1 || draftRating > 5) {
@@ -235,7 +215,7 @@ export default function CourseReviewsPanel({
       {canSubmitReview && !canWriteReview && isOwnedCourse && (
         <section className="rounded-3xl border border-amber-400/30 bg-amber-50 p-5">
           <p className="text-sm text-amber-900">
-            Hoàn thành ít nhất 30% nội dung khóa học để viết đánh giá. Tiến độ hiện tại: {Math.max(0, Math.round(effectiveProgressPct))}%.
+            Hoàn thành ít nhất 30% bài giảng để viết đánh giá. Tiến độ hiện tại: {Math.max(0, Math.round(effectiveProgressPct))}%.
           </p>
         </section>
       )}
