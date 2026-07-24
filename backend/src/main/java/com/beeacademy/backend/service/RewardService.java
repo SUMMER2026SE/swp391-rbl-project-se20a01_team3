@@ -4,11 +4,15 @@ import com.beeacademy.backend.dto.response.RewardWalletResponse;
 import com.beeacademy.backend.exception.BusinessException;
 import com.beeacademy.backend.exception.ResourceNotFoundException;
 import com.beeacademy.backend.model.RewardAssessmentType;
+import com.beeacademy.backend.model.ExamConfig;
+import com.beeacademy.backend.model.RewardPointTransaction;
 import com.beeacademy.backend.model.RewardVoucher;
 import com.beeacademy.backend.model.StudentRewardBalance;
 import com.beeacademy.backend.model.StudentRewardSource;
 import com.beeacademy.backend.model.StudentRewardVoucher;
 import com.beeacademy.backend.model.StudentRewardVoucherStatus;
+import com.beeacademy.backend.repository.ExamConfigRepository;
+import com.beeacademy.backend.repository.RewardPointTransactionRepository;
 import com.beeacademy.backend.repository.RewardVoucherRepository;
 import com.beeacademy.backend.repository.StudentRewardBalanceRepository;
 import com.beeacademy.backend.repository.StudentRewardSourceRepository;
@@ -31,6 +35,8 @@ public class RewardService {
     private final StudentRewardSourceRepository sourceRepository;
     private final RewardVoucherRepository voucherRepository;
     private final StudentRewardVoucherRepository studentVoucherRepository;
+    private final RewardPointTransactionRepository transactionRepository;
+    private final ExamConfigRepository examConfigRepository;
 
     public record AppliedRewardVoucher(UUID studentVoucherId, int discountAmount) {
         public static AppliedRewardVoucher none() {
@@ -68,6 +74,14 @@ public class RewardService {
         if (delta > 0) {
             balance.addPoints(delta);
             balanceRepository.save(balance);
+            ExamConfig exam = examConfigRepository.findById(examConfigId).orElse(null);
+            transactionRepository.save(RewardPointTransaction.examReward(
+                    studentId,
+                    examConfigId,
+                    exam != null ? exam.getName() : null,
+                    exam != null && exam.getCourse() != null ? exam.getCourse().getTitle() : null,
+                    normalizedScore,
+                    delta));
             log.info("Reward points +{} for student={} exam={}",
                     delta, studentId, examConfigId);
         }
@@ -98,7 +112,14 @@ public class RewardService {
 
         balance.spendPoints(voucher.getRequiredPoints());
         balanceRepository.save(balance);
-        studentVoucherRepository.save(StudentRewardVoucher.redeem(studentId, voucher));
+        StudentRewardVoucher studentVoucher = studentVoucherRepository.save(
+                StudentRewardVoucher.redeem(studentId, voucher));
+        transactionRepository.save(RewardPointTransaction.voucherRedemption(
+                studentId,
+                studentVoucher.getId(),
+                voucher.getDisplayName(),
+                voucher.getCode(),
+                voucher.getRequiredPoints()));
         return toWalletResponse(balance);
     }
 
@@ -176,11 +197,17 @@ public class RewardService {
                 .stream()
                 .map(RewardWalletResponse.StudentRewardVoucherResponse::from)
                 .toList();
+        List<RewardWalletResponse.RewardPointTransactionResponse> transactions = transactionRepository
+                .findByStudentIdOrderByCreatedAtDesc(balance.getStudentId())
+                .stream()
+                .map(RewardWalletResponse.RewardPointTransactionResponse::from)
+                .toList();
         return new RewardWalletResponse(
                 balance.getAvailablePoints(),
                 balance.getLifetimePoints(),
                 catalog,
-                vouchers);
+                vouchers,
+                transactions);
     }
 
     private int toRewardPoints(double scorePercent) {

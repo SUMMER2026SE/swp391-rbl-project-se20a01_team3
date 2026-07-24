@@ -109,7 +109,7 @@ public class CourseReviewService {
         if (progressPct < 30) {
             throw new BusinessException(
                     "COURSE_REVIEW_PROGRESS_NOT_ELIGIBLE",
-                    "Bạn cần hoàn thành ít nhất 30% nội dung khóa học trước khi đánh giá.",
+                    "Bạn cần hoàn thành ít nhất 30% bài giảng trước khi đánh giá.",
                     HttpStatus.FORBIDDEN
             );
         }

@@ -243,6 +243,17 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
   const [resumePositionSec, setResumePositionSec] = useState(0);
   const [activeTab, setActiveTab] = useState<'overview' | 'qa' | 'notes' | 'assignments' | 'reviews'>('overview');
+  const activeLessonDisplayTitle = useMemo(() => {
+    if (!activeLesson) return '';
+    const lessonNumber = lessonNumberById.get(activeLesson.id);
+    if (lessonNumber == null) return activeLesson.title;
+    const titleWithoutStoredNumber = activeLesson.title
+      .replace(/^Bài\s*\d+\s*[:.-]?\s*/i, '')
+      .trim();
+    return titleWithoutStoredNumber
+      ? `Bài ${lessonNumber}: ${titleWithoutStoredNumber}`
+      : `Bài ${lessonNumber}`;
+  }, [activeLesson, lessonNumberById]);
   const {
     qaInput, setQaInput,
     qaImageFile, setQaImageFile,
@@ -536,14 +547,20 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
 
   // Tính toán tiến độ học tập thực tế dựa trên completedLessons
   const progressStats = useMemo(
-    () => getCourseProgressStats(chapterSections, completedList, completedQuizList),
-    [chapterSections, completedList, completedQuizList],
+    () => getCourseProgressStats(chapterSections, completedList),
+    [chapterSections, completedList],
   );
   const progressPercent = progressStats.progressPercent;
 
   // Router điều hướng click trong sidebar
   function handleLessonClick(lesson: Lesson) {
-    const unlockState = getLessonUnlockState(course, lesson, orderedVideoLessons, completedList);
+    const unlockState = getLessonUnlockState(
+      course,
+      lesson,
+      orderedVideoLessons,
+      completedList,
+      lessonNumberById,
+    );
     if (!unlockState.canOpen) {
       notify.error(unlockState.reason ?? 'Bài học này hiện chưa thể mở.');
       return;
@@ -1141,6 +1158,9 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
   const questionsList = discussionThreads.filter(
     thread => thread.lessonId === activeLesson?.id,
   );
+  const publicQaThreadsForActiveLesson = publicQaThreads.filter(
+    thread => thread.lessonId === activeLesson?.id,
+  );
 
   return (
     <div className="h-screen bg-surface flex flex-col font-sans overflow-hidden">
@@ -1236,7 +1256,7 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
                   <EmbeddedVideoPlayer
                     key={`${activeLesson.id}-${playbackRate}-${usingVideoFallback ? 'fallback' : 'primary'}`}
                     url={playableVideoUrl}
-                    title={activeLesson.title}
+                    title={activeLessonDisplayTitle}
                     initialPositionSec={resumePositionSec}
                     maxAllowedPositionSec={maxSeekablePosition}
                     playbackRate={playbackRate}
@@ -1318,7 +1338,7 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
                   isPreviewMode ? (
                     <iframe
                       src={activeLesson.url}
-                      title={`Tài liệu học thử ${activeLesson.title}`}
+                      title={`Tài liệu học thử ${activeLessonDisplayTitle}`}
                       className="absolute inset-0 h-full w-full bg-white"
                     />
                   ) : (
@@ -1540,7 +1560,7 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
           <div className="p-6 md:p-10 max-w-5xl mx-auto w-full">
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8">
               <div>
-                <h2 className="text-3xl font-extrabold text-on-surface mb-2">{activeLesson?.title}</h2>
+                <h2 className="text-3xl font-extrabold text-on-surface mb-2">{activeLessonDisplayTitle}</h2>
                 <div className="text-on-surface-variant font-medium flex items-center gap-2">
                   <span>Bài học</span> ·
                   <span className="text-primary">{activeLesson?.type === 'video' ? 'Video giảng' : 'Tài liệu lý thuyết'}</span>
@@ -1590,7 +1610,7 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
                 {activeTab === 'overview' && (
                   <motion.div key="overview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
                     <p className="text-on-surface-variant leading-relaxed text-lg">
-                      Nội dung chi tiết của {activeLesson?.title}. Chú ý theo dõi kỹ các ví dụ thực hành trong bài. Sau khi học xong, hãy làm bài kiểm tra cuối chương để củng cố kiến thức.
+                      Nội dung chi tiết của {activeLessonDisplayTitle}. Chú ý theo dõi kỹ các ví dụ thực hành trong bài. Sau khi học xong, hãy làm bài kiểm tra cuối chương để củng cố kiến thức.
                     </p>
                     {activeLesson?.type === 'pdf' && (
                       <div className="rounded-2xl border border-outline-variant/30 bg-surface-container p-4 space-y-3">
@@ -1703,7 +1723,7 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
                               Câu hỏi được gửi trực tiếp tới giáo viên phụ trách khóa học.
                             </p>
                             {activeLesson && (
-                              <p className="mt-1 text-xs font-semibold text-primary">Bài đang hỏi: {activeLesson.title}</p>
+                              <p className="mt-1 text-xs font-semibold text-primary">Bài đang hỏi: {activeLessonDisplayTitle}</p>
                             )}
                           </div>
                           <Link to="/messages" className="text-xs font-bold text-primary hover:underline">
@@ -1775,20 +1795,20 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
                       <div className="space-y-4">
                         <div className="flex items-center justify-between gap-3">
                           <div>
-                            <h4 className="font-extrabold text-on-surface">Câu hỏi công khai trong khóa học</h4>
-                            <p className="mt-1 text-xs text-on-surface-variant">Chỉ hiển thị câu hỏi Public của học sinh đã học cùng khóa.</p>
+                            <h4 className="font-extrabold text-on-surface">Câu hỏi công khai của bài học</h4>
+                            <p className="mt-1 text-xs text-on-surface-variant">Chỉ hiển thị câu hỏi công khai gắn với bài đang học.</p>
                           </div>
-                          <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">{publicQaThreads.length}</span>
+                          <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">{publicQaThreadsForActiveLesson.length}</span>
                         </div>
                         {loadingPublicQa ? (
                           <div className="flex justify-center py-10 text-primary"><Loader2 className="h-6 w-6 animate-spin" /></div>
-                        ) : publicQaThreads.length === 0 ? (
+                        ) : publicQaThreadsForActiveLesson.length === 0 ? (
                           <div className="rounded-2xl border border-dashed border-outline-variant/40 py-10 text-center text-sm text-on-surface-variant">
-                            Chưa có câu hỏi công khai nào trong khóa học.
+                            Chưa có câu hỏi công khai nào cho bài học này.
                           </div>
                         ) : (
                           <div className="space-y-3">
-                            {publicQaThreads.map(thread => {
+                            {publicQaThreadsForActiveLesson.map(thread => {
                               const firstMessage = thread.messages[0];
                               const teacherReply = [...thread.messages]
                                 .reverse()
@@ -1844,7 +1864,7 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
                       <h4 className="font-bold text-sm text-on-surface">Tạo chủ đề thảo luận</h4>
                       {activeLesson && (
                         <p className="text-xs text-on-surface-variant font-medium">
-                          Bài hiện tại: <span className="text-on-surface">{activeLesson.title}</span>
+                          Bài hiện tại: <span className="text-on-surface">{activeLessonDisplayTitle}</span>
                         </p>
                       )}
                       <div className="flex gap-3">
@@ -2297,7 +2317,13 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
                                   const isCompleted = lesson.type === 'quiz'
                                     ? completedQuizList.includes(lesson.id)
                                     : completedList.includes(lesson.id);
-                                  const unlockState = getLessonUnlockState(course, lesson, orderedVideoLessons, completedList);
+                                  const unlockState = getLessonUnlockState(
+                                    course,
+                                    lesson,
+                                    orderedVideoLessons,
+                                    completedList,
+                                    lessonNumberById,
+                                  );
                                   const isLocked = !unlockState.canOpen;
                                   const lockLabel = unlockState.lockedByPrerequisite
                                     ? 'Hoàn thành bài trước'

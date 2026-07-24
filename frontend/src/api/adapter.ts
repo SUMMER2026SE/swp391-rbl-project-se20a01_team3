@@ -184,6 +184,8 @@ export function adaptCourseDetail(detail: ApiCourseDetail): UiCourse {
     categorySlug: detail.categorySlug ?? undefined,
     totalDurationSec: detail.totalDurationSec,
     totalChapters: detail.totalChapters,
+    totalDocuments: detail.totalDocuments,
+    totalChapterQuizzes: detail.totalChapterQuizzes,
     subject: SLUG_TO_SUBJECT[detail.categorySlug ?? ''] ?? 'Tất cả',
     grade: gradesToLabel(detail.grades),
     image: detail.thumbnailUrl ?? '',

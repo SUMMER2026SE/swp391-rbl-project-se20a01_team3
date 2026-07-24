@@ -192,6 +192,7 @@ export function getLessonUnlockState(
   lesson: Lesson,
   orderedVideoLessons: Lesson[],
   completedLessonIds: string[],
+  lessonNumberById?: ReadonlyMap<string, number>,
 ): {
   canOpen: boolean;
   reason: string | null;
@@ -246,9 +247,19 @@ export function getLessonUnlockState(
     };
   }
 
+  const previousLessonNumber = lessonNumberById?.get(previousVideoLesson.id);
+  const previousLessonTitle = previousVideoLesson.title
+    .replace(/^Bài\s*\d+\s*[:.-]?\s*/i, '')
+    .trim();
+  const previousLessonLabel = previousLessonNumber == null
+    ? previousVideoLesson.title
+    : previousLessonTitle
+      ? `Bài ${previousLessonNumber}: ${previousLessonTitle}`
+      : `Bài ${previousLessonNumber}`;
+
   return {
     canOpen: false,
-    reason: `Hoàn thành video "${previousVideoLesson.title}" trước để mở bài này.`,
+    reason: `Hoàn thành video "${previousLessonLabel}" trước để mở bài này.`,
     lockedByPurchase: false,
     lockedByPrerequisite: true,
   };
@@ -347,37 +358,23 @@ export function preloadLessonDuration(
 }
 
 export function getCourseProgressStats(
-  chapters: Array<{ id: string; hasQuizConfig: boolean; lessons: Lesson[] }>,
+  chapters: Array<{ lessons: Lesson[] }>,
   completedLessonIds: string[],
-  completedQuizIds: string[],
 ) {
   const videoIds = new Set<string>();
-  const quizIds = new Set<string>();
   const completedLessonSet = new Set(completedLessonIds);
-  const completedQuizSet = new Set(completedQuizIds);
 
   chapters.forEach((chapter) => {
-    let hasInlineQuizLesson = false;
-
     chapter.lessons.forEach((lesson) => {
       if (lesson.type === 'video') {
         videoIds.add(lesson.id);
       }
-      if (lesson.type === 'quiz') {
-        quizIds.add(lesson.id);
-        hasInlineQuizLesson = true;
-      }
     });
-
-    if (chapter.hasQuizConfig && chapter.id !== 'flat-lessons' && !hasInlineQuizLesson) {
-      quizIds.add(chapter.id);
-    }
   });
 
   const completedVideoCount = [...videoIds].filter((id) => completedLessonSet.has(id)).length;
-  const completedQuizCount = [...quizIds].filter((id) => completedQuizSet.has(id)).length;
-  const totalItems = videoIds.size + quizIds.size;
-  const completedItems = completedVideoCount + completedQuizCount;
+  const totalItems = videoIds.size;
+  const completedItems = completedVideoCount;
 
   return {
     totalItems,

@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  ArrowDownRight,
   ArrowLeft,
+  ArrowUpRight,
   BadgePercent,
   CheckCircle2,
   Coins,
+  History,
   Loader2,
   RefreshCw,
   ShieldCheck,
@@ -16,6 +19,7 @@ import DashboardHeader from '../../components/DashboardHeader';
 import {
   getRewardWallet,
   redeemRewardVoucher,
+  type RewardPointTransaction,
   type RewardVoucher,
   type RewardWallet,
 } from '../../api/rewardService';
@@ -149,6 +153,51 @@ function VoucherCatalogCard({
         )}
         {canRedeem ? 'Đổi voucher' : 'Chưa đủ điểm'}
       </button>
+    </article>
+  );
+}
+
+function PointHistoryItem({ transaction }: { transaction: RewardPointTransaction }) {
+  const isCredit = transaction.pointsDelta > 0;
+
+  return (
+    <article className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div className="flex min-w-0 items-start gap-3">
+        <div
+          className={`mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${
+            isCredit ? 'bg-green-500/10 text-green-700' : 'bg-rose-500/10 text-rose-700'
+          }`}
+        >
+          {isCredit ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownRight className="h-5 w-5" />}
+        </div>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-extrabold text-on-surface">{transaction.title}</h3>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                isCredit ? 'bg-green-500/10 text-green-700' : 'bg-rose-500/10 text-rose-700'
+              }`}
+            >
+              {isCredit ? 'Cộng từ bài kiểm tra' : 'Trừ khi đổi voucher'}
+            </span>
+          </div>
+          <p className="mt-1 text-sm font-medium text-on-surface-variant">
+            {transaction.description || (isCredit ? 'Bài kiểm tra trong khóa học' : 'Quy đổi điểm')}
+            {transaction.scorePercent != null
+              ? ` · Kết quả ${transaction.scorePercent.toLocaleString('vi-VN')}/100`
+              : ''}
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-shrink-0 items-center justify-between gap-4 pl-[52px] sm:block sm:pl-0 sm:text-right">
+        <p className={`text-lg font-extrabold ${isCredit ? 'text-green-700' : 'text-rose-700'}`}>
+          {isCredit ? '+' : ''}
+          {formatNumber(transaction.pointsDelta)} điểm
+        </p>
+        <time className="mt-1 block text-xs font-medium text-on-surface-variant">
+          {formatDateTime(transaction.createdAt)}
+        </time>
+      </div>
     </article>
   );
 }
@@ -290,6 +339,34 @@ export default function RewardsPage() {
                   Dùng voucher
                 </Link>
               </div>
+            </section>
+
+            <section className="mb-6">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-extrabold text-on-surface">Lịch sử điểm</h2>
+                  <p className="mt-1 text-sm text-on-surface-variant">
+                    Các lần cộng điểm bài kiểm tra và trừ điểm khi quy đổi voucher.
+                  </p>
+                </div>
+                <span className="flex-shrink-0 text-sm font-semibold text-on-surface-variant">
+                  {(wallet.transactions ?? []).length} giao dịch
+                </span>
+              </div>
+              {(wallet.transactions ?? []).length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-outline-variant/60 bg-surface-container-lowest p-8 text-center">
+                  <History className="mx-auto mb-3 h-10 w-10 text-on-surface-variant/45" />
+                  <p className="text-sm font-semibold text-on-surface-variant">
+                    Chưa có giao dịch điểm nào.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-outline-variant/30 overflow-hidden rounded-2xl border border-outline-variant/35 bg-surface-container-lowest shadow-sm">
+                  {(wallet.transactions ?? []).map(transaction => (
+                    <PointHistoryItem key={transaction.id} transaction={transaction} />
+                  ))}
+                </div>
+              )}
             </section>
 
             <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
