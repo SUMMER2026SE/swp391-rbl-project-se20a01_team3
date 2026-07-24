@@ -159,6 +159,12 @@ function VoucherCatalogCard({
 
 function PointHistoryItem({ transaction }: { transaction: RewardPointTransaction }) {
   const isCredit = transaction.pointsDelta > 0;
+  const transactionLabel =
+    transaction.type === 'EXAM_REWARD'
+      ? 'Cộng từ bài kiểm tra'
+      : transaction.type === 'VOUCHER_REDEMPTION'
+        ? 'Trừ khi đổi voucher'
+        : 'Điều chỉnh số dư';
 
   return (
     <article className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -178,11 +184,16 @@ function PointHistoryItem({ transaction }: { transaction: RewardPointTransaction
                 isCredit ? 'bg-green-500/10 text-green-700' : 'bg-rose-500/10 text-rose-700'
               }`}
             >
-              {isCredit ? 'Cộng từ bài kiểm tra' : 'Trừ khi đổi voucher'}
+              {transactionLabel}
             </span>
           </div>
           <p className="mt-1 text-sm font-medium text-on-surface-variant">
-            {transaction.description || (isCredit ? 'Bài kiểm tra trong khóa học' : 'Quy đổi điểm')}
+            {transaction.description ||
+              (transaction.type === 'EXAM_REWARD'
+                ? 'Bài kiểm tra trong khóa học'
+                : transaction.type === 'VOUCHER_REDEMPTION'
+                  ? 'Quy đổi điểm'
+                  : 'Đồng bộ với số dư hiện tại')}
             {transaction.scorePercent != null
               ? ` · Kết quả ${transaction.scorePercent.toLocaleString('vi-VN')}/100`
               : ''}
@@ -227,6 +238,21 @@ export default function RewardsPage() {
     () => wallet?.vouchers.filter(voucher => voucher.status === 'AVAILABLE').length ?? 0,
     [wallet],
   );
+
+  const historyTotals = useMemo(() => {
+    const transactions = wallet?.transactions ?? [];
+    return transactions.reduce(
+      (totals, transaction) => {
+        if (transaction.pointsDelta > 0) {
+          totals.credits += transaction.pointsDelta;
+        } else {
+          totals.debits += Math.abs(transaction.pointsDelta);
+        }
+        return totals;
+      },
+      { credits: 0, debits: 0 },
+    );
+  }, [wallet]);
 
   async function handleRedeem(voucherId: string) {
     setRedeemingId(voucherId);
@@ -349,9 +375,12 @@ export default function RewardsPage() {
                     Các lần cộng điểm bài kiểm tra và trừ điểm khi quy đổi voucher.
                   </p>
                 </div>
-                <span className="flex-shrink-0 text-sm font-semibold text-on-surface-variant">
-                  {(wallet.transactions ?? []).length} giao dịch
-                </span>
+                <div className="flex-shrink-0 text-right text-sm font-semibold text-on-surface-variant">
+                  <p>{(wallet.transactions ?? []).length} giao dịch</p>
+                  <p className="mt-1 text-xs font-medium">
+                    Cộng {formatNumber(historyTotals.credits)} · Trừ {formatNumber(historyTotals.debits)} điểm
+                  </p>
+                </div>
               </div>
               {(wallet.transactions ?? []).length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-outline-variant/60 bg-surface-container-lowest p-8 text-center">

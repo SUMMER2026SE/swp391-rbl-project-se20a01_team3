@@ -38,6 +38,9 @@ public class RewardPointTransaction {
     @Column(name = "reference_id", updatable = false)
     private UUID referenceId;
 
+    @Column(name = "adjustment_key", unique = true, updatable = false)
+    private String adjustmentKey;
+
     @Column(name = "title", nullable = false, updatable = false)
     private String title;
 
@@ -89,6 +92,26 @@ public class RewardPointTransaction {
                 studentVoucherId,
                 fallback(voucherName, "Voucher"),
                 blankToNull(voucherCode));
+    }
+
+    public static RewardPointTransaction balanceAdjustment(
+            UUID studentId,
+            String adjustmentKey,
+            int pointsDelta,
+            String title,
+            String description) {
+        if (pointsDelta == 0) {
+            throw new IllegalArgumentException("Balance adjustment cannot be zero");
+        }
+        RewardPointTransaction transaction = base(
+                studentId,
+                RewardPointTransactionType.BALANCE_ADJUSTMENT,
+                pointsDelta,
+                null,
+                fallback(title, "Điều chỉnh số dư điểm"),
+                blankToNull(description));
+        transaction.adjustmentKey = adjustmentKey;
+        return transaction;
     }
 
     private static RewardPointTransaction base(
