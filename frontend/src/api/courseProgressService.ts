@@ -313,6 +313,10 @@ function localProgress(courseId: string): CourseProgress {
     progressPct: 0,
     completedLessonIds: state.completedLessons[courseId] ?? [],
     completedQuizIds: state.completedQuizzes[courseId] ?? [],
+    completedExamIds: [],
+    completedItems: (state.completedLessons[courseId]?.length ?? 0)
+      + (state.completedQuizzes[courseId]?.length ?? 0),
+    totalItems: 0,
   };
 }
 

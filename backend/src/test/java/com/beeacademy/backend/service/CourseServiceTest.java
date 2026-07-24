@@ -85,7 +85,7 @@ class CourseServiceTest {
         when(courseReviewRepository.summarizeByCourseIds(
                 courseIds, CourseReviewModerationStatus.PUBLISHED)).thenReturn(List.of());
         when(enrollmentRepository.countGroupedByCourseId(courseIds)).thenReturn(List.of());
-        when(courseProgressService.calculateLessonProgressForCourses(studentId, courseIds))
+        when(courseProgressService.calculateProgressForCourses(studentId, courseIds))
                 .thenReturn(Map.of(courseId, progressPct));
         when(certificateEligibilityService.evaluate(enrollment))
                 .thenReturn(new CertificateEligibilityService.Eligibility(
@@ -131,7 +131,7 @@ class CourseServiceTest {
         when(courseReviewRepository.summarizeByCourseIds(
                 courseIds, CourseReviewModerationStatus.PUBLISHED)).thenReturn(List.of());
         when(enrollmentRepository.countGroupedByCourseId(courseIds)).thenReturn(List.of());
-        when(courseProgressService.calculateLessonProgressForCourses(studentId, courseIds))
+        when(courseProgressService.calculateProgressForCourses(studentId, courseIds))
                 .thenReturn(Map.of(courseId, 0));
         when(certificateEligibilityService.evaluate(latestEnrollment))
                 .thenReturn(new CertificateEligibilityService.Eligibility(

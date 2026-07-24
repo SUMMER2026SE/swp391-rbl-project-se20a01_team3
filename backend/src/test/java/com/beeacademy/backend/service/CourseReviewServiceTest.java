@@ -50,7 +50,7 @@ class CourseReviewServiceTest {
         UUID courseId = UUID.randomUUID();
         UUID studentId = UUID.randomUUID();
         when(enrollmentRepository.existsByStudentIdAndCourseId(studentId, courseId)).thenReturn(true);
-        when(courseProgressService.calculateLessonProgressForCourses(studentId, List.of(courseId)))
+        when(courseProgressService.calculateProgressForCourses(studentId, List.of(courseId)))
                 .thenReturn(Map.of(courseId, 29));
 
         assertThatThrownBy(() -> service.upsertCourseReview(
@@ -73,7 +73,7 @@ class CourseReviewServiceTest {
         when(course.getId()).thenReturn(courseId);
         when(course.getTeacher()).thenReturn(teacher);
         when(enrollmentRepository.existsByStudentIdAndCourseId(studentId, courseId)).thenReturn(true);
-        when(courseProgressService.calculateLessonProgressForCourses(studentId, List.of(courseId)))
+        when(courseProgressService.calculateProgressForCourses(studentId, List.of(courseId)))
                 .thenReturn(Map.of(courseId, 30));
         when(courseRepository.findById(courseId)).thenReturn(Optional.of(course));
         when(profileRepository.findById(studentId)).thenReturn(Optional.of(student));
@@ -109,7 +109,7 @@ class CourseReviewServiceTest {
                 CourseReviewModerationStatus.PUBLISHED);
 
         when(enrollmentRepository.existsByStudentIdAndCourseId(studentId, courseId)).thenReturn(true);
-        when(courseProgressService.calculateLessonProgressForCourses(studentId, List.of(courseId)))
+        when(courseProgressService.calculateProgressForCourses(studentId, List.of(courseId)))
                 .thenReturn(Map.of(courseId, 75));
         when(courseRepository.findById(courseId)).thenReturn(Optional.of(course));
         when(profileRepository.findById(studentId)).thenReturn(Optional.of(student));

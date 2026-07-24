@@ -7,6 +7,9 @@ public record CourseProgressResponse(
         UUID courseId,
         Integer progressPct,
         List<UUID> completedLessonIds,
-        List<UUID> completedQuizIds
+        List<UUID> completedQuizIds,
+        List<UUID> completedExamIds,
+        Integer completedItems,
+        Integer totalItems
 ) {
 }

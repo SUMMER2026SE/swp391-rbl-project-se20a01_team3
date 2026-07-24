@@ -47,6 +47,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.regex.Matcher;
@@ -74,6 +75,7 @@ public class CourseProgressService {
     private final OrderItemRepository orderItemRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final CourseVersionSnapshotService courseVersionSnapshotService;
+    private final ExamConfigVersionService examConfigVersionService;
     private final AssignmentSubmissionRepository assignmentSubmissionRepository;
     private final StudentVideoProgressRepository studentVideoProgressRepository;
 
@@ -330,50 +332,45 @@ public class CourseProgressService {
                 .stream()
                 .filter(enrollment -> courseIds.contains(enrollment.getCourseId()))
                 .collect(Collectors.toMap(Enrollment::getCourseId, enrollment -> enrollment));
+        Map<UUID, Set<UUID>> requiredExamIdsByCourse = courseIds.stream()
+                .collect(Collectors.toMap(
+                        courseId -> courseId,
+                        courseId -> requiredExamIds(enrollmentByCourse.get(courseId))));
+        Set<UUID> submittedExamIds = examAttemptRepository
+                .findSubmittedByStudentAndCourseIds(studentId, courseIds)
+                .stream()
+                .map(ExamAttempt::getExamConfig)
+                .filter(Objects::nonNull)
+                .map(ExamConfig::getId)
+                .collect(Collectors.toSet());
 
         return courseIds.stream().collect(Collectors.toMap(
                 courseId -> courseId,
                 courseId -> {
-                    long total = resolveProgressItemCount(
+                    long learningItemTotal = resolveProgressItemCount(
                             enrollmentByCourse.get(courseId),
                             Math.max(totalByCourse.getOrDefault(courseId, 0L), 0L));
+                    Set<UUID> requiredExamIds = requiredExamIdsByCourse.getOrDefault(courseId, Set.of());
+                    long total = learningItemTotal + requiredExamIds.size();
                     if (total == 0) return 0;
-                    long completed = Math.min(completedByCourse.getOrDefault(courseId, 0L), total);
+                    long completedLearningItems = Math.min(
+                            completedByCourse.getOrDefault(courseId, 0L),
+                            learningItemTotal);
+                    long completedExams = requiredExamIds.stream()
+                            .filter(submittedExamIds::contains)
+                            .count();
+                    long completed = completedLearningItems + completedExams;
                     return (int) Math.round((completed * 100.0) / total);
                 }
         ));
     }
 
-    /**
-     * Tiến độ dùng riêng cho UC13: số bài học đã hoàn thành / tổng số bài học.
-     * Quiz không được tính vào mẫu số của thẻ danh sách khóa đã mua.
-     */
-    public Map<UUID, Integer> calculateLessonProgressForCourses(UUID studentId, List<UUID> courseIds) {
-        if (courseIds == null || courseIds.isEmpty()) return Map.of();
-
-        Map<UUID, Long> completedByCourse = progressRepository
-                .countCompletedLessonsByStudentAndCourseIds(studentId, courseIds)
-                .stream()
-                .collect(Collectors.toMap(row -> (UUID) row[0], row -> (Long) row[1]));
-        Map<UUID, Long> totalByCourse = courseRepository.countLessonsByCourseIds(courseIds)
-                .stream()
-                .collect(Collectors.toMap(row -> (UUID) row[0], row -> (Long) row[1]));
-        Map<UUID, Enrollment> enrollmentByCourse = enrollmentRepository.findByStudentId(studentId)
-                .stream()
-                .filter(enrollment -> courseIds.contains(enrollment.getCourseId()))
-                .collect(Collectors.toMap(Enrollment::getCourseId, enrollment -> enrollment));
-
-        return courseIds.stream().collect(Collectors.toMap(
-                courseId -> courseId,
-                courseId -> {
-                    long total = resolveLessonCount(
-                            enrollmentByCourse.get(courseId),
-                            totalByCourse.getOrDefault(courseId, 0L));
-                    if (total == 0) return 0;
-                    long completed = Math.min(completedByCourse.getOrDefault(courseId, 0L), total);
-                    return (int) Math.round((completed * 100.0) / total);
-                }
-        ));
+    @Transactional
+    public int refreshEnrollmentProgress(UUID studentId, UUID courseId) {
+        int progressPct = calculateProgressPct(studentId, courseId);
+        enrollmentRepository.findByStudentIdAndCourseId(studentId, courseId)
+                .ifPresent(enrollment -> enrollment.updateProgress(progressPct));
+        return progressPct;
     }
 
     private CourseProgressResponse buildResponse(UUID studentId, UUID courseId) {
@@ -386,7 +383,15 @@ public class CourseProgressService {
                 .filter(item -> ITEM_QUIZ.equals(item.getItemType()))
                 .map(CourseProgressItem::getItemId)
                 .toList();
-        return new CourseProgressResponse(courseId, calculateProgressPct(studentId, courseId), lessonIds, quizIds);
+        ProgressStats stats = calculateProgressStats(studentId, courseId);
+        return new CourseProgressResponse(
+                courseId,
+                stats.progressPct(),
+                lessonIds,
+                quizIds,
+                stats.completedExamIds(),
+                stats.completedItems(),
+                stats.totalItems());
     }
 
     private StudentLearningProgressResponse.CourseProgressDetail buildCourseProgressDetail(
@@ -762,13 +767,49 @@ public class CourseProgressService {
     }
 
     private int calculateProgressPct(UUID studentId, UUID courseId) {
+        return calculateProgressStats(studentId, courseId).progressPct();
+    }
+
+    private ProgressStats calculateProgressStats(UUID studentId, UUID courseId) {
         Enrollment enrollment = enrollmentRepository.findByStudentIdAndCourseId(studentId, courseId)
                 .orElse(null);
-        long total = resolveProgressItemCount(
+        long learningItemTotal = resolveProgressItemCount(
                 enrollment, courseRepository.countProgressItemsByCourseId(courseId));
-        if (total <= 0) return 0;
-        long completed = Math.min(progressRepository.countByStudentIdAndCourseId(studentId, courseId), total);
-        return (int) Math.round((completed * 100.0) / total);
+        Set<UUID> requiredExamIds = requiredExamIds(enrollment);
+        List<UUID> completedExamIds = examAttemptRepository
+                .findSubmittedByStudentAndCourseIds(studentId, List.of(courseId))
+                .stream()
+                .map(ExamAttempt::getExamConfig)
+                .filter(Objects::nonNull)
+                .map(ExamConfig::getId)
+                .filter(requiredExamIds::contains)
+                .distinct()
+                .toList();
+        long total = learningItemTotal + requiredExamIds.size();
+        long completedLearningItems = Math.min(
+                progressRepository.countByStudentIdAndCourseId(studentId, courseId),
+                learningItemTotal);
+        long completed = completedLearningItems + completedExamIds.size();
+        int progressPct = total <= 0
+                ? 0
+                : (int) Math.round((completed * 100.0) / total);
+        return new ProgressStats(
+                progressPct,
+                Math.toIntExact(completed),
+                Math.toIntExact(total),
+                completedExamIds);
+    }
+
+    private Set<UUID> requiredExamIds(Enrollment enrollment) {
+        if (enrollment == null) {
+            return Set.of();
+        }
+        return examConfigVersionService.forEnrollment(enrollment).stream()
+                .filter(config -> config.getSlotIndex() != null)
+                .filter(config -> config.getSlotIndex() >= 0
+                        && config.getSlotIndex() < REQUIRED_EXAM_LABELS.size())
+                .map(ExamConfig::getId)
+                .collect(Collectors.toSet());
     }
 
     private long resolveProgressItemCount(Enrollment enrollment, long fallback) {
@@ -781,10 +822,10 @@ public class CourseProgressService {
                 .orElse(fallback);
     }
 
-    private long resolveLessonCount(Enrollment enrollment, long fallback) {
-        if (enrollment == null) return fallback;
-        return courseVersionSnapshotService.findMetrics(enrollment.getCourseVersionId())
-                .map(metrics -> (long) metrics.lessonIds().size())
-                .orElse(fallback);
-    }
+    private record ProgressStats(
+            int progressPct,
+            int completedItems,
+            int totalItems,
+            List<UUID> completedExamIds
+    ) {}
 }

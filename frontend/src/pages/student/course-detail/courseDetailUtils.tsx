@@ -358,11 +358,17 @@ export function preloadLessonDuration(
 }
 
 export function getCourseProgressStats(
-  chapters: Array<{ lessons: Lesson[] }>,
+  chapters: Array<{ id?: string; hasQuizConfig?: boolean; lessons: Lesson[] }>,
   completedLessonIds: string[],
+  completedQuizIds: string[] = [],
+  completedExamCount = 0,
+  totalExamCount = 0,
 ) {
   const videoIds = new Set<string>();
   const completedLessonSet = new Set(completedLessonIds);
+  const completedQuizSet = new Set(completedQuizIds);
+  let totalQuizCount = 0;
+  let completedQuizCount = 0;
 
   chapters.forEach((chapter) => {
     chapter.lessons.forEach((lesson) => {
@@ -370,11 +376,22 @@ export function getCourseProgressStats(
         videoIds.add(lesson.id);
       }
     });
+    if (chapter.hasQuizConfig && chapter.id) {
+      totalQuizCount += 1;
+      if (completedQuizSet.has(chapter.id)) {
+        completedQuizCount += 1;
+      }
+    }
   });
 
   const completedVideoCount = [...videoIds].filter((id) => completedLessonSet.has(id)).length;
-  const totalItems = videoIds.size;
-  const completedItems = completedVideoCount;
+  const normalizedTotalExamCount = Math.max(0, totalExamCount);
+  const normalizedCompletedExamCount = Math.min(
+    Math.max(0, completedExamCount),
+    normalizedTotalExamCount,
+  );
+  const totalItems = videoIds.size + totalQuizCount + normalizedTotalExamCount;
+  const completedItems = completedVideoCount + completedQuizCount + normalizedCompletedExamCount;
 
   return {
     totalItems,

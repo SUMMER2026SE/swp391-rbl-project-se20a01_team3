@@ -44,6 +44,9 @@ class ExamServiceTest {
     private ExamConfigVersionService examConfigVersionService;
 
     @Mock
+    private CourseProgressService courseProgressService;
+
+    @Mock
     private ProfileRepository profileRepository;
 
     @Mock

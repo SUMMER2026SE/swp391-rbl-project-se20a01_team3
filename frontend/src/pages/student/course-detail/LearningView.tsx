@@ -129,10 +129,11 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
 
   const {
     completedList,
-    hydrateCourseProgress,
     markLessonCompleted,
     completedQuizList,
     markQuizCompleted,
+    courseProgress,
+    applyCourseProgress,
     lessonDurations,
     saveLessonDuration,
     videoPositions,
@@ -545,10 +546,26 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
     };
   }, [activeLesson, activeTab, course.id, user?.role, videoNoteOverlayOpen]);
 
-  // Tính toán tiến độ học tập thực tế dựa trên completedLessons
+  // Cùng một công thức với backend: video + quiz chương + bài kiểm tra.
   const progressStats = useMemo(
-    () => getCourseProgressStats(chapterSections, completedList),
-    [chapterSections, completedList],
+    () => {
+      const localStats = getCourseProgressStats(
+        chapterSections,
+        completedList,
+        completedQuizList,
+        courseProgress?.completedExamIds?.length ?? 0,
+        studentExams.length,
+      );
+      if (!courseProgress || (courseProgress.totalItems ?? 0) <= 0) {
+        return localStats;
+      }
+      return {
+        totalItems: courseProgress.totalItems,
+        completedItems: courseProgress.completedItems,
+        progressPercent: courseProgress.progressPct,
+      };
+    },
+    [chapterSections, completedList, completedQuizList, courseProgress, studentExams.length],
   );
   const progressPercent = progressStats.progressPercent;
 
@@ -607,7 +624,7 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
       if (!progress.completed) return;
       markLessonCompleted(course.id, lessonId);
       void getCourseProgress(course.id)
-        .then(latest => hydrateCourseProgress(course.id, latest.completedLessonIds, latest.completedQuizIds))
+        .then(applyCourseProgress)
         .catch(() => undefined);
       notify.success('Đã hoàn thành video bài học!');
     }).catch(() => {
@@ -707,7 +724,7 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
 
     try {
       const progress = await completeCourseProgressItem(course.id, { itemId, itemType });
-      hydrateCourseProgress(course.id, progress.completedLessonIds, progress.completedQuizIds);
+      applyCourseProgress(progress);
     } catch (error) {
       queueCompletion(course.id, itemId, itemType);
       console.error('Không lưu được tiến độ khóa học:', error);
@@ -2200,11 +2217,7 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
                         courseId={courseId}
                         onProgressChanged={async () => {
                           const latest = await getCourseProgress(course.id);
-                          hydrateCourseProgress(
-                            course.id,
-                            latest.completedLessonIds,
-                            latest.completedQuizIds,
-                          );
+                          applyCourseProgress(latest);
                         }}
                       />
                     </Suspense>
@@ -2219,7 +2232,7 @@ export default function LearningView({ course, rawChapters, courseId, initialLes
                         fallbackReviewCount={course.reviewCount ?? 0}
                         canSubmitReview={canSubmitReview}
                         isOwnedCourse={course.isEnrolled}
-                        progressPct={course.progress ?? 0}
+                        progressPct={progressPercent}
                       />
                     </Suspense>
                   </motion.div>

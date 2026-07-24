@@ -125,6 +125,7 @@ public class ExamService {
     private final AiScanService aiScanService;
     private final UserNotificationService userNotificationService;
     private final RewardService rewardService;
+    private final CourseProgressService courseProgressService;
     private final ApplicationEventPublisher eventPublisher;
     private final ExamRetakeService examRetakeService;
     private final ExamIntegrityService examIntegrityService;
@@ -203,6 +204,7 @@ public class ExamService {
         ExamAttempt attempt = getOrCreateOpenAttempt(student, config, submittedCount);
         attempt.submit(toJson(request.answers()), scoringSummary.autoScorePercent(), passed);
         ExamAttempt saved = examAttemptRepository.save(attempt);
+        courseProgressService.refreshEnrollmentProgress(me.userId(), courseId);
         incrementQuestionUsageForExam(questions);
 
         if (scoringSummary.hasEssay()) {
