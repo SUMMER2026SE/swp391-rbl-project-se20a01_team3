@@ -77,6 +77,8 @@ class RewardServiceTest {
         when(voucher.getDisplayName()).thenReturn("Voucher 30K");
         when(voucher.getCode()).thenReturn("BRONZE_30K");
         when(balanceRepository.findById(studentId)).thenReturn(Optional.of(balance));
+        when(sourceRepository.sumAwardedPointsByStudentIdAndAssessmentType(
+                studentId, RewardAssessmentType.EXAM)).thenReturn(150L);
         when(studentVoucherRepository.save(any(StudentRewardVoucher.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -89,5 +91,22 @@ class RewardServiceTest {
         assertThat(transactionCaptor.getValue().getTransactionType())
                 .isEqualTo(RewardPointTransactionType.VOUCHER_REDEMPTION);
         assertThat(transactionCaptor.getValue().getPointsDelta()).isEqualTo(-100);
+    }
+
+    @Test
+    void getWalletDerivesAvailablePointsFromExamScoresInsteadOfLegacyBalance() {
+        UUID studentId = UUID.randomUUID();
+        StudentRewardBalance balance = StudentRewardBalance.create(studentId);
+        balance.addPoints(294);
+
+        when(balanceRepository.findById(studentId)).thenReturn(Optional.of(balance));
+        when(sourceRepository.sumAwardedPointsByStudentIdAndAssessmentType(
+                studentId, RewardAssessmentType.EXAM)).thenReturn(154L);
+
+        var wallet = rewardService.getWallet(studentId);
+
+        assertThat(wallet.availablePoints()).isEqualTo(154);
+        assertThat(wallet.lifetimePoints()).isEqualTo(154);
+        verify(balanceRepository).save(balance);
     }
 }

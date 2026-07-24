@@ -61,7 +61,7 @@ public class RewardPointHistorySchemaMigration implements ApplicationRunner {
                 """);
         backfillExamRewards();
         backfillVoucherRedemptions();
-        reconcileBalances();
+        deriveBalancesFromExamPoints();
     }
 
     private void backfillExamRewards() {
@@ -119,59 +119,34 @@ public class RewardPointHistorySchemaMigration implements ApplicationRunner {
                 """);
     }
 
-    private void reconcileBalances() {
+    private void deriveBalancesFromExamPoints() {
         jdbcTemplate.update("""
                 DELETE FROM public.reward_point_transactions
-                WHERE adjustment_key LIKE 'LIFETIME:%'
-                   OR adjustment_key LIKE 'AVAILABLE:%'
+                WHERE transaction_type = 'BALANCE_ADJUSTMENT'
                 """);
         jdbcTemplate.update("""
-                INSERT INTO public.reward_point_transactions (
-                    student_id, transaction_type, points_delta, title, description,
-                    adjustment_key, created_at
-                )
-                SELECT
-                    balance.student_id,
-                    'BALANCE_ADJUSTMENT',
-                    balance.lifetime_points - COALESCE((
-                        SELECT SUM(GREATEST(tx.points_delta, 0))
-                        FROM public.reward_point_transactions tx
-                        WHERE tx.student_id = balance.student_id
-                    ), 0),
-                    'Điểm tích lũy trước khi ghi lịch sử',
-                    'Đối soát từ số dư điểm hiện tại',
-                    'LIFETIME:' || balance.student_id,
-                    NOW()
-                FROM public.student_reward_balances balance
-                WHERE balance.lifetime_points > COALESCE((
-                    SELECT SUM(GREATEST(tx.points_delta, 0))
-                    FROM public.reward_point_transactions tx
-                    WHERE tx.student_id = balance.student_id
-                ), 0)
-                """);
-        jdbcTemplate.update("""
-                INSERT INTO public.reward_point_transactions (
-                    student_id, transaction_type, points_delta, title, description,
-                    adjustment_key, created_at
-                )
-                SELECT
-                    balance.student_id,
-                    'BALANCE_ADJUSTMENT',
-                    balance.available_points - COALESCE((
-                        SELECT SUM(tx.points_delta)
-                        FROM public.reward_point_transactions tx
-                        WHERE tx.student_id = balance.student_id
-                    ), 0),
-                    'Điều chỉnh điểm khả dụng',
-                    'Đối soát từ số dư điểm hiện tại',
-                    'AVAILABLE:' || balance.student_id,
-                    NOW()
-                FROM public.student_reward_balances balance
-                WHERE balance.available_points <> COALESCE((
-                    SELECT SUM(tx.points_delta)
-                    FROM public.reward_point_transactions tx
-                    WHERE tx.student_id = balance.student_id
-                ), 0)
+                UPDATE public.student_reward_balances balance
+                SET lifetime_points = totals.exam_points,
+                    available_points = GREATEST(0, totals.exam_points - totals.spent_points),
+                    updated_at = NOW()
+                FROM (
+                    SELECT
+                        balance_source.student_id,
+                        COALESCE((
+                            SELECT SUM(source.awarded_points)
+                            FROM public.student_reward_sources source
+                            WHERE source.student_id = balance_source.student_id
+                              AND source.assessment_type = 'EXAM'
+                        ), 0)::INTEGER AS exam_points,
+                        COALESCE((
+                            SELECT SUM(-tx.points_delta)
+                            FROM public.reward_point_transactions tx
+                            WHERE tx.student_id = balance_source.student_id
+                              AND tx.transaction_type = 'VOUCHER_REDEMPTION'
+                        ), 0)::INTEGER AS spent_points
+                    FROM public.student_reward_balances balance_source
+                ) totals
+                WHERE balance.student_id = totals.student_id
                 """);
     }
 }

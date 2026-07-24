@@ -18,6 +18,8 @@ public class CertificateSchemaMigration implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        ensureCertificateStorageBucket();
+
         Boolean hasCertificatesTable = jdbcTemplate.queryForObject("""
                 SELECT EXISTS (
                     SELECT 1
@@ -183,6 +185,25 @@ public class CertificateSchemaMigration implements ApplicationRunner {
         jdbcTemplate.execute("""
                 CREATE INDEX IF NOT EXISTS idx_certificates_course
                 ON public.certificates(course_id)
+                """);
+    }
+
+    private void ensureCertificateStorageBucket() {
+        jdbcTemplate.execute("""
+                INSERT INTO storage.buckets (
+                    id, name, public, file_size_limit, allowed_mime_types
+                )
+                VALUES (
+                    'certificates',
+                    'certificates',
+                    false,
+                    10485760,
+                    ARRAY['application/pdf']::TEXT[]
+                )
+                ON CONFLICT (id) DO UPDATE
+                SET public = false,
+                    file_size_limit = EXCLUDED.file_size_limit,
+                    allowed_mime_types = EXCLUDED.allowed_mime_types
                 """);
     }
 }
