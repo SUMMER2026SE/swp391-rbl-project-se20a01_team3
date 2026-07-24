@@ -1,6 +1,7 @@
 import { apiClient } from './client';
 
 export type StudentRewardVoucherStatus = 'AVAILABLE' | 'RESERVED' | 'USED';
+export type RewardPointTransactionType = 'EXAM_REWARD' | 'VOUCHER_REDEMPTION';
 
 export interface RewardVoucher {
   id: string;
@@ -22,11 +23,23 @@ export interface StudentRewardVoucher {
   usedAt: string | null;
 }
 
+export interface RewardPointTransaction {
+  id: string;
+  type: RewardPointTransactionType;
+  pointsDelta: number;
+  referenceId: string | null;
+  title: string;
+  description: string | null;
+  scorePercent: number | null;
+  createdAt: string;
+}
+
 export interface RewardWallet {
   availablePoints: number;
   lifetimePoints: number;
   catalog: RewardVoucher[];
   vouchers: StudentRewardVoucher[];
+  transactions: RewardPointTransaction[];
 }
 
 export async function getRewardWallet(): Promise<RewardWallet> {
