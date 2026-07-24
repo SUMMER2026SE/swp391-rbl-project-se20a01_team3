@@ -54,4 +54,18 @@ public class StudentRewardBalance {
         this.availablePoints -= points;
         this.updatedAt = Instant.now();
     }
+
+    public boolean reconcileFromExamPoints(int lifetimePoints, int spentPoints) {
+        int normalizedLifetime = Math.max(0, lifetimePoints);
+        int normalizedSpent = Math.max(0, spentPoints);
+        int normalizedAvailable = Math.max(0, normalizedLifetime - normalizedSpent);
+        if (this.lifetimePoints == normalizedLifetime
+                && this.availablePoints == normalizedAvailable) {
+            return false;
+        }
+        this.lifetimePoints = normalizedLifetime;
+        this.availablePoints = normalizedAvailable;
+        this.updatedAt = Instant.now();
+        return true;
+    }
 }

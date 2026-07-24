@@ -6,6 +6,7 @@ import com.beeacademy.backend.exception.ResourceNotFoundException;
 import com.beeacademy.backend.model.RewardAssessmentType;
 import com.beeacademy.backend.model.ExamConfig;
 import com.beeacademy.backend.model.RewardPointTransaction;
+import com.beeacademy.backend.model.RewardPointTransactionType;
 import com.beeacademy.backend.model.RewardVoucher;
 import com.beeacademy.backend.model.StudentRewardBalance;
 import com.beeacademy.backend.model.StudentRewardSource;
@@ -55,7 +56,7 @@ public class RewardService {
         int points = toRewardPoints(scorePercent);
         double normalizedScore = Math.max(0.0, Math.min(100.0, scorePercent));
 
-        StudentRewardBalance balance = getOrCreateBalance(studentId);
+        StudentRewardBalance balance = getOrCreateReconciledBalance(studentId);
         StudentRewardSource source = sourceRepository
                 .findByStudentIdAndAssessmentTypeAndAssessmentId(
                         studentId, RewardAssessmentType.EXAM, examConfigId)
@@ -88,10 +89,9 @@ public class RewardService {
         return delta;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public RewardWalletResponse getWallet(UUID studentId) {
-        StudentRewardBalance balance = balanceRepository.findById(studentId)
-                .orElseGet(() -> StudentRewardBalance.create(studentId));
+        StudentRewardBalance balance = getOrCreateReconciledBalance(studentId);
         return toWalletResponse(balance);
     }
 
@@ -104,7 +104,7 @@ public class RewardService {
                     "Voucher này hiện không khả dụng.", HttpStatus.BAD_REQUEST);
         }
 
-        StudentRewardBalance balance = getOrCreateBalance(studentId);
+        StudentRewardBalance balance = getOrCreateReconciledBalance(studentId);
         if (balance.getAvailablePoints() < voucher.getRequiredPoints()) {
             throw new BusinessException("NOT_ENOUGH_POINTS",
                     "Bạn chưa đủ điểm để đổi voucher này.", HttpStatus.BAD_REQUEST);
@@ -186,6 +186,20 @@ public class RewardService {
                 .orElseGet(() -> balanceRepository.save(StudentRewardBalance.create(studentId)));
     }
 
+    private StudentRewardBalance getOrCreateReconciledBalance(UUID studentId) {
+        StudentRewardBalance balance = getOrCreateBalance(studentId);
+        int examPoints = toIntExactOrMax(sourceRepository
+                .sumAwardedPointsByStudentIdAndAssessmentType(
+                        studentId, RewardAssessmentType.EXAM));
+        int spentPoints = toIntExactOrMax(transactionRepository
+                .sumSpentPointsByStudentIdAndTransactionType(
+                        studentId, RewardPointTransactionType.VOUCHER_REDEMPTION));
+        if (balance.reconcileFromExamPoints(examPoints, spentPoints)) {
+            balanceRepository.save(balance);
+        }
+        return balance;
+    }
+
     private RewardWalletResponse toWalletResponse(StudentRewardBalance balance) {
         List<RewardWalletResponse.RewardVoucherResponse> catalog = voucherRepository
                 .findByActiveTrueOrderBySortOrderAscRequiredPointsAsc()
@@ -198,7 +212,11 @@ public class RewardService {
                 .map(RewardWalletResponse.StudentRewardVoucherResponse::from)
                 .toList();
         List<RewardWalletResponse.RewardPointTransactionResponse> transactions = transactionRepository
-                .findByStudentIdOrderByCreatedAtDesc(balance.getStudentId())
+                .findByStudentIdAndTransactionTypeInOrderByCreatedAtDesc(
+                        balance.getStudentId(),
+                        List.of(
+                                RewardPointTransactionType.EXAM_REWARD,
+                                RewardPointTransactionType.VOUCHER_REDEMPTION))
                 .stream()
                 .map(RewardWalletResponse.RewardPointTransactionResponse::from)
                 .toList();
@@ -215,5 +233,9 @@ public class RewardService {
             return 0;
         }
         return Math.max(0, Math.min(100, (int) Math.round(scorePercent)));
+    }
+
+    private int toIntExactOrMax(long value) {
+        return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) Math.max(0, value);
     }
 }
