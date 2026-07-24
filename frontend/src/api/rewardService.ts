@@ -1,7 +1,7 @@
 import { apiClient } from './client';
 
 export type StudentRewardVoucherStatus = 'AVAILABLE' | 'RESERVED' | 'USED';
-export type RewardPointTransactionType = 'EXAM_REWARD' | 'VOUCHER_REDEMPTION';
+export type RewardPointTransactionType = 'EXAM_REWARD' | 'VOUCHER_REDEMPTION' | 'BALANCE_ADJUSTMENT';
 
 export interface RewardVoucher {
   id: string;

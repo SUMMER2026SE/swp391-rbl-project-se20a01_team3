@@ -41,8 +41,27 @@ public class RewardPointHistorySchemaMigration implements ApplicationRunner {
                 ON public.reward_point_transactions(reference_id)
                 WHERE transaction_type = 'VOUCHER_REDEMPTION' AND reference_id IS NOT NULL
                 """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.reward_point_transactions
+                ADD COLUMN IF NOT EXISTS adjustment_key TEXT
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.reward_point_transactions
+                DROP CONSTRAINT IF EXISTS reward_point_transactions_transaction_type_check
+                """);
+        jdbcTemplate.execute("""
+                ALTER TABLE public.reward_point_transactions
+                ADD CONSTRAINT reward_point_transactions_transaction_type_check
+                CHECK (transaction_type IN ('EXAM_REWARD', 'VOUCHER_REDEMPTION', 'BALANCE_ADJUSTMENT'))
+                """);
+        jdbcTemplate.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_reward_point_transaction_adjustment
+                ON public.reward_point_transactions(adjustment_key)
+                WHERE adjustment_key IS NOT NULL
+                """);
         backfillExamRewards();
         backfillVoucherRedemptions();
+        reconcileBalances();
     }
 
     private void backfillExamRewards() {
@@ -97,6 +116,62 @@ public class RewardPointHistorySchemaMigration implements ApplicationRunner {
                     WHERE tx.transaction_type = 'VOUCHER_REDEMPTION'
                       AND tx.reference_id = student_voucher.id
                 )
+                """);
+    }
+
+    private void reconcileBalances() {
+        jdbcTemplate.update("""
+                DELETE FROM public.reward_point_transactions
+                WHERE adjustment_key LIKE 'LIFETIME:%'
+                   OR adjustment_key LIKE 'AVAILABLE:%'
+                """);
+        jdbcTemplate.update("""
+                INSERT INTO public.reward_point_transactions (
+                    student_id, transaction_type, points_delta, title, description,
+                    adjustment_key, created_at
+                )
+                SELECT
+                    balance.student_id,
+                    'BALANCE_ADJUSTMENT',
+                    balance.lifetime_points - COALESCE((
+                        SELECT SUM(GREATEST(tx.points_delta, 0))
+                        FROM public.reward_point_transactions tx
+                        WHERE tx.student_id = balance.student_id
+                    ), 0),
+                    'Điểm tích lũy trước khi ghi lịch sử',
+                    'Đối soát từ số dư điểm hiện tại',
+                    'LIFETIME:' || balance.student_id,
+                    NOW()
+                FROM public.student_reward_balances balance
+                WHERE balance.lifetime_points > COALESCE((
+                    SELECT SUM(GREATEST(tx.points_delta, 0))
+                    FROM public.reward_point_transactions tx
+                    WHERE tx.student_id = balance.student_id
+                ), 0)
+                """);
+        jdbcTemplate.update("""
+                INSERT INTO public.reward_point_transactions (
+                    student_id, transaction_type, points_delta, title, description,
+                    adjustment_key, created_at
+                )
+                SELECT
+                    balance.student_id,
+                    'BALANCE_ADJUSTMENT',
+                    balance.available_points - COALESCE((
+                        SELECT SUM(tx.points_delta)
+                        FROM public.reward_point_transactions tx
+                        WHERE tx.student_id = balance.student_id
+                    ), 0),
+                    'Điều chỉnh điểm khả dụng',
+                    'Đối soát từ số dư điểm hiện tại',
+                    'AVAILABLE:' || balance.student_id,
+                    NOW()
+                FROM public.student_reward_balances balance
+                WHERE balance.available_points <> COALESCE((
+                    SELECT SUM(tx.points_delta)
+                    FROM public.reward_point_transactions tx
+                    WHERE tx.student_id = balance.student_id
+                ), 0)
                 """);
     }
 }
