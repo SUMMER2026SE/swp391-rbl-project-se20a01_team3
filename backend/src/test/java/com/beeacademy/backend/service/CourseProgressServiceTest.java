@@ -82,6 +82,9 @@ class CourseProgressServiceTest {
     private CourseVersionSnapshotService courseVersionSnapshotService;
 
     @Mock
+    private ExamConfigVersionService examConfigVersionService;
+
+    @Mock
     private AssignmentSubmissionRepository assignmentSubmissionRepository;
 
     @Mock
@@ -192,6 +195,36 @@ class CourseProgressServiceTest {
 
         assertThat(progress).containsEntry(courseA, 50);
         assertThat(progress).containsEntry(courseB, 0);
+    }
+
+    @Test
+    void calculateProgressForCoursesIncludesLessonsQuizzesAndRequiredExams() {
+        UUID studentId = UUID.randomUUID();
+        UUID courseId = UUID.randomUUID();
+        Enrollment enrollment = Enrollment.create(studentId, courseId, UUID.randomUUID());
+        ExamConfig firstExam = mock(ExamConfig.class);
+        ExamConfig secondExam = mock(ExamConfig.class);
+        ExamAttempt submittedAttempt = mock(ExamAttempt.class);
+
+        when(firstExam.getId()).thenReturn(UUID.randomUUID());
+        when(firstExam.getSlotIndex()).thenReturn(0);
+        when(secondExam.getId()).thenReturn(UUID.randomUUID());
+        when(secondExam.getSlotIndex()).thenReturn(1);
+        when(submittedAttempt.getExamConfig()).thenReturn(firstExam);
+        when(enrollmentRepository.findByStudentId(studentId)).thenReturn(List.of(enrollment));
+        when(progressRepository.countCompletedByStudentAndCourseIds(studentId, List.of(courseId)))
+                .thenReturn(List.<Object[]>of(new Object[]{courseId, 3L}));
+        when(courseRepository.countProgressItemsByCourseIds(List.of(courseId)))
+                .thenReturn(List.<Object[]>of(new Object[]{courseId, 4L}));
+        when(examConfigVersionService.forEnrollment(enrollment))
+                .thenReturn(List.of(firstExam, secondExam));
+        when(examAttemptRepository.findSubmittedByStudentAndCourseIds(studentId, List.of(courseId)))
+                .thenReturn(List.of(submittedAttempt));
+
+        var progress = service.calculateProgressForCourses(studentId, List.of(courseId));
+
+        // 3/4 video + quiz, cộng 1/2 bài kiểm tra = 4/6 nội dung.
+        assertThat(progress).containsEntry(courseId, 67);
     }
 
     @Test

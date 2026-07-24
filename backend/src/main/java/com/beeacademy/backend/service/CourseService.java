@@ -379,7 +379,7 @@ public class CourseService {
         Set<UUID> previewCourseIds = findCoursesWithFreePreview(courses);
         Map<UUID, CourseReviewService.RatingSummary> ratingByCourseId = summarizeRatings(courses);
         Map<UUID, Integer> studentCounts = buildStudentCounts(courses);
-        Map<UUID, Integer> progressByCourse = courseProgressService.calculateLessonProgressForCourses(
+        Map<UUID, Integer> progressByCourse = courseProgressService.calculateProgressForCourses(
                 me.userId(),
                 courseIds
         );

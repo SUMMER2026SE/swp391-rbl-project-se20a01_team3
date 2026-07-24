@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { completeCourseProgressItem, getCourseProgress } from '../../../../api/courseProgressService';
 import { useCourseStore } from '../../../../store/useCourseStore';
+import type { CourseProgress } from '../../../../types/api';
 
 export function useCourseProgress(courseId: string, isEnrolled: boolean, accessToken: string | null) {
   const completedLessons = useCourseStore((state) => state.completedLessons);
@@ -14,9 +15,18 @@ export function useCourseProgress(courseId: string, isEnrolled: boolean, accessT
   const saveVideoPosition = useCourseStore((state) => state.saveVideoPosition);
   const quizScores = useCourseStore((state) => state.quizScores);
   const saveQuizScore = useCourseStore((state) => state.saveQuizScore);
+  const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null);
+
+  const applyCourseProgress = useCallback((progress: CourseProgress) => {
+    hydrateCourseProgress(courseId, progress.completedLessonIds, progress.completedQuizIds);
+    setCourseProgress(progress);
+  }, [courseId, hydrateCourseProgress]);
 
   useEffect(() => {
-    if (!isEnrolled || !accessToken) return;
+    if (!isEnrolled || !accessToken) {
+      setCourseProgress(null);
+      return;
+    }
 
     let cancelled = false;
     getCourseProgress(courseId)
@@ -47,8 +57,11 @@ export function useCourseProgress(courseId: string, isEnrolled: boolean, accessT
           localQuizIds.length === progress.completedQuizIds.length &&
           localQuizIds.every((id) => progress.completedQuizIds.includes(id));
 
-        if (!cancelled && (!hasSameLessons || !hasSameQuizzes)) {
-          hydrateCourseProgress(courseId, progress.completedLessonIds, progress.completedQuizIds);
+        if (!cancelled) {
+          if (!hasSameLessons || !hasSameQuizzes) {
+            hydrateCourseProgress(courseId, progress.completedLessonIds, progress.completedQuizIds);
+          }
+          setCourseProgress(progress);
         }
       })
       .catch((error) => {
@@ -75,6 +88,8 @@ export function useCourseProgress(courseId: string, isEnrolled: boolean, accessT
     completedQuizzes,
     completedQuizList: completedQuizzes[courseId] ?? [],
     markQuizCompleted,
+    courseProgress,
+    applyCourseProgress,
     lessonDurations,
     saveLessonDuration,
     videoPositions,

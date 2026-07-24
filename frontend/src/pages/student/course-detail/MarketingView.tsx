@@ -32,7 +32,7 @@ import { notify } from '../../../lib/toast';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { useCartStore } from '../../../store/useCartStore';
 import { useCourseStore, type VideoPosition } from '../../../store/useCourseStore';
-import type { ChapterDetail } from '../../../types/api';
+import type { ChapterDetail, CourseProgress } from '../../../types/api';
 import type { Course, Lesson } from '../../../types/course';
 import {
   adaptLearningLesson,
@@ -146,12 +146,14 @@ export default function MarketingView({
   const purchasedIds = useCourseStore(state => state.purchasedIds);
   const enrollCourses = useCourseStore(state => state.enrollCourses);
   const completedLessons = useCourseStore(state => state.completedLessons);
+  const completedQuizzes = useCourseStore(state => state.completedQuizzes);
   const hydrateCourseProgress = useCourseStore(state => state.hydrateCourseProgress);
   const lessonDurations = useCourseStore(state => state.lessonDurations);
   const videoPositions = useCourseStore(state => state.videoPositions);
   const navigate = useNavigate();
   const [activating, setActivating] = useState(false);
   const [openingLearning, setOpeningLearning] = useState(false);
+  const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null);
   const syllabusSections = useMemo<MarketingSyllabusSection[]>(() => (
     rawChapters.length > 0
       ? [...rawChapters]
@@ -179,12 +181,29 @@ export default function MarketingView({
     [course.lessons],
   );
   const completedList = completedLessons[course.id] ?? [];
+  const completedQuizList = completedQuizzes[course.id] ?? [];
+  const isOwnedCourse = course.isEnrolled || purchasedIds.includes(course.id);
   const progressStats = useMemo(
-    () => getCourseProgressStats(syllabusSections, completedList),
-    [syllabusSections, completedList],
+    () => {
+      const localStats = getCourseProgressStats(
+        syllabusSections,
+        completedList,
+        completedQuizList,
+        courseProgress?.completedExamIds?.length ?? 0,
+        0,
+      );
+      if (!courseProgress || (courseProgress.totalItems ?? 0) <= 0) {
+        return localStats;
+      }
+      return {
+        totalItems: courseProgress.totalItems,
+        completedItems: courseProgress.completedItems,
+        progressPercent: courseProgress.progressPct,
+      };
+    },
+    [completedList, completedQuizList, courseProgress, syllabusSections],
   );
   const progressPercent = progressStats.progressPercent;
-  const isOwnedCourse = course.isEnrolled || purchasedIds.includes(course.id);
   const canSubmitReview = isOwnedCourse && user?.role === 'student';
   const primaryPreviewLesson = previewLessons.find(lesson => lesson.type === 'video') ?? previewLessons[0] ?? null;
   const previewCtaLabel = primaryPreviewLesson?.type === 'video'
@@ -207,6 +226,26 @@ export default function MarketingView({
   useEffect(() => {
     setExpandedChapterIds(new Set(syllabusSections.slice(0, 2).map(chapter => chapter.id)));
   }, [syllabusSections]);
+
+  useEffect(() => {
+    if (!isOwnedCourse || user?.role !== 'student') {
+      setCourseProgress(null);
+      return;
+    }
+    let cancelled = false;
+    getCourseProgress(course.id)
+      .then(progress => {
+        if (cancelled) return;
+        hydrateCourseProgress(course.id, progress.completedLessonIds, progress.completedQuizIds);
+        setCourseProgress(progress);
+      })
+      .catch(() => {
+        if (!cancelled) setCourseProgress(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [course.id, hydrateCourseProgress, isOwnedCourse, user?.role]);
 
   function toggleSyllabusChapter(chapterId: string) {
     setExpandedChapterIds(prev => {
@@ -239,16 +278,17 @@ export default function MarketingView({
 
     if (user?.role === 'student' && course.isEnrolled) {
       try {
-        const [courseProgress, remoteVideoProgress] = await Promise.all([
+        const [latestCourseProgress, remoteVideoProgress] = await Promise.all([
           getCourseProgress(course.id),
           getLatestStudentVideoProgress(course.id),
         ]);
-        latestCompletedLessonIds = courseProgress.completedLessonIds;
+        latestCompletedLessonIds = latestCourseProgress.completedLessonIds;
         hydrateCourseProgress(
           course.id,
-          courseProgress.completedLessonIds,
-          courseProgress.completedQuizIds,
+          latestCourseProgress.completedLessonIds,
+          latestCourseProgress.completedQuizIds,
         );
+        setCourseProgress(latestCourseProgress);
 
         const localUpdatedAt = latestVideoProgress?.updatedAt
           ? Date.parse(latestVideoProgress.updatedAt)
@@ -563,7 +603,7 @@ export default function MarketingView({
                         <p className="text-sm font-extrabold text-on-surface">Bạn đã sở hữu khóa học này</p>
                         <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">
                           {progressPercent > 0
-                            ? `Bạn đã hoàn thành ${progressStats.completedItems}/${progressStats.totalItems} bài giảng.`
+                            ? `Bạn đã hoàn thành ${progressStats.completedItems}/${progressStats.totalItems} nội dung (video, quiz và bài kiểm tra).`
                             : 'Khóa học đã sẵn sàng để bạn bắt đầu học ngay.'}
                         </p>
                       </div>

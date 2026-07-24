@@ -104,7 +104,7 @@ public class CourseReviewService {
         }
 
         int progressPct = courseProgressService
-                .calculateLessonProgressForCourses(me.userId(), List.of(courseId))
+                .calculateProgressForCourses(me.userId(), List.of(courseId))
                 .getOrDefault(courseId, 0);
         if (progressPct < 30) {
             throw new BusinessException(

@@ -211,25 +211,16 @@ export default function CoursesPage() {
 
   const favoritedIds = useCourseStore((state) => state.favoritedIds);
   const toggleFavorite = useCourseStore((state) => state.toggleFavorite);
-  const completedLessons = useCourseStore((state) => state.completedLessons);
   const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
   const isStudent = useAuthStore((state) => state.user?.role === 'student');
 
   const enrolledCourses = useMemo(
     () => enrolledCourseSummaries.map((summary) => {
       const course = adaptCourseSummary(summary, true);
-      const completedList = completedLessons[course.id] ?? [];
-      const totalLessons = Math.max(summary.totalLessons ?? 0, 0);
-      const normalizedCompleted = totalLessons > 0
-        ? Math.min(completedList.length, totalLessons)
-        : 0;
-      const localProgress = totalLessons > 0
-        ? Math.round((normalizedCompleted / totalLessons) * 100)
-        : 0;
-      const progress = summary.progressPct ?? localProgress;
+      const progress = summary.progressPct ?? 0;
       return { ...course, progress };
     }),
-    [completedLessons, enrolledCourseSummaries],
+    [enrolledCourseSummaries],
   );
 
   const filteredEnrolledCourses = useMemo(

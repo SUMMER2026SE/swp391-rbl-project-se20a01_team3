@@ -137,6 +137,9 @@ export interface CourseProgress {
   progressPct: number;
   completedLessonIds: string[];
   completedQuizIds: string[];
+  completedExamIds: string[];
+  completedItems: number;
+  totalItems: number;
 }
 
 export interface CompleteCourseProgressItemPayload {
